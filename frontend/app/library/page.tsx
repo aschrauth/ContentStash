@@ -17,8 +17,8 @@ export default function LibraryPage() {
   
   const { items, currentUser, updatePreferences } = useStore();
   
-  // Initialize viewMode from user preferences or default to 'grid'
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  // Initialize viewMode from user preferences or default to 'list'
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 

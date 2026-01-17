@@ -55,6 +55,7 @@ export type ChatThread = {
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  messages: ChatMessage[];
 };
 
 // --- Store ---
@@ -102,7 +103,7 @@ export const useStore = create<AppState>()(
           name,
           passwordHash: btoa(password), // Simple mock hash
           createdAt: new Date().toISOString(),
-          preferences: { viewMode: 'grid' }, // Default preference
+          preferences: { viewMode: 'list' }, // Default preference set to list
         };
         set({ users: [...users, newUser], currentUser: newUser });
       },
