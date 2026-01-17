@@ -238,6 +238,17 @@ export default function ItemDetailPage() {
                   </>
                 )}
 
+                {/* Preview Image Display */}
+                {item.imageUrl && (
+                  <div className="mb-6 rounded-xl overflow-hidden border border-white/10 shadow-lg">
+                    <img 
+                      src={item.imageUrl} 
+                      alt={item.title} 
+                      className="w-full h-auto max-h-[400px] object-cover"
+                    />
+                  </div>
+                )}
+
                 {item.url && (
                   <a 
                     href={item.url} 
