@@ -36,10 +36,6 @@ const turndownService = new TurndownService({
 export default function RichTextEditor({ value, onChange, placeholder, className }: RichTextEditorProps) {
   const [isMounted, setIsMounted] = useState(false);
 
-  // Convert initial Markdown to HTML
-  // We use a ref or state to ensure we only set initial content once to avoid loops
-  // But since value can change from outside (initial load), we need to handle it.
-  
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -60,6 +56,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
       const markdown = turndownService.turndown(html);
       onChange(markdown);
     },
+    immediatelyRender: false, // Fix for SSR hydration mismatch
   });
 
   // Handle initial value loading
