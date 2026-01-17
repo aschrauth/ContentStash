@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
 import toast from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';
@@ -13,6 +12,7 @@ import { simulateContentExtraction } from '@/lib/simulation';
 import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import RichTextEditor from '@/components/RichTextEditor';
 
 export default function ItemDetailPage() {
   const params = useParams();
@@ -51,6 +51,9 @@ export default function ItemDetailPage() {
   };
 
   const handleSaveNotes = () => {
+    // Note: RichTextEditor returns HTML, but we're storing it in the 'notesMarkdown' field for now.
+    // In a real app, we might want to rename this field to 'notesHtml' or convert HTML to Markdown.
+    // For this MVP, storing HTML string is fine as long as we render it correctly.
     updateItem(item.id, {
       notesMarkdown: noteContent,
     });
@@ -220,20 +223,12 @@ export default function ItemDetailPage() {
                 </Button>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[400px]">
-                <textarea
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  placeholder="Write your thoughts here using Markdown..."
-                  className="w-full h-full bg-white/5 border border-white/10 rounded-lg p-4 text-slate-200 focus:ring-2 focus:ring-violet-500 outline-none resize-none font-mono text-sm"
+              <div className="min-h-[300px]">
+                <RichTextEditor 
+                  value={noteContent} 
+                  onChange={setNoteContent} 
+                  placeholder="Write your thoughts here..."
                 />
-                <div className="h-full overflow-y-auto bg-white/5 border border-white/10 rounded-lg p-4 prose prose-invert prose-sm max-w-none">
-                  {noteContent ? (
-                    <ReactMarkdown>{noteContent}</ReactMarkdown>
-                  ) : (
-                    <p className="text-slate-500 italic">Preview will appear here...</p>
-                  )}
-                </div>
               </div>
             </div>
 
