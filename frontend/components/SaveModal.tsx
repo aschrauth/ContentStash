@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Link as LinkIcon, FileText, Loader2, Check } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import toast from 'react-hot-toast';
@@ -13,6 +13,7 @@ import { simulateMetadataFetch, simulateContentExtraction } from '@/lib/simulati
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
+import RichTextEditor from '@/components/RichTextEditor';
 
 const saveSchema = z.object({
   url: z.string().url().optional().or(z.literal('')),
@@ -37,16 +38,16 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   
   const [activeTab, setActiveTab] = useState<'url' | 'paste'>('url');
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
-  const [hasFetchedMeta, setHasFetchedMeta] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<SaveFormValues>({
+  const { register, handleSubmit, setValue, watch, control, formState: { errors } } = useForm<SaveFormValues>({
     resolver: zodResolver(saveSchema),
     defaultValues: {
       title: '',
       description: '',
       tags: '',
+      content: '',
     }
   });
 
@@ -54,10 +55,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
 
   // Auto-fetch metadata when URL changes (debounced)
   useEffect(() => {
-    if (!urlValue || activeTab !== 'url') {
-      if (!urlValue && activeTab === 'url') setHasFetchedMeta(false);
-      return;
-    }
+    if (!urlValue || activeTab !== 'url') return;
 
     const timer = setTimeout(async () => {
       try {
@@ -70,7 +68,6 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         setValue('description', meta.description);
         setPreviewImage(meta.imageUrl);
         toast.success("Metadata fetched!");
-        setHasFetchedMeta(true);
       } catch (e) {
         // Ignore invalid URLs during typing
       } finally {
@@ -128,8 +125,6 @@ export default function SaveModal({ onClose }: SaveModalProps) {
       setIsSaving(false);
     }
   };
-
-  const showMetadataFields = activeTab === 'paste' || hasFetchedMeta;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -198,64 +193,61 @@ export default function SaveModal({ onClose }: SaveModalProps) {
             ) : (
               <div className="space-y-2">
                 <Label htmlFor="content">Content</Label>
-                <textarea
-                  id="content"
-                  className="flex min-h-[150px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Paste text here..."
-                  {...register('content')}
+                <Controller
+                  name="content"
+                  control={control}
+                  render={({ field }) => (
+                    <RichTextEditor
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      placeholder="Paste formatted text here..."
+                    />
+                  )}
                 />
               </div>
             )}
 
-            {showMetadataFields && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="space-y-6"
-              >
-                {/* Preview Card (Only for URL) */}
-                {activeTab === 'url' && previewImage && (
-                  <div className="relative h-40 w-full rounded-lg overflow-hidden border border-white/10">
-                    <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                      <p className="text-white font-medium text-sm truncate w-full">{watch('title')}</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="tags">Tags (comma separated)</Label>
-                  <Input 
-                    id="tags" 
-                    placeholder="design, research, ai" 
-                    {...register('tags')}
-                  />
-                  <p className="text-xs text-slate-500">
-                    Tip: You can add more tags later.
-                  </p>
+            {/* Preview Card (Only for URL) */}
+            {activeTab === 'url' && previewImage && (
+              <div className="relative h-40 w-full rounded-lg overflow-hidden border border-white/10">
+                <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+                  <p className="text-white font-medium text-sm truncate w-full">{watch('title')}</p>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input 
-                    id="title" 
-                    placeholder="Enter a title" 
-                    {...register('title')}
-                  />
-                  {errors.title && <p className="text-red-400 text-xs">{errors.title.message}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description (Optional)</Label>
-                  <textarea
-                    id="description"
-                    className="flex min-h-[80px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    placeholder="Add a brief description..."
-                    {...register('description')}
-                  />
-                </div>
-              </motion.div>
+              </div>
             )}
+
+            <div className="space-y-2">
+              <Label htmlFor="tags">Tags (comma separated)</Label>
+              <Input 
+                id="tags" 
+                placeholder="design, research, ai" 
+                {...register('tags')}
+              />
+              <p className="text-xs text-slate-500">
+                Tip: You can add more tags later.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="title">Title</Label>
+              <Input 
+                id="title" 
+                placeholder="Enter a title" 
+                {...register('title')}
+              />
+              {errors.title && <p className="text-red-400 text-xs">{errors.title.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Description (Optional)</Label>
+              <textarea
+                id="description"
+                className="flex min-h-[80px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="Add a brief description..."
+                {...register('description')}
+              />
+            </div>
           </form>
         </div>
 
@@ -264,7 +256,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
           <Button variant="ghost" onClick={onClose} type="button">
             Cancel
           </Button>
-          <Button type="submit" form="save-form" isLoading={isSaving} disabled={!showMetadataFields && activeTab === 'url'}>
+          <Button type="submit" form="save-form" isLoading={isSaving}>
             Save to Library
           </Button>
         </div>
