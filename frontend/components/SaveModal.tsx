@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Link as LinkIcon, FileText, Loader2, Check } from 'lucide-react';
+import { X, Link as LinkIcon, FileText, Loader2, Check, Sparkles } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import toast from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';
-import { simulateMetadataFetch, simulateContentExtraction } from '@/lib/simulation';
+import { simulateMetadataFetch, simulateContentExtraction, simulateContentAnalysis } from '@/lib/simulation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
@@ -38,6 +38,8 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   
   const [activeTab, setActiveTab] = useState<'url' | 'paste'>('url');
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
+  const [hasFetchedMeta, setHasFetchedMeta] = useState(false);
+  const [isGeneratingMeta, setIsGeneratingMeta] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
@@ -52,10 +54,14 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   });
 
   const urlValue = watch('url');
+  const contentValue = watch('content');
 
   // Auto-fetch metadata when URL changes (debounced)
   useEffect(() => {
-    if (!urlValue || activeTab !== 'url') return;
+    if (!urlValue || activeTab !== 'url') {
+      if (!urlValue && activeTab === 'url') setHasFetchedMeta(false);
+      return;
+    }
 
     const timer = setTimeout(async () => {
       try {
@@ -68,6 +74,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         setValue('description', meta.description);
         setPreviewImage(meta.imageUrl);
         toast.success("Metadata fetched!");
+        setHasFetchedMeta(true);
       } catch (e) {
         // Ignore invalid URLs during typing
       } finally {
@@ -77,6 +84,27 @@ export default function SaveModal({ onClose }: SaveModalProps) {
 
     return () => clearTimeout(timer);
   }, [urlValue, activeTab, setValue]);
+
+  const handleGenerateMetadata = async () => {
+    if (!contentValue || contentValue.trim().length < 10) {
+      toast.error("Please enter some content first");
+      return;
+    }
+
+    setIsGeneratingMeta(true);
+    try {
+      const analysis = await simulateContentAnalysis(contentValue);
+      setValue('title', analysis.title);
+      setValue('description', analysis.description);
+      setValue('tags', analysis.tags.join(', '));
+      toast.success("Metadata generated!");
+      setHasFetchedMeta(true); // Reveal fields
+    } catch (error) {
+      toast.error("Failed to generate metadata");
+    } finally {
+      setIsGeneratingMeta(false);
+    }
+  };
 
   const onSubmit = async (data: SaveFormValues) => {
     setIsSaving(true);
@@ -125,6 +153,8 @@ export default function SaveModal({ onClose }: SaveModalProps) {
       setIsSaving(false);
     }
   };
+
+  const showMetadataFields = activeTab === 'paste' || hasFetchedMeta;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -204,50 +234,72 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                     />
                   )}
                 />
-              </div>
-            )}
-
-            {/* Preview Card (Only for URL) */}
-            {activeTab === 'url' && previewImage && (
-              <div className="relative h-40 w-full rounded-lg overflow-hidden border border-white/10">
-                <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                  <p className="text-white font-medium text-sm truncate w-full">{watch('title')}</p>
+                <div className="flex justify-end mt-2">
+                  <Button 
+                    type="button" 
+                    variant="secondary" 
+                    size="sm" 
+                    onClick={handleGenerateMetadata}
+                    isLoading={isGeneratingMeta}
+                    disabled={!contentValue || contentValue.length < 10}
+                    className="text-xs"
+                  >
+                    <Sparkles className="w-3 h-3 mr-2 text-amber-400" />
+                    Generate Metadata
+                  </Button>
                 </div>
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="tags">Tags (comma separated)</Label>
-              <Input 
-                id="tags" 
-                placeholder="design, research, ai" 
-                {...register('tags')}
-              />
-              <p className="text-xs text-slate-500">
-                Tip: You can add more tags later.
-              </p>
-            </div>
+            {showMetadataFields && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="space-y-6"
+              >
+                {/* Preview Card (Only for URL) */}
+                {activeTab === 'url' && previewImage && (
+                  <div className="relative h-40 w-full rounded-lg overflow-hidden border border-white/10">
+                    <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+                      <p className="text-white font-medium text-sm truncate w-full">{watch('title')}</p>
+                    </div>
+                  </div>
+                )}
 
-            <div className="space-y-2">
-              <Label htmlFor="title">Title</Label>
-              <Input 
-                id="title" 
-                placeholder="Enter a title" 
-                {...register('title')}
-              />
-              {errors.title && <p className="text-red-400 text-xs">{errors.title.message}</p>}
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tags">Tags (comma separated)</Label>
+                  <Input 
+                    id="tags" 
+                    placeholder="design, research, ai" 
+                    {...register('tags')}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Tip: You can add more tags later.
+                  </p>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description (Optional)</Label>
-              <textarea
-                id="description"
-                className="flex min-h-[80px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Add a brief description..."
-                {...register('description')}
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="title">Title</Label>
+                  <Input 
+                    id="title" 
+                    placeholder="Enter a title" 
+                    {...register('title')}
+                  />
+                  {errors.title && <p className="text-red-400 text-xs">{errors.title.message}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description (Optional)</Label>
+                  <textarea
+                    id="description"
+                    className="flex min-h-[80px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="Add a brief description..."
+                    {...register('description')}
+                  />
+                </div>
+              </motion.div>
+            )}
           </form>
         </div>
 
@@ -256,7 +308,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
           <Button variant="ghost" onClick={onClose} type="button">
             Cancel
           </Button>
-          <Button type="submit" form="save-form" isLoading={isSaving}>
+          <Button type="submit" form="save-form" isLoading={isSaving} disabled={!showMetadataFields && activeTab === 'url'}>
             Save to Library
           </Button>
         </div>

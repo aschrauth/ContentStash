@@ -73,6 +73,34 @@ export async function simulateContentExtraction(url: string): Promise<{
   };
 }
 
+export async function simulateContentAnalysis(text: string): Promise<{
+  title: string;
+  description: string;
+  tags: string[];
+}> {
+  await delay(2000); // 2s delay
+
+  // Simple heuristic analysis
+  const words = text.split(/\s+/);
+  const title = words.slice(0, 8).join(' ') + (words.length > 8 ? '...' : '');
+  const description = text.slice(0, 150) + (text.length > 150 ? '...' : '');
+  
+  // Mock tags based on content keywords
+  const tags = [];
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes('react') || lowerText.includes('javascript')) tags.push('development');
+  if (lowerText.includes('design') || lowerText.includes('ui')) tags.push('design');
+  if (lowerText.includes('ai') || lowerText.includes('llm')) tags.push('ai');
+  if (lowerText.includes('product')) tags.push('product');
+  if (tags.length === 0) tags.push('general');
+
+  return {
+    title: title.replace(/[#*]/g, '').trim(), // Remove markdown chars from title
+    description: description.replace(/[#*]/g, '').trim(),
+    tags
+  };
+}
+
 export async function simulateRAGChat(
   question: string, 
   library: SavedItem[]
