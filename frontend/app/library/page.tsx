@@ -146,7 +146,7 @@ export default function LibraryPage() {
               : "grid-cols-1"
           )}>
             {filteredItems.map(item => (
-              <ItemCard key={item.id} item={item} />
+              <ItemCard key={item.id} item={item} viewMode={viewMode} />
             ))}
           </div>
         ) : (

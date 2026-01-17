@@ -9,9 +9,10 @@ import { formatDate, cn } from '@/lib/utils';
 
 interface ItemCardProps {
   item: SavedItem;
+  viewMode?: 'grid' | 'list';
 }
 
-export default function ItemCard({ item }: ItemCardProps) {
+export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
   const getIcon = () => {
     if (item.url?.includes('youtube') || item.url?.includes('youtu.be')) return <Youtube className="w-4 h-4" />;
     if (item.imageUrl && !item.url) return <ImageIcon className="w-4 h-4" />;
@@ -19,6 +20,76 @@ export default function ItemCard({ item }: ItemCardProps) {
     return <FileText className="w-4 h-4" />;
   };
 
+  if (viewMode === 'list') {
+    return (
+      <Link href={`/items/${item.id}`}>
+        <motion.div
+          layout
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          whileHover={{ x: 4, transition: { duration: 0.2 } }}
+          className="group relative flex bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md h-32"
+        >
+          {/* Image Preview - Left Side Fixed Width */}
+          {item.imageUrl ? (
+            <div className="relative w-48 h-full flex-shrink-0 overflow-hidden bg-slate-900">
+              <img 
+                src={item.imageUrl} 
+                alt={item.title} 
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/20" />
+            </div>
+          ) : (
+            <div className="w-48 h-full flex-shrink-0 bg-white/5 flex items-center justify-center border-r border-white/5">
+              {getIcon()}
+            </div>
+          )}
+
+          {/* Content - Right Side */}
+          <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <h3 className="font-semibold text-base text-slate-100 truncate group-hover:text-violet-300 transition-colors">
+                  {item.title}
+                </h3>
+                <span className="text-xs text-slate-500 flex-shrink-0 flex items-center gap-1">
+                  {formatDate(item.createdAt)}
+                </span>
+              </div>
+              
+              <p className="text-sm text-slate-400 line-clamp-2 mb-2">
+                {item.description || "No description available."}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between mt-auto">
+              <div className="flex flex-wrap gap-1.5 overflow-hidden h-6">
+                {item.tags.slice(0, 4).map(tag => (
+                  <span 
+                    key={tag} 
+                    className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px] border border-white/5 group-hover:border-white/10 transition-colors whitespace-nowrap"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+              
+              {/* Status Badge (Mini) */}
+              {item.processingStatus === 'pending' && (
+                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Processing" />
+              )}
+              {item.processingStatus === 'failed' && (
+                <div className="w-2 h-2 rounded-full bg-red-500" title="Failed" />
+              )}
+            </div>
+          </div>
+        </motion.div>
+      </Link>
+    );
+  }
+
+  // Grid View (Original)
   return (
     <Link href={`/items/${item.id}`}>
       <motion.div
