@@ -5,10 +5,16 @@ import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 
 // Dynamic import to avoid SSR issues with Quill
-const ReactQuill = dynamic(() => import('react-quill'), {
-  ssr: false,
-  loading: () => <div className="h-64 flex items-center justify-center bg-white/5 rounded-lg"><Loader2 className="w-6 h-6 animate-spin text-violet-400" /></div>,
-});
+const ReactQuill = dynamic(
+  async () => {
+    const { default: RQ } = await import('react-quill');
+    return ({ forwardedRef, ...props }: any) => <RQ ref={forwardedRef} {...props} />;
+  },
+  {
+    ssr: false,
+    loading: () => <div className="h-64 flex items-center justify-center bg-white/5 rounded-lg"><Loader2 className="w-6 h-6 animate-spin text-violet-400" /></div>,
+  }
+);
 
 interface RichTextEditorProps {
   value: string;
