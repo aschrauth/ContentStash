@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import 'react-quill/dist/quill.snow.css';
 import { Loader2 } from 'lucide-react';
 
 // Dynamic import to avoid SSR issues with Quill
@@ -38,6 +37,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
 
   return (
     <div className="rich-text-editor-wrapper">
+      <link rel="stylesheet" href="https://unpkg.com/react-quill@1.3.3/dist/quill.snow.css" />
       <style jsx global>{`
         .rich-text-editor-wrapper .ql-toolbar {
           background: rgba(255, 255, 255, 0.05);
