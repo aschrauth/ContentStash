@@ -289,8 +289,8 @@ export default function ItemDetailPage() {
             {item.archivedText && (
               <div className="glass-panel p-8 rounded-2xl border border-white/10">
                 <h2 className="text-xl font-bold text-white mb-4">Archived Content</h2>
-                <div className="prose prose-invert prose-sm max-w-none text-slate-400 line-clamp-[10]">
-                  {item.archivedText}
+                <div className="prose prose-invert prose-sm max-w-none text-slate-300 leading-relaxed ProseMirror">
+                  <ReactMarkdown>{item.archivedText}</ReactMarkdown>
                 </div>
                 <div className="mt-4 text-center">
                   <Button variant="ghost" size="sm">View Full Content</Button>
