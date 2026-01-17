@@ -48,7 +48,8 @@ export default function RichTextEditor({ value, onChange, placeholder, className
     ],
     editorProps: {
       attributes: {
-        class: 'prose prose-invert max-w-none focus:outline-none min-h-[300px] p-4 text-slate-200',
+        // Removed 'prose' class to rely on our custom global styles for better control
+        class: 'focus:outline-none min-h-[300px] p-4 text-slate-200',
       },
     },
     onUpdate: ({ editor }) => {
@@ -56,7 +57,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
       const markdown = turndownService.turndown(html);
       onChange(markdown);
     },
-    immediatelyRender: false, // Fix for SSR hydration mismatch
+    immediatelyRender: false,
   });
 
   // Handle initial value loading
@@ -71,7 +72,6 @@ export default function RichTextEditor({ value, onChange, placeholder, className
     }
   }, [editor, value, isMounted]);
 
-  // If the editor isn't ready, render a skeleton or loading state
   if (!editor) {
     return <div className="h-[300px] bg-white/5 rounded-lg animate-pulse border border-white/10" />;
   }
