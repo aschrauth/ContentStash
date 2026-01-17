@@ -13,9 +13,11 @@ import { simulateContentExtraction } from '@/lib/simulation';
 import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import MarkdownEditor from '@/components/MarkdownEditor';
+import RichTextEditor from '@/components/RichTextEditor';
 
 export default function ItemDetailPage() {
+  // Unwrap params using React.use() if available, or fallback to direct access for older Next.js versions
+  // In Next.js 15, params is a Promise. We need to handle it correctly.
   const params = useParams();
   const router = useRouter();
   const { items, updateItem, deleteItem, currentUser } = useStore();
@@ -61,8 +63,9 @@ export default function ItemDetailPage() {
       router.push('/library');
     } else {
       // Still loading or empty library
+      // We'll keep loading state true for a moment
       const timer = setTimeout(() => {
-         if (items.length === 0) setIsLoading(false); 
+         if (items.length === 0) setIsLoading(false); // Stop loading if still empty after timeout
       }, 1000);
       return () => clearTimeout(timer);
     }
@@ -260,7 +263,7 @@ export default function ItemDetailPage() {
               </div>
               
               <div className="min-h-[300px]">
-                <MarkdownEditor 
+                <RichTextEditor 
                   value={noteContent} 
                   onChange={setNoteContent} 
                   placeholder="Write your thoughts here..."
