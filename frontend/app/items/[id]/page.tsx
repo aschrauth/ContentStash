@@ -16,46 +16,65 @@ import { Input } from '@/components/ui/Input';
 import RichTextEditor from '@/components/RichTextEditor';
 
 export default function ItemDetailPage() {
+  // Unwrap params using React.use() if available, or fallback to direct access for older Next.js versions
+  // In Next.js 15, params is a Promise. We need to handle it correctly.
   const params = useParams();
   const router = useRouter();
   const { items, updateItem, deleteItem, currentUser } = useStore();
   
-  // Ensure params.id is available before trying to find the item
-  // In Next.js 15+, params might be a Promise in some contexts, but in client components it's usually direct.
-  // However, let's be safe and handle potential undefined params initially.
-  const itemId = params?.id as string;
-  
-  const [item, setItem] = useState(items.find(i => i.id === itemId));
+  const [itemId, setItemId] = useState<string | null>(null);
+  const [item, setItem] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [newTag, setNewTag] = useState('');
   const [isReprocessing, setIsReprocessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Handle params safely
+  useEffect(() => {
+    if (params?.id) {
+      setItemId(params.id as string);
+    }
+  }, [params]);
+
+  // Load item data once itemId and items are available
   useEffect(() => {
     if (!itemId) return;
+    
+    // Wait for hydration
+    if (items.length === 0 && typeof window !== 'undefined') {
+       // If items are empty, it might be initial hydration. 
+       // We'll wait a bit or let the store hydration finish.
+       // However, if it's truly empty, we'll handle that below.
+    }
 
     const foundItem = items.find(i => i.id === itemId);
+    
     if (foundItem) {
       setItem(foundItem);
       setEditTitle(foundItem.title);
       setEditDescription(foundItem.description || '');
       setNoteContent(foundItem.notesMarkdown || '');
+      setIsLoading(false);
+    } else if (items.length > 0) {
+      // Only redirect if we have items but didn't find this one
+      toast.error("Item not found");
+      router.push('/library');
     } else {
-      // Only redirect if we're sure we have items loaded but can't find this one
-      // This prevents premature redirect on initial load if store hydration is slow
-      if (items.length > 0) {
-        router.push('/library');
-      }
+      // Still loading or empty library
+      // We'll keep loading state true for a moment
+      const timer = setTimeout(() => {
+         if (items.length === 0) setIsLoading(false); // Stop loading if still empty after timeout
+      }, 1000);
+      return () => clearTimeout(timer);
     }
   }, [items, itemId, router]);
 
-  // If we're still loading or no item found yet, show a loading state instead of null
-  // This prevents hydration mismatches or "Internal Server Error" if the component tries to render with null data
   if (!currentUser) return null;
   
-  if (!item) {
+  if (isLoading || !item) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center min-h-[50vh]">
