@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Filter, Grid, List, Search, Tag } from 'lucide-react';
@@ -15,10 +15,24 @@ export default function LibraryPage() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
   
-  const { items, currentUser } = useStore();
+  const { items, currentUser, updatePreferences } = useStore();
+  
+  // Initialize viewMode from user preferences or default to 'grid'
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  // Sync local state with store preference on mount and when currentUser changes
+  useEffect(() => {
+    if (currentUser?.preferences?.viewMode) {
+      setViewMode(currentUser.preferences.viewMode);
+    }
+  }, [currentUser]);
+
+  const handleViewModeChange = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    updatePreferences({ viewMode: mode });
+  };
 
   // Filter items based on search and tags
   const filteredItems = useMemo(() => {
@@ -92,7 +106,7 @@ export default function LibraryPage() {
                 variant={viewMode === 'grid' ? 'secondary' : 'ghost'} 
                 size="icon" 
                 className="h-8 w-8"
-                onClick={() => setViewMode('grid')}
+                onClick={() => handleViewModeChange('grid')}
               >
                 <Grid className="w-4 h-4" />
               </Button>
@@ -100,7 +114,7 @@ export default function LibraryPage() {
                 variant={viewMode === 'list' ? 'secondary' : 'ghost'} 
                 size="icon" 
                 className="h-8 w-8"
-                onClick={() => setViewMode('list')}
+                onClick={() => handleViewModeChange('list')}
               >
                 <List className="w-4 h-4" />
               </Button>

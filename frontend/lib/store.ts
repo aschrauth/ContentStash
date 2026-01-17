@@ -12,6 +12,9 @@ export type User = {
   name: string;
   passwordHash: string; // Simulated hash
   createdAt: string;
+  preferences?: {
+    viewMode: 'grid' | 'list';
+  };
 };
 
 export type SavedItem = {
@@ -67,6 +70,7 @@ interface AppState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   updateProfile: (name: string, email: string) => void;
+  updatePreferences: (preferences: Partial<User['preferences']>) => void;
   
   addItem: (item: Omit<SavedItem, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>) => Promise<string>;
   updateItem: (id: string, updates: Partial<SavedItem>) => void;
@@ -98,6 +102,7 @@ export const useStore = create<AppState>()(
           name,
           passwordHash: btoa(password), // Simple mock hash
           createdAt: new Date().toISOString(),
+          preferences: { viewMode: 'grid' }, // Default preference
         };
         set({ users: [...users, newUser], currentUser: newUser });
       },
@@ -120,6 +125,21 @@ export const useStore = create<AppState>()(
         if (!currentUser) return;
         
         const updatedUser = { ...currentUser, name, email };
+        set({
+          currentUser: updatedUser,
+          users: users.map(u => u.id === currentUser.id ? updatedUser : u)
+        });
+      },
+
+      updatePreferences: (preferences) => {
+        const { currentUser, users } = get();
+        if (!currentUser) return;
+
+        const updatedUser = { 
+          ...currentUser, 
+          preferences: { ...currentUser.preferences, ...preferences } 
+        };
+
         set({
           currentUser: updatedUser,
           users: users.map(u => u.id === currentUser.id ? updatedUser : u)
