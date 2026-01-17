@@ -232,32 +232,35 @@ export default function ItemDetailPage() {
                     />
                   </div>
                 ) : (
-                  <>
+                  <div className="clearfix">
                     <h1 className="text-3xl font-bold text-white mb-4 leading-tight">{item.title}</h1>
+                    
+                    {/* Preview Image - Floated Left */}
+                    {item.imageUrl && (
+                      <div className="float-left mr-6 mb-4 w-[250px] rounded-xl overflow-hidden border border-white/10 shadow-lg">
+                        <img 
+                          src={item.imageUrl} 
+                          alt={item.title} 
+                          className="w-full h-auto object-cover"
+                        />
+                      </div>
+                    )}
+                    
                     <p className="text-slate-300 text-lg leading-relaxed mb-6">{item.description}</p>
-                  </>
-                )}
-
-                {/* Preview Image Display */}
-                {item.imageUrl && (
-                  <div className="mb-6 rounded-xl overflow-hidden border border-white/10 shadow-lg">
-                    <img 
-                      src={item.imageUrl} 
-                      alt={item.title} 
-                      className="w-full h-auto max-h-[400px] object-cover"
-                    />
                   </div>
                 )}
 
                 {item.url && (
-                  <a 
-                    href={item.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center text-violet-400 hover:text-violet-300 transition-colors font-medium"
-                  >
-                    Visit Original Source <ExternalLink className="w-4 h-4 ml-2" />
-                  </a>
+                  <div className="clear-both pt-4">
+                    <a 
+                      href={item.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center text-violet-400 hover:text-violet-300 transition-colors font-medium"
+                    >
+                      Visit Original Source <ExternalLink className="w-4 h-4 ml-2" />
+                    </a>
+                  </div>
                 )}
               </div>
             </div>
