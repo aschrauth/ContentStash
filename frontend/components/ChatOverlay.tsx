@@ -1,0 +1,231 @@
+"use client";
+
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, Send, MessageSquare, Sparkles, ChevronRight, ExternalLink } from 'lucide-react';
+import { useStore, ChatMessage } from '@/lib/store';
+import { simulateRAGChat } from '@/lib/simulation';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { cn } from '@/lib/utils';
+import Link from 'next/link';
+
+interface ChatOverlayProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
+  const { items, currentUser, addChatThread, addChatMessage, chatThreads } = useStore();
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Initialize or get active thread
+  useEffect(() => {
+    if (isOpen && !activeThreadId) {
+      // Find most recent thread or create new one if none exists? 
+      // For MVP, let's just start fresh or show history list.
+      // Let's auto-create a thread if none exists for simplicity in this view
+      if (chatThreads.length > 0) {
+        setActiveThreadId(chatThreads[0].id);
+      }
+    }
+  }, [isOpen, chatThreads, activeThreadId]);
+
+  const activeThread = chatThreads.find(t => t.id === activeThreadId);
+  const messages = activeThread?.messages || [];
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping]);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || !currentUser) return;
+
+    const userMessage = input;
+    setInput('');
+
+    let threadId = activeThreadId;
+    if (!threadId) {
+      threadId = addChatThread(userMessage);
+      setActiveThreadId(threadId);
+    }
+
+    // Add user message
+    addChatMessage(threadId, {
+      role: 'user',
+      content: userMessage,
+    });
+
+    setIsTyping(true);
+
+    try {
+      // Simulate RAG
+      const userItems = items.filter(i => i.ownerId === currentUser.id);
+      const response = await simulateRAGChat(userMessage, userItems);
+
+      addChatMessage(threadId, {
+        role: 'assistant',
+        content: response.answer,
+        citations: response.citations,
+      });
+    } catch (error) {
+      addChatMessage(threadId, {
+        role: 'assistant',
+        content: "I'm sorry, I encountered an error while searching your library.",
+      });
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    setActiveThreadId(null);
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+          />
+
+          {/* Chat Panel */}
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed right-0 top-0 bottom-0 w-full md:w-[500px] bg-[#0f172a] border-l border-white/10 shadow-2xl z-50 flex flex-col"
+          >
+            {/* Header */}
+            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-slate-900/50 backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-violet-600 to-cyan-500 rounded-lg flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-white">Ask Stash</h2>
+                  <p className="text-xs text-slate-400">AI-powered search</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={handleNewChat}>
+                  New Chat
+                </Button>
+                <Button variant="ghost" size="icon" onClick={onClose}>
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-50">
+                  <MessageSquare className="w-12 h-12 mb-4 text-violet-400" />
+                  <h3 className="text-lg font-medium text-white mb-2">Ask anything</h3>
+                  <p className="text-sm text-slate-400">
+                    "What did I save about UX design?"<br/>
+                    "Summarize my notes on React"<br/>
+                    "Find articles about AI"
+                  </p>
+                </div>
+              ) : (
+                messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={cn(
+                      "flex flex-col max-w-[90%]",
+                      msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "p-4 rounded-2xl text-sm leading-relaxed",
+                        msg.role === 'user'
+                          ? "bg-violet-600 text-white rounded-tr-none"
+                          : "bg-white/10 text-slate-200 rounded-tl-none border border-white/5"
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+
+                    {/* Citations */}
+                    {msg.citations && msg.citations.length > 0 && (
+                      <div className="mt-3 space-y-2 w-full">
+                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider ml-1">Sources</p>
+                        {msg.citations.map((citation, idx) => (
+                          <Link 
+                            key={idx} 
+                            href={`/items/${citation.savedItemId}`}
+                            onClick={onClose}
+                            className="block p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-violet-500/30 transition-all group"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="text-xs font-semibold text-violet-300 line-clamp-1 group-hover:text-violet-200">
+                                {citation.title}
+                              </h4>
+                              <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-violet-400" />
+                            </div>
+                            <p className="text-xs text-slate-400 mt-1 line-clamp-2 italic">
+                              "{citation.excerpt}"
+                            </p>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+              
+              {isTyping && (
+                <div className="flex items-center gap-2 text-slate-500 text-sm ml-2">
+                  <div className="w-2 h-2 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                  <div className="w-2 h-2 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                  <div className="w-2 h-2 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="p-4 border-t border-white/10 bg-slate-900/50 backdrop-blur-md">
+              <form onSubmit={handleSend} className="relative">
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask a question about your library..."
+                  className="pr-12 py-6 bg-white/5 border-white/10 focus:bg-white/10"
+                  disabled={isTyping}
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="absolute right-2 top-2 h-8 w-8 bg-violet-600 hover:bg-violet-500"
+                  disabled={!input.trim() || isTyping}
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </form>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+

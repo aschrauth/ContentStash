@@ -2,10 +2,25 @@
   "name": "template",
   "version": "1.0.0",
   "private": true,
-  "workspaces": ["frontend"],
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
     "dev": "npm run dev -w frontend",
     "build": "npm run build -w frontend",
     "start": "npm run start -w frontend"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "framer-motion": "^12.26.2",
+    "lucide-react": "^0.562.0",
+    "react-hook-form": "^7.71.1",
+    "react-hot-toast": "^2.6.0",
+    "react-markdown": "^10.1.0",
+    "tailwind-merge": "^3.4.0",
+    "uuid": "^13.0.0",
+    "zod": "^4.3.5",
+    "zustand": "^5.0.10"
   }
 }
