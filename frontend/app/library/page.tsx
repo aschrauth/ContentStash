@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Filter, Grid, List, Search, Tag } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { cn } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import ItemCard from '@/components/ItemCard';
 import { Button } from '@/components/ui/Button';
