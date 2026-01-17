@@ -13,11 +13,9 @@ import { simulateContentExtraction } from '@/lib/simulation';
 import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import RichTextEditor from '@/components/RichTextEditor';
+import MarkdownEditor from '@/components/MarkdownEditor';
 
 export default function ItemDetailPage() {
-  // Unwrap params using React.use() if available, or fallback to direct access for older Next.js versions
-  // In Next.js 15, params is a Promise. We need to handle it correctly.
   const params = useParams();
   const router = useRouter();
   const { items, updateItem, deleteItem, currentUser } = useStore();
@@ -47,7 +45,6 @@ export default function ItemDetailPage() {
     if (items.length === 0 && typeof window !== 'undefined') {
        // If items are empty, it might be initial hydration. 
        // We'll wait a bit or let the store hydration finish.
-       // However, if it's truly empty, we'll handle that below.
     }
 
     const foundItem = items.find(i => i.id === itemId);
@@ -64,9 +61,8 @@ export default function ItemDetailPage() {
       router.push('/library');
     } else {
       // Still loading or empty library
-      // We'll keep loading state true for a moment
       const timer = setTimeout(() => {
-         if (items.length === 0) setIsLoading(false); // Stop loading if still empty after timeout
+         if (items.length === 0) setIsLoading(false); 
       }, 1000);
       return () => clearTimeout(timer);
     }
@@ -264,7 +260,7 @@ export default function ItemDetailPage() {
               </div>
               
               <div className="min-h-[300px]">
-                <RichTextEditor 
+                <MarkdownEditor 
                   value={noteContent} 
                   onChange={setNoteContent} 
                   placeholder="Write your thoughts here..."
