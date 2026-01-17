@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import toast from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';
@@ -19,7 +20,12 @@ export default function ItemDetailPage() {
   const router = useRouter();
   const { items, updateItem, deleteItem, currentUser } = useStore();
   
-  const [item, setItem] = useState(items.find(i => i.id === params.id));
+  // Ensure params.id is available before trying to find the item
+  // In Next.js 15+, params might be a Promise in some contexts, but in client components it's usually direct.
+  // However, let's be safe and handle potential undefined params initially.
+  const itemId = params?.id as string;
+  
+  const [item, setItem] = useState(items.find(i => i.id === itemId));
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -28,18 +34,36 @@ export default function ItemDetailPage() {
   const [isReprocessing, setIsReprocessing] = useState(false);
 
   useEffect(() => {
-    const foundItem = items.find(i => i.id === params.id);
+    if (!itemId) return;
+
+    const foundItem = items.find(i => i.id === itemId);
     if (foundItem) {
       setItem(foundItem);
       setEditTitle(foundItem.title);
       setEditDescription(foundItem.description || '');
       setNoteContent(foundItem.notesMarkdown || '');
     } else {
-      router.push('/library');
+      // Only redirect if we're sure we have items loaded but can't find this one
+      // This prevents premature redirect on initial load if store hydration is slow
+      if (items.length > 0) {
+        router.push('/library');
+      }
     }
-  }, [items, params.id, router]);
+  }, [items, itemId, router]);
 
-  if (!item || !currentUser) return null;
+  // If we're still loading or no item found yet, show a loading state instead of null
+  // This prevents hydration mismatches or "Internal Server Error" if the component tries to render with null data
+  if (!currentUser) return null;
+  
+  if (!item) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-500"></div>
+        </div>
+      </AppLayout>
+    );
+  }
 
   const handleSaveMetadata = () => {
     updateItem(item.id, {
@@ -51,9 +75,6 @@ export default function ItemDetailPage() {
   };
 
   const handleSaveNotes = () => {
-    // Note: RichTextEditor returns HTML, but we're storing it in the 'notesMarkdown' field for now.
-    // In a real app, we might want to rename this field to 'notesHtml' or convert HTML to Markdown.
-    // For this MVP, storing HTML string is fine as long as we render it correctly.
     updateItem(item.id, {
       notesMarkdown: noteContent,
     });
