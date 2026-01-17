@@ -14,6 +14,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import RichTextEditor from '@/components/RichTextEditor';
+import ConfirmationModal from '@/components/ConfirmationModal';
 
 export default function ItemDetailPage() {
   // Unwrap params using React.use() if available, or fallback to direct access for older Next.js versions
@@ -31,6 +32,7 @@ export default function ItemDetailPage() {
   const [newTag, setNewTag] = useState('');
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // Handle params safely
   useEffect(() => {
@@ -126,12 +128,14 @@ export default function ItemDetailPage() {
     }
   };
 
-  const handleDelete = () => {
-    if (confirm("Are you sure you want to delete this item?")) {
-      deleteItem(item.id);
-      toast.success("Item deleted");
-      router.push('/library');
-    }
+  const handleDeleteClick = () => {
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    deleteItem(item.id);
+    toast.success("Item deleted");
+    router.push('/library');
   };
 
   const handleReprocess = async () => {
@@ -318,7 +322,7 @@ export default function ItemDetailPage() {
               <Button 
                 variant="danger" 
                 className="w-full justify-start"
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
               >
                 <Trash2 className="w-4 h-4 mr-2" /> Delete Item
               </Button>
@@ -396,6 +400,16 @@ export default function ItemDetailPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Item"
+        description="Are you sure you want to delete this item? This action cannot be undone immediately, but you can recover it from the archive within 30 days."
+        confirmText="Delete"
+        variant="danger"
+      />
     </AppLayout>
   );
 }
