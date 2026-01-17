@@ -42,6 +42,8 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   const [isGeneratingMeta, setIsGeneratingMeta] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
+  const [suggestedTopic, setSuggestedTopic] = useState<string | null>(null);
 
   const { register, handleSubmit, setValue, watch, control, formState: { errors } } = useForm<SaveFormValues>({
     resolver: zodResolver(saveSchema),
@@ -55,11 +57,16 @@ export default function SaveModal({ onClose }: SaveModalProps) {
 
   const urlValue = watch('url');
   const contentValue = watch('content');
+  const currentTags = watch('tags') || '';
 
   // Auto-fetch metadata when URL changes (debounced)
   useEffect(() => {
     if (!urlValue || activeTab !== 'url') {
-      if (!urlValue && activeTab === 'url') setHasFetchedMeta(false);
+      if (!urlValue && activeTab === 'url') {
+        setHasFetchedMeta(false);
+        setSuggestedTags([]);
+        setSuggestedTopic(null);
+      }
       return;
     }
 
@@ -73,6 +80,8 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         setValue('title', meta.title);
         setValue('description', meta.description);
         setPreviewImage(meta.imageUrl);
+        setSuggestedTags(meta.suggestedTags || []);
+        setSuggestedTopic(meta.suggestedTopic || null);
         toast.success("Metadata fetched!");
         setHasFetchedMeta(true);
       } catch (e) {
@@ -106,6 +115,16 @@ export default function SaveModal({ onClose }: SaveModalProps) {
     }
   };
 
+  const addTag = (tag: string) => {
+    const currentTagsList = currentTags.split(',').map(t => t.trim()).filter(Boolean);
+    if (!currentTagsList.includes(tag)) {
+      const newTags = [...currentTagsList, tag].join(', ');
+      setValue('tags', newTags);
+      // Remove from suggestions to give visual feedback
+      setSuggestedTags(prev => prev.filter(t => t !== tag));
+    }
+  };
+
   const onSubmit = async (data: SaveFormValues) => {
     setIsSaving(true);
     try {
@@ -121,6 +140,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         tags,
         processingStatus: 'pending',
         archivedText: activeTab === 'paste' ? data.content : undefined,
+        suggestedTopic: suggestedTopic || undefined,
       });
 
       toast.success("Item saved to library!");
@@ -264,6 +284,37 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                       <p className="text-white font-medium text-sm truncate w-full">{watch('title')}</p>
                     </div>
+                  </div>
+                )}
+
+                {/* AI Suggestions Panel */}
+                {activeTab === 'url' && suggestedTags.length > 0 && (
+                  <div className="glass-panel p-4 rounded-xl border border-white/10 bg-gradient-to-br from-violet-900/20 to-transparent">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      <h3 className="font-semibold text-white text-sm">AI Suggestions</h3>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {suggestedTags.map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => addTag(tag)}
+                          className="px-2 py-1 rounded-md bg-white/5 hover:bg-violet-600/20 text-slate-300 hover:text-violet-300 text-xs border border-white/10 hover:border-violet-500/30 transition-all flex items-center gap-1"
+                        >
+                          + #{tag}
+                        </button>
+                      ))}
+                    </div>
+                    {suggestedTopic && (
+                      <div className="mt-3 pt-3 border-t border-white/5 flex items-center gap-2">
+                        <span className="text-xs text-slate-400">Topic:</span>
+                        <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs border border-cyan-500/30">
+                          {suggestedTopic}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 

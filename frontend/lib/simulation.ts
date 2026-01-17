@@ -11,6 +11,8 @@ export async function simulateMetadataFetch(url: string): Promise<{
   description: string;
   imageUrl: string;
   faviconUrl: string;
+  suggestedTags: string[];
+  suggestedTopic: string;
 }> {
   await delay(1500); // 1.5s delay
 
@@ -24,6 +26,8 @@ export async function simulateMetadataFetch(url: string): Promise<{
       description: "In this video, we explore how artificial intelligence is reshaping the landscape of product design and what it means for the future of UX.",
       imageUrl: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&q=80",
       faviconUrl: "https://www.youtube.com/s/desktop/12d6b690/img/favicon.ico",
+      suggestedTags: ['ai', 'product-design', 'ux', 'future-tech'],
+      suggestedTopic: 'Design',
     };
   }
 
@@ -33,6 +37,8 @@ export async function simulateMetadataFetch(url: string): Promise<{
       description: "Dieter Rams' principles are timeless, but how do they apply to the modern web? We break down each principle with contemporary examples.",
       imageUrl: "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=800&q=80",
       faviconUrl: "https://framer.com/images/favicon.png", // Generic favicon
+      suggestedTags: ['design-principles', 'web-design', 'dieter-rams', 'inspiration'],
+      suggestedTopic: 'Design',
     };
   }
 
@@ -41,6 +47,8 @@ export async function simulateMetadataFetch(url: string): Promise<{
     description: "A comprehensive look at the tools, frameworks, and methodologies defining the frontend landscape this year.",
     imageUrl: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800&q=80",
     faviconUrl: "https://github.githubassets.com/favicons/favicon.svg",
+    suggestedTags: ['frontend', 'web-dev', 'javascript', 'trends-2024'],
+    suggestedTopic: 'Engineering',
   };
 }
 
