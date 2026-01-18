@@ -61,6 +61,7 @@ class SavedItem(SavedItemBase):
     owner_id: str
     suggested_tags: Optional[List[str]] = None
     suggested_topic: Optional[str] = None
+    ai_summary: Optional[str] = None
     processing_status: str = Field(default="pending", pattern="^(pending|processed|failed)$")
     processing_error: Optional[str] = None
     created_at: datetime
