@@ -248,43 +248,62 @@ async def process_item_background(item_id: str, user_id: str):
                 if chunks:
                     # Embed all chunks in batch for efficiency
                     logger.info(f"Generating embeddings for {len(chunks)} chunks")
-                    embeddings = gemini_service.embed_batch(chunks)
-                    
-                    if len(embeddings) != len(chunks):
-                        logger.error(
-                            f"Embedding count mismatch: {len(embeddings)} embeddings "
-                            f"for {len(chunks)} chunks"
-                        )
-                    else:
-                        # Store chunks with embeddings in item_chunks collection
-                        chunks_collection = get_item_chunks_collection()
+                    try:
+                        embeddings = gemini_service.embed_batch(chunks)
                         
-                        # Prepare chunk documents
-                        chunk_docs = []
-                        for idx, (chunk_text, embedding) in enumerate(zip(chunks, embeddings)):
-                            chunk_doc = {
-                                "item_id": item_id,
-                                "owner_id": user_id,
-                                "chunk_index": idx,
-                                "text": chunk_text,
-                                "embedding": embedding,
-                                "created_at": datetime.utcnow()
-                            }
-                            chunk_docs.append(chunk_doc)
-                        
-                        # Delete any existing chunks for this item (in case of reprocessing)
-                        await chunks_collection.delete_many({"item_id": item_id})
-                        
-                        # Insert new chunks
-                        if chunk_docs:
-                            result = await chunks_collection.insert_many(chunk_docs)
-                            logger.info(
-                                f"Successfully stored {len(result.inserted_ids)} chunks "
-                                f"with embeddings for item {item_id}"
+                        if len(embeddings) != len(chunks):
+                            logger.error(
+                                f"Embedding count mismatch: {len(embeddings)} embeddings "
+                                f"for {len(chunks)} chunks. Skipping chunk storage."
                             )
+                        else:
+                            # Store chunks with embeddings in item_chunks collection
+                            chunks_collection = get_item_chunks_collection()
+                            
+                            # Prepare chunk documents
+                            chunk_docs = []
+                            for idx, (chunk_content, embedding) in enumerate(zip(chunks, embeddings)):
+                                chunk_doc = {
+                                    "item_id": item_id,
+                                    "owner_id": user_id,
+                                    "chunk_index": idx,
+                                    "text": chunk_content,
+                                    "embedding": embedding,
+                                    "created_at": datetime.utcnow()
+                                }
+                                chunk_docs.append(chunk_doc)
+                            
+                            # Delete any existing chunks for this item (in case of reprocessing)
+                            await chunks_collection.delete_many({"item_id": item_id})
+                            
+                            # Insert new chunks
+                            if chunk_docs:
+                                result = await chunks_collection.insert_many(chunk_docs)
+                                logger.info(
+                                    f"Successfully stored {len(result.inserted_ids)} chunks "
+                                    f"with embeddings for item {item_id}"
+                                )
+                    except GeminiServiceError as e:
+                        # Handle rate limits and other Gemini errors gracefully
+                        error_msg = str(e).lower()
+                        if "quota" in error_msg or "rate limit" in error_msg or "429" in error_msg:
+                            logger.warning(
+                                f"Gemini API rate limit/quota exceeded for item {item_id}. "
+                                f"Chunks created but not embedded. Item will be processed without vector search capability. "
+                                f"Error: {str(e)}"
+                            )
+                        else:
+                            logger.error(
+                                f"Gemini service error during embedding for item {item_id}: {str(e)}. "
+                                f"Chunks created but not embedded."
+                            )
+                        # Continue processing - the item will still be saved with metadata and categorization
                         
             except GeminiServiceError as e:
-                logger.error(f"Gemini service error during chunking/embedding for item {item_id}: {str(e)}")
+                logger.error(
+                    f"Gemini service error during chunking for item {item_id}: {str(e)}. "
+                    f"Skipping chunking/embedding."
+                )
                 # Don't fail the entire processing - just log the error
             except Exception as e:
                 logger.error(
@@ -294,7 +313,8 @@ async def process_item_background(item_id: str, user_id: str):
                 # Don't fail the entire processing - just log the error
         elif archived_text and not gemini_service.is_available():
             logger.info(
-                f"Gemini service not available, skipping chunking/embedding for item {item_id}"
+                f"Gemini service not available, skipping chunking/embedding for item {item_id}. "
+                f"Item will be processed without vector search capability."
             )
         
         # Step 5: Update item with results
