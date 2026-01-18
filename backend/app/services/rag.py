@@ -7,8 +7,127 @@ import logging
 from app.config import settings
 from app.database import get_database
 from app.models.chat import Citation
+from app.services.gemini import gemini_service, GeminiServiceError
 
 logger = logging.getLogger(__name__)
+
+async def vector_search(query: str, owner_id: str, k: int = 8) -> List[Dict]:
+    """
+    Perform semantic search using MongoDB Atlas Vector Search.
+    
+    This function:
+    1. Embeds the query using Gemini text-embedding-004
+    2. Executes MongoDB Atlas $vectorSearch aggregation on item_chunks
+    3. Filters by owner_id for security
+    4. Returns top K most similar chunks with scores and metadata
+    
+    Args:
+        query: The search query text
+        owner_id: User ID to filter chunks (security)
+        k: Number of top results to return (default: 8)
+        
+    Returns:
+        List of dicts with keys: chunk_id, item_id, text, score, chunk_index
+        Returns empty list on errors or if no results found
+        
+    Raises:
+        Does not raise exceptions - returns empty list on errors
+    """
+    try:
+        # Check if Gemini service is available
+        if not gemini_service.is_available():
+            logger.warning("Gemini service not available for vector search")
+            return []
+        
+        # Step 1: Embed the query
+        logger.info(f"Embedding query for vector search: '{query[:50]}...'")
+        try:
+            query_embedding = gemini_service.embed_content(query)
+            if not query_embedding:
+                logger.error("Failed to generate query embedding - empty result")
+                return []
+            logger.info(f"Query embedded successfully (dimension: {len(query_embedding)})")
+        except GeminiServiceError as e:
+            logger.error(f"Gemini service error during embedding: {str(e)}")
+            return []
+        
+        # Step 2: Execute MongoDB Atlas Vector Search
+        db = get_database()
+        
+        # MongoDB Atlas Vector Search aggregation pipeline
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "vector_index",  # Name of the Atlas Search index
+                    "path": "embedding",       # Field containing embeddings
+                    "queryVector": query_embedding,
+                    "numCandidates": k * 10,   # Number of candidates to consider
+                    "limit": k,                # Number of results to return
+                    "filter": {
+                        "owner_id": owner_id   # Security: only search user's chunks
+                    }
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "item_id": 1,
+                    "text": 1,
+                    "chunk_index": 1,
+                    "owner_id": 1,
+                    "score": {"$meta": "vectorSearchScore"}
+                }
+            }
+        ]
+        
+        logger.info(f"Executing vector search for owner_id={owner_id}, k={k}")
+        
+        try:
+            cursor = db.item_chunks.aggregate(pipeline)
+            chunks = await cursor.to_list(length=k)
+            
+            if not chunks:
+                logger.info(f"No chunks found for query: '{query[:50]}...'")
+                return []
+            
+            # Format results
+            results = []
+            for chunk in chunks:
+                results.append({
+                    "chunk_id": str(chunk["_id"]),
+                    "item_id": chunk["item_id"],
+                    "text": chunk["text"],
+                    "score": chunk.get("score", 0.0),
+                    "chunk_index": chunk["chunk_index"]
+                })
+            
+            logger.info(f"Vector search returned {len(results)} chunks with scores: {[r['score'] for r in results]}")
+            return results
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check for common errors
+            if "index not found" in error_msg.lower() or "no such index" in error_msg.lower():
+                logger.error(
+                    "MongoDB Atlas Vector Search index 'vector_index' not found. "
+                    "Please create the index in Atlas UI on the 'item_chunks' collection. "
+                    "Index should be on 'embedding' field with 768 dimensions, cosine similarity."
+                )
+            elif "namespace not found" in error_msg.lower():
+                logger.error(
+                    "Collection 'item_chunks' not found. No chunks have been created yet. "
+                    "Save some items first to generate chunks."
+                )
+            else:
+                logger.error(f"MongoDB aggregation error during vector search: {error_msg}")
+            
+            return []
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in vector_search: {str(e)}")
+        return []
+
 
 
 async def search_items(user_id: str, query: str, limit: int = 5) -> List[Dict]:
