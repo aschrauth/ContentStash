@@ -165,13 +165,14 @@ async def create_item(
     result = await db.saved_items.insert_one(item_doc)
     item_id = str(result.inserted_id)
     
-    # Schedule background processing if URL is provided
-    if item_data.url:
-        background_tasks.add_task(
-            process_item_background,
-            item_id,
-            current_user.id
-        )
+    # Schedule background processing for all items
+    # - For URLs: extracts content and generates metadata
+    # - For pasted content: generates metadata and creates embeddings
+    background_tasks.add_task(
+        process_item_background,
+        item_id,
+        current_user.id
+    )
     
     # Return created item
     return SavedItem(

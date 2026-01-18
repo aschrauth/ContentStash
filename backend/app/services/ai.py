@@ -1,10 +1,12 @@
 """
-AI service for generating tags and topics using OpenAI.
+AI service for generating tags and topics using OpenAI or Gemini.
 """
 from openai import OpenAI
 from typing import List, Optional
 import logging
+import json
 from app.config import settings
+from app.services.gemini import gemini_service, GeminiServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +180,9 @@ def generate_metadata_from_content(content: str) -> dict:
     Generate title, description, and tags from pasted content.
     
     This function provides a fallback mechanism:
-    - If OpenAI is available, uses AI to generate smart metadata
-    - If not, uses basic text processing to extract metadata
+    - If OpenAI is available, uses OpenAI to generate smart metadata
+    - If Gemini is available, uses Gemini to generate smart metadata
+    - Otherwise, uses basic text processing to extract metadata
     
     Args:
         content: The pasted text content
@@ -187,21 +190,36 @@ def generate_metadata_from_content(content: str) -> dict:
     Returns:
         Dictionary with 'title', 'description', and 'tags'
     """
-    # Check if API key is configured
-    if not settings.openai_api_key:
-        logger.info("OpenAI API key not configured, using fallback text processing")
-        return _generate_metadata_fallback(content)
+    # Try OpenAI first if configured
+    if settings.openai_api_key:
+        try:
+            return _generate_metadata_with_openai(content)
+        except Exception as e:
+            logger.error(f"Error generating metadata with OpenAI: {str(e)}, trying Gemini")
     
-    try:
-        # Initialize OpenAI client
-        client = OpenAI(api_key=settings.openai_api_key)
-        
-        # Truncate content if too long
-        max_content_length = 4000
-        truncated_content = content[:max_content_length] if len(content) > max_content_length else content
-        
-        # Build the prompt
-        prompt = f"""Analyze the following content and generate:
+    # Try Gemini if available
+    if gemini_service.is_available():
+        try:
+            return _generate_metadata_with_gemini(content)
+        except Exception as e:
+            logger.error(f"Error generating metadata with Gemini: {str(e)}, falling back to text processing")
+    
+    # Fallback to basic text processing
+    logger.info("No AI service available, using fallback text processing")
+    return _generate_metadata_fallback(content)
+
+
+def _generate_metadata_with_openai(content: str) -> dict:
+    """Generate metadata using OpenAI."""
+    # Initialize OpenAI client
+    client = OpenAI(api_key=settings.openai_api_key)
+    
+    # Truncate content if too long
+    max_content_length = 4000
+    truncated_content = content[:max_content_length] if len(content) > max_content_length else content
+    
+    # Build the prompt
+    prompt = f"""Analyze the following content and generate:
 1. A concise title (max 100 characters)
 2. A brief description (max 200 characters)
 3. 3-7 relevant tags (single words or short phrases)
@@ -215,33 +233,95 @@ DESCRIPTION: your generated description
 TAGS: tag1, tag2, tag3, ...
 
 Keep everything concise and relevant."""
+    
+    # Call OpenAI API
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a helpful assistant that analyzes content and generates metadata."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0.7,
+        max_tokens=300
+    )
+    
+    # Parse the response
+    result = _parse_metadata_response(response.choices[0].message.content)
+    
+    logger.info(f"Generated metadata with OpenAI: title length={len(result['title'])}, tags={len(result['tags'])}")
+    return result
+
+
+def _generate_metadata_with_gemini(content: str) -> dict:
+    """Generate metadata using Gemini."""
+    # Truncate content if too long
+    max_content_length = 1500
+    truncated_content = content[:max_content_length] if len(content) > max_content_length else content
+    
+    # Build the prompt for JSON output
+    prompt = f"""Analyze this content and provide metadata in JSON format.
+
+Content: {truncated_content}
+
+Respond with JSON only:
+{{
+  "title": "concise title (max 100 chars)",
+  "description": "brief description (max 200 chars)",
+  "tags": ["tag1", "tag2", "tag3"]
+}}"""
+    
+    logger.info("Generating metadata with Gemini")
+    
+    # Call Gemini with Flash-Lite model
+    response = gemini_service.generate_content(
+        prompt=prompt,
+        model="gemini-2.0-flash-lite-preview-02-05"
+    )
+    
+    if not response:
+        raise GeminiServiceError("Empty response from Gemini")
+    
+    # Parse JSON response
+    response_text = response.strip()
+    if response_text.startswith("```json"):
+        response_text = response_text[7:]
+    if response_text.startswith("```"):
+        response_text = response_text[3:]
+    if response_text.endswith("```"):
+        response_text = response_text[:-3]
+    response_text = response_text.strip()
+    
+    try:
+        metadata = json.loads(response_text)
         
-        # Call OpenAI API
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a helpful assistant that analyzes content and generates metadata."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=0.7,
-            max_tokens=300
-        )
+        # Validate and extract fields
+        title = metadata.get("title", "Untitled")[:100]
+        description = metadata.get("description", "")[:200]
+        tags = metadata.get("tags", [])
         
-        # Parse the response
-        result = _parse_metadata_response(response.choices[0].message.content)
+        # Ensure tags is a list and limit to 7 tags
+        if not isinstance(tags, list):
+            tags = []
+        tags = tags[:7]
         
-        logger.info(f"Generated metadata with AI: title length={len(result['title'])}, tags={len(result['tags'])}")
+        result = {
+            'title': title,
+            'description': description,
+            'tags': tags
+        }
+        
+        logger.info(f"Generated metadata with Gemini: title length={len(result['title'])}, tags={len(result['tags'])}")
         return result
         
-    except Exception as e:
-        logger.error(f"Error generating metadata with AI: {str(e)}, falling back to text processing")
-        return _generate_metadata_fallback(content)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON response from Gemini: {str(e)}")
+        raise GeminiServiceError(f"Invalid JSON response: {str(e)}")
 
 
 def _parse_metadata_response(response_text: str) -> dict:
