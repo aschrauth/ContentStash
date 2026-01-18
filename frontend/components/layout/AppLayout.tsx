@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import Navbar from './Navbar';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import SaveModal from '@/components/SaveModal';
 import ChatOverlay from '@/components/ChatOverlay';
 

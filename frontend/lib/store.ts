@@ -2,7 +2,6 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { v4 as uuidv4 } from 'uuid';
 import { API_ENDPOINTS } from './api';
 
 // --- Types ---
@@ -234,7 +233,7 @@ export const useStore = create<AppState>()(
           const itemsData = await response.json();
           
           // Convert snake_case to camelCase for all items
-          const formattedItems: SavedItem[] = itemsData.map((item: any) => ({
+          const formattedItems: SavedItem[] = itemsData.map((item: Record<string, unknown>) => ({
             id: item.id,
             ownerId: item.owner_id,
             url: item.url,
@@ -467,22 +466,22 @@ export const useStore = create<AppState>()(
           const threadsData = await response.json();
           
           // Convert snake_case to camelCase
-          const formattedThreads: ChatThread[] = threadsData.map((thread: any) => ({
-            id: thread.id,
-            ownerId: thread.owner_id,
-            title: thread.title,
-            messages: thread.messages?.map((msg: any) => ({
-              role: msg.role,
-              content: msg.content,
-              citations: msg.citations?.map((cit: any) => ({
-                id: cit.id,
-                title: cit.title,
-                excerpt: cit.excerpt,
+          const formattedThreads: ChatThread[] = threadsData.map((thread: Record<string, unknown>) => ({
+            id: thread.id as string,
+            ownerId: thread.owner_id as string,
+            title: thread.title as string,
+            messages: (thread.messages as Record<string, unknown>[])?.map((msg: Record<string, unknown>) => ({
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content as string,
+              citations: (msg.citations as Record<string, unknown>[])?.map((cit: Record<string, unknown>) => ({
+                id: cit.id as string,
+                title: cit.title as string,
+                excerpt: cit.excerpt as string,
               })) || [],
-              createdAt: msg.created_at,
+              createdAt: msg.created_at as string,
             })) || [],
-            createdAt: thread.created_at,
-            updatedAt: thread.updated_at,
+            createdAt: thread.created_at as string,
+            updatedAt: thread.updated_at as string,
           }));
 
           set({ chatThreads: formattedThreads });
@@ -510,21 +509,21 @@ export const useStore = create<AppState>()(
           
           // Convert snake_case to camelCase
           const formattedThread: ChatThread = {
-            id: threadData.id,
-            ownerId: threadData.owner_id,
-            title: threadData.title,
-            messages: threadData.messages?.map((msg: any) => ({
-              role: msg.role,
-              content: msg.content,
-              citations: msg.citations?.map((cit: any) => ({
-                id: cit.id,
-                title: cit.title,
-                excerpt: cit.excerpt,
+            id: threadData.id as string,
+            ownerId: threadData.owner_id as string,
+            title: threadData.title as string,
+            messages: (threadData.messages as Record<string, unknown>[])?.map((msg: Record<string, unknown>) => ({
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content as string,
+              citations: (msg.citations as Record<string, unknown>[])?.map((cit: Record<string, unknown>) => ({
+                id: cit.id as string,
+                title: cit.title as string,
+                excerpt: cit.excerpt as string,
               })) || [],
-              createdAt: msg.created_at,
+              createdAt: msg.created_at as string,
             })) || [],
-            createdAt: threadData.created_at,
-            updatedAt: threadData.updated_at,
+            createdAt: threadData.created_at as string,
+            updatedAt: threadData.updated_at as string,
           };
 
           // Update local state
@@ -568,21 +567,21 @@ export const useStore = create<AppState>()(
           
           // Convert snake_case to camelCase
           const formattedThread: ChatThread = {
-            id: threadData.id,
-            ownerId: threadData.owner_id,
-            title: threadData.title,
-            messages: threadData.messages?.map((msg: any) => ({
-              role: msg.role,
-              content: msg.content,
-              citations: msg.citations?.map((cit: any) => ({
-                id: cit.id,
-                title: cit.title,
-                excerpt: cit.excerpt,
+            id: threadData.id as string,
+            ownerId: threadData.owner_id as string,
+            title: threadData.title as string,
+            messages: (threadData.messages as Record<string, unknown>[])?.map((msg: Record<string, unknown>) => ({
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content as string,
+              citations: (msg.citations as Record<string, unknown>[])?.map((cit: Record<string, unknown>) => ({
+                id: cit.id as string,
+                title: cit.title as string,
+                excerpt: cit.excerpt as string,
               })) || [],
-              createdAt: msg.created_at,
+              createdAt: msg.created_at as string,
             })) || [],
-            createdAt: threadData.created_at,
-            updatedAt: threadData.updated_at,
+            createdAt: threadData.created_at as string,
+            updatedAt: threadData.updated_at as string,
           };
 
           // Add to local state
@@ -619,21 +618,21 @@ export const useStore = create<AppState>()(
           
           // Convert snake_case to camelCase
           const formattedThread: ChatThread = {
-            id: threadData.id,
-            ownerId: threadData.owner_id,
-            title: threadData.title,
-            messages: threadData.messages?.map((msg: any) => ({
-              role: msg.role,
-              content: msg.content,
-              citations: msg.citations?.map((cit: any) => ({
-                id: cit.id,
-                title: cit.title,
-                excerpt: cit.excerpt,
+            id: threadData.id as string,
+            ownerId: threadData.owner_id as string,
+            title: threadData.title as string,
+            messages: (threadData.messages as Record<string, unknown>[])?.map((msg: Record<string, unknown>) => ({
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content as string,
+              citations: (msg.citations as Record<string, unknown>[])?.map((cit: Record<string, unknown>) => ({
+                id: cit.id as string,
+                title: cit.title as string,
+                excerpt: cit.excerpt as string,
               })) || [],
-              createdAt: msg.created_at,
+              createdAt: msg.created_at as string,
             })) || [],
-            createdAt: threadData.created_at,
-            updatedAt: threadData.updated_at,
+            createdAt: threadData.created_at as string,
+            updatedAt: threadData.updated_at as string,
           };
 
           // Update local state

@@ -2,15 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import toast from 'react-hot-toast';
 
-import { useStore } from '@/lib/store';
+import { useStore, SavedItem } from '@/lib/store';
 import { formatDate, cn, cleanMarkdown } from '@/lib/utils';
-import { simulateContentExtraction } from '@/lib/simulation';
 import { API_ENDPOINTS } from '@/lib/api';
 import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -23,10 +21,10 @@ export default function ItemDetailPage() {
   // In Next.js 15, params is a Promise. We need to handle it correctly.
   const params = useParams();
   const router = useRouter();
-  const { items, updateItem, deleteItem, currentUser, token } = useStore();
+  const { items, updateItem, deleteItem, token } = useStore();
   
   const [itemId, setItemId] = useState<string | null>(null);
-  const [item, setItem] = useState<any>(null);
+  const [item, setItem] = useState<SavedItem | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -164,7 +162,7 @@ export default function ItemDetailPage() {
     }, 2000); // Poll every 2 seconds
     
     return () => clearInterval(pollInterval);
-  }, [itemId, token, item?.processingStatus, updateItem]);
+  }, [itemId, token, item, updateItem]);
 
   // Autocomplete for tags
   useEffect(() => {
@@ -321,7 +319,7 @@ export default function ItemDetailPage() {
               {/* Background Image Blur */}
               {item.imageUrl && (
                 <div className="absolute inset-0 z-0 opacity-10">
-                  <img src={item.imageUrl} className="w-full h-full object-cover blur-xl" />
+                  <img src={item.imageUrl} alt="" className="w-full h-full object-cover blur-xl" />
                 </div>
               )}
               
@@ -437,26 +435,26 @@ export default function ItemDetailPage() {
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      p: ({node, ...props}) => <p {...props} />,
-                      h1: ({node, ...props}) => <h1 {...props} />,
-                      h2: ({node, ...props}) => <h2 {...props} />,
-                      h3: ({node, ...props}) => <h3 {...props} />,
-                      h4: ({node, ...props}) => <h4 {...props} />,
-                      h5: ({node, ...props}) => <h5 {...props} />,
-                      h6: ({node, ...props}) => <h6 {...props} />,
-                      strong: ({node, ...props}) => <strong {...props} />,
-                      em: ({node, ...props}) => <em {...props} />,
-                      ul: ({node, ...props}) => <ul {...props} />,
-                      ol: ({node, ...props}) => <ol {...props} />,
-                      li: ({node, ...props}) => <li {...props} />,
-                      a: ({node, ...props}) => <a {...props} />,
-                      code: ({node, inline, ...props}: any) =>
+                      p: (props) => <p {...props} />,
+                      h1: (props) => <h1 {...props} />,
+                      h2: (props) => <h2 {...props} />,
+                      h3: (props) => <h3 {...props} />,
+                      h4: (props) => <h4 {...props} />,
+                      h5: (props) => <h5 {...props} />,
+                      h6: (props) => <h6 {...props} />,
+                      strong: (props) => <strong {...props} />,
+                      em: (props) => <em {...props} />,
+                      ul: (props) => <ul {...props} />,
+                      ol: (props) => <ol {...props} />,
+                      li: (props) => <li {...props} />,
+                      a: (props) => <a {...props} />,
+                      code: ({ inline, ...props }: { inline?: boolean; [key: string]: unknown }) =>
                         inline ? (
                           <code {...props} />
                         ) : (
                           <code {...props} />
                         ),
-                      blockquote: ({node, ...props}) => <blockquote {...props} />,
+                      blockquote: (props) => <blockquote {...props} />,
                     }}
                   >
                     {cleanMarkdown(item.archivedText || '')}

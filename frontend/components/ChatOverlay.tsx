@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, MessageSquare, Sparkles, ChevronRight, ExternalLink } from 'lucide-react';
+import { X, Send, MessageSquare, Sparkles, ExternalLink } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +34,7 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
   }, [isOpen, chatThreads, activeThreadId]);
 
   const activeThread = chatThreads.find(t => t.id === activeThreadId);
-  const messages = activeThread?.messages || [];
+  const messages = React.useMemo(() => activeThread?.messages || [], [activeThread]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -127,9 +127,9 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
                   <MessageSquare className="w-12 h-12 mb-4 text-violet-400" />
                   <h3 className="text-lg font-medium text-white mb-2">Ask anything</h3>
                   <p className="text-sm text-slate-400">
-                    "What did I save about UX design?"<br/>
-                    "Summarize my notes on React"<br/>
-                    "Find articles about AI"
+                    &quot;What did I save about UX design?&quot;<br/>
+                    &quot;Summarize my notes on React&quot;<br/>
+                    &quot;Find articles about AI&quot;
                   </p>
                 </div>
               ) : (
@@ -170,7 +170,7 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
                               <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-violet-400" />
                             </div>
                             <p className="text-xs text-slate-400 mt-1 line-clamp-2 italic">
-                              "{citation.excerpt}"
+                              &quot;{citation.excerpt}&quot;
                             </p>
                           </Link>
                         ))}

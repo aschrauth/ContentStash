@@ -17,7 +17,6 @@ export async function simulateMetadataFetch(url: string): Promise<{
   await delay(1500); // 1.5s delay
 
   // Mock data based on URL keywords or random
-  const isTech = url.includes('tech') || url.includes('code') || url.includes('dev');
   const isDesign = url.includes('design') || url.includes('ui') || url.includes('ux');
   
   if (url.includes('youtube.com') || url.includes('youtu.be')) {

@@ -2,8 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { Filter, Grid, List, Search, Tag } from 'lucide-react';
+import { Filter, Grid, List, Search } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
@@ -38,18 +37,12 @@ export default function LibraryPage() {
   }, [currentUser, fetchTags]);
 
   // Debounced fetch function
-  const debouncedFetchItems = useCallback(
-    (() => {
-      let timeoutId: NodeJS.Timeout;
-      return (search: string, tags: string[]) => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          fetchItems(search, tags);
-        }, 300); // 300ms debounce
-      };
-    })(),
-    [fetchItems]
-  );
+  const debouncedFetchItems = useCallback((search: string, tags: string[]) => {
+    const timeoutId = setTimeout(() => {
+      fetchItems(search, tags);
+    }, 300); // 300ms debounce
+    return () => clearTimeout(timeoutId);
+  }, [fetchItems]);
 
   // Fetch items when search or tags change
   useEffect(() => {

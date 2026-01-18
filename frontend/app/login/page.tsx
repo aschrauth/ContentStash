@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion } from 'framer-motion';
-import { Loader2, Lock, Mail } from 'lucide-react';
+import { Lock, Mail } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';
@@ -109,7 +109,7 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 text-center text-sm text-slate-400">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link href="/register" className="text-violet-400 hover:text-violet-300 font-medium transition-colors">
               Create one
             </Link>

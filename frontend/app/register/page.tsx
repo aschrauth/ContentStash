@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion } from 'framer-motion';
-import { Loader2, Lock, Mail, User } from 'lucide-react';
+import { Lock, Mail, User } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';

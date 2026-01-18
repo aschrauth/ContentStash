@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowRight, Brain, Search, Sparkles, Layers, Zap, Shield } from 'lucide-react';
+import { ArrowRight, Brain, Search, Sparkles, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function LandingPage() {

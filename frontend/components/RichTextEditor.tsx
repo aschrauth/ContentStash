@@ -16,8 +16,7 @@ import {
   Heading1, 
   Heading2, 
   Undo, 
-  Redo,
-  Link as LinkIcon
+  Redo
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -33,7 +32,7 @@ const turndownService = new TurndownService({
   codeBlockStyle: 'fenced'
 });
 
-export default function RichTextEditor({ value, onChange, placeholder, className }: RichTextEditorProps) {
+export default function RichTextEditor({ value, onChange, className }: RichTextEditorProps) {
   const [isMounted, setIsMounted] = useState(false);
 
   const editor = useEditor({
@@ -76,7 +75,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
     return <div className="h-[60px] bg-white/5 rounded-lg animate-pulse border border-white/10" />;
   }
 
-  const ToolbarButton = ({ onClick, isActive = false, icon: Icon, title }: any) => (
+  const ToolbarButton = ({ onClick, isActive = false, icon: Icon, title }: { onClick: () => void; isActive?: boolean; icon: React.ComponentType<{ className?: string }>; title: string }) => (
     <button
       type="button"
       onClick={onClick}

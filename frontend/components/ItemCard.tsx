@@ -3,9 +3,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ExternalLink, Hash, Clock, MoreHorizontal, FileText, Youtube, Image as ImageIcon, MessageSquare } from 'lucide-react';
+import { ExternalLink, FileText, Youtube, Image as ImageIcon } from 'lucide-react';
 import { SavedItem } from '@/lib/store';
-import { formatDate, cn } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 
 interface ItemCardProps {
   item: SavedItem;
@@ -33,9 +33,9 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
           {/* Image Preview - Left Side Fixed Width */}
           {item.imageUrl ? (
             <div className="relative w-48 h-full flex-shrink-0 overflow-hidden bg-slate-900">
-              <img 
-                src={item.imageUrl} 
-                alt={item.title} 
+              <img
+                src={item.imageUrl}
+                alt={item.title}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/20" />
@@ -102,9 +102,9 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
         {/* Image Preview */}
         {item.imageUrl && (
           <div className="relative h-40 w-full overflow-hidden bg-slate-900">
-            <img 
-              src={item.imageUrl} 
-              alt={item.title} 
+            <img
+              src={item.imageUrl}
+              alt={item.title}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent opacity-60" />

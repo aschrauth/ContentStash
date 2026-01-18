@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Link as LinkIcon, FileText, Loader2, Check, Sparkles } from 'lucide-react';
+import { X, Link as LinkIcon, FileText, Loader2, Sparkles } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -261,7 +261,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
       }
       // For URLs, the backend will process in background - no client-side simulation needed
 
-    } catch (error) {
+    } catch {
       toast.error("Failed to save item");
     } finally {
       setIsSaving(false);
@@ -374,7 +374,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                 {/* Preview Card (Only for URL) */}
                 {activeTab === 'url' && previewImage && (
                   <div className="relative h-40 w-full rounded-lg overflow-hidden border border-white/10">
-                    <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
+                    <img src={previewImage} alt={watch('title') || 'Preview'} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                       <p className="text-white font-medium text-sm truncate w-full">{watch('title')}</p>
                     </div>
