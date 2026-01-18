@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from typing import List
 from datetime import datetime
 from bson import ObjectId
@@ -9,13 +9,144 @@ from ..models.chat import (
     ChatThreadListItem,
     ChatMessage,
     CreateThreadRequest,
-    CreateMessageRequest
+    CreateMessageRequest,
+    SearchChunkResult,
+    SearchResponse,
+    AskRequest,
+    AskResponse
 )
 from ..models.user import User
 from ..dependencies import get_current_user
-from ..services.rag import search_items, generate_answer
+from ..services.rag import search_items, generate_answer, vector_search
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+@router.get("/search", response_model=SearchResponse)
+async def semantic_search(
+    q: str = Query(..., min_length=1, max_length=500, description="Search query"),
+    k: int = Query(8, ge=1, le=20, description="Number of results to return"),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Perform semantic search on saved items using vector embeddings.
+    
+    This endpoint:
+    - Embeds the query using Gemini text-embedding-004
+    - Searches for similar chunks using MongoDB Atlas Vector Search
+    - Returns top K most relevant chunks with scores
+    - Filters results by user ownership for security
+    
+    Args:
+        q: Search query text
+        k: Number of results to return (default: 8, max: 20)
+        current_user: Authenticated user from JWT token
+        
+    Returns:
+        SearchResponse with query, results, and total count
+        
+    Raises:
+        HTTPException 400: If query is invalid
+        HTTPException 500: If vector search fails
+    """
+    try:
+        logger.info(f"Semantic search request: query='{q[:50]}...', k={k}, user={current_user.id}")
+        
+        # Perform vector search
+        chunks = await vector_search(q, current_user.id, k=k)
+        
+        # Convert to response model
+        results = [
+            SearchChunkResult(
+                chunk_id=chunk['chunk_id'],
+                item_id=chunk['item_id'],
+                text=chunk['text'],
+                score=chunk['score'],
+                chunk_index=chunk['chunk_index']
+            )
+            for chunk in chunks
+        ]
+        
+        logger.info(f"Semantic search returned {len(results)} results")
+        
+        return SearchResponse(
+            query=q,
+            results=results,
+            total_results=len(results)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in semantic search: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Semantic search failed: {str(e)}"
+        )
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask_question(
+    request: AskRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Ask a question and get an AI-generated answer with citations.
+    
+    This endpoint:
+    - Performs semantic search to find relevant chunks (K=8)
+    - Passes chunks to Gemini 2.5 Flash-Lite for answer generation
+    - Enforces citation requirements and factual accuracy
+    - Returns answer with quoted excerpts and source references
+    
+    The AI will:
+    - Answer ONLY using provided evidence
+    - Include citations with quoted excerpts
+    - Say "I don't have enough information" if evidence is insufficient
+    - Never hallucinate or use external knowledge
+    
+    Args:
+        request: AskRequest with question text
+        current_user: Authenticated user from JWT token
+        
+    Returns:
+        AskResponse with answer, citations, and metadata
+        
+    Raises:
+        HTTPException 400: If question is invalid
+        HTTPException 500: If answer generation fails
+    """
+    try:
+        logger.info(f"Ask question request: '{request.question[:50]}...', user={current_user.id}")
+        
+        # Perform vector search to get relevant chunks (K=8 for cost optimization)
+        chunks = await vector_search(request.question, current_user.id, k=8)
+        
+        if not chunks:
+            logger.info("No relevant chunks found for question")
+            return AskResponse(
+                answer="I couldn't find any relevant content to answer your question. Try saving some content first!",
+                citations=[],
+                chunks_used=0
+            )
+        
+        # Generate answer using Gemini with citations
+        result = generate_answer(request.question, chunks)
+        
+        logger.info(f"Generated answer with {len(result['citations'])} citations")
+        
+        return AskResponse(
+            answer=result['answer'],
+            citations=result['citations'],
+            chunks_used=result['chunks_used']
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in ask endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate answer: {str(e)}"
+        )
 
 
 @router.post("/threads", response_model=ChatThreadResponse, status_code=status.HTTP_201_CREATED)
@@ -35,11 +166,11 @@ async def create_thread(
     """
     db = get_database()
     
-    # Search for relevant items
-    relevant_items = await search_items(current_user.id, request.message)
+    # Use vector search to get relevant chunks
+    chunks = await vector_search(request.message, current_user.id, k=8)
     
-    # Generate answer using RAG
-    rag_result = generate_answer(request.message, relevant_items)
+    # Generate answer using RAG with Gemini
+    rag_result = generate_answer(request.message, chunks)
     
     # Create user message
     user_message = ChatMessage(
@@ -258,11 +389,11 @@ async def add_message(
             detail="Not authorized to access this thread"
         )
     
-    # Search for relevant items
-    relevant_items = await search_items(current_user.id, request.message)
+    # Use vector search to get relevant chunks
+    chunks = await vector_search(request.message, current_user.id, k=8)
     
-    # Generate answer using RAG
-    rag_result = generate_answer(request.message, relevant_items)
+    # Generate answer using RAG with Gemini
+    rag_result = generate_answer(request.message, chunks)
     
     # Create user message
     user_message = ChatMessage(

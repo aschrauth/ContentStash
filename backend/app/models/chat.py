@@ -68,3 +68,31 @@ class ChatThreadListItem(BaseModel):
     message_count: int
     created_at: datetime
     updated_at: datetime
+
+
+class SearchChunkResult(BaseModel):
+    """Result from semantic search on chunks"""
+    chunk_id: str
+    item_id: str
+    text: str
+    score: float
+    chunk_index: int
+
+
+class SearchResponse(BaseModel):
+    """Response from semantic search endpoint"""
+    query: str
+    results: List[SearchChunkResult]
+    total_results: int
+
+
+class AskRequest(BaseModel):
+    """Request for chat/ask endpoint"""
+    question: str = Field(..., min_length=1, max_length=1000)
+
+
+class AskResponse(BaseModel):
+    """Response from chat/ask endpoint"""
+    answer: str
+    citations: List[Citation]
+    chunks_used: int
