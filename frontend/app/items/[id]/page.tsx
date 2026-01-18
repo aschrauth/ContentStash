@@ -11,8 +11,8 @@ import { useStore, SavedItem } from '@/lib/store';
 import { formatDate, cn, cleanMarkdown } from '@/lib/utils';
 import { API_ENDPOINTS } from '@/lib/api';
 import AppLayout from '@/components/layout/AppLayout';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import RichTextEditor from '@/components/RichTextEditor';
 import ConfirmationModal from '@/components/ConfirmationModal';
 
@@ -354,7 +354,7 @@ export default function ItemDetailPage() {
                     ) : (
                       <div className="flex gap-2">
                         <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>
-                        <Button variant="primary" size="sm" onClick={handleSaveMetadata}>Save</Button>
+                        <Button size="sm" onClick={handleSaveMetadata}>Save</Button>
                       </div>
                     )}
                   </div>
@@ -430,7 +430,6 @@ export default function ItemDetailPage() {
             {item.archivedText && (
               <div className="glass-panel p-8 rounded-2xl border border-white/10">
                 <h2 className="text-xl font-bold text-white mb-4">Archived Content</h2>
-                {console.log('Archived Text:', item.archivedText)}
                 <div className="prose-archived max-w-none text-slate-300">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
@@ -448,7 +447,7 @@ export default function ItemDetailPage() {
                       ol: (props) => <ol {...props} />,
                       li: (props) => <li {...props} />,
                       a: (props) => <a {...props} />,
-                      code: ({ inline, ...props }: { inline?: boolean; [key: string]: unknown }) =>
+                      code: ({ inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) =>
                         inline ? (
                           <code {...props} />
                         ) : (
@@ -559,8 +558,8 @@ export default function ItemDetailPage() {
                   {isReprocessing ? 'Reprocessing...' : 'Reprocess Content'}
                 </Button>
               )}
-              <Button 
-                variant="danger" 
+              <Button
+                variant="destructive"
                 className="w-full justify-start"
                 onClick={handleDeleteClick}
               >

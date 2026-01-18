@@ -4,8 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, MessageSquare, Sparkles, ExternalLink } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 

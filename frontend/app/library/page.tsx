@@ -7,8 +7,8 @@ import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import ItemCard from '@/components/ItemCard';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 
 export default function LibraryPage() {
   const searchParams = useSearchParams();

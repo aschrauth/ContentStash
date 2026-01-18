@@ -11,9 +11,9 @@ import { Lock, Mail, User } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
 
 const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),

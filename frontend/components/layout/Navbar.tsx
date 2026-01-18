@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, Plus, LogOut, MessageSquare } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 
 interface NavbarProps {
   onSaveClick: () => void;
@@ -68,11 +68,10 @@ export default function Navbar({ onSaveClick, onChatClick }: NavbarProps) {
             Save
           </Button>
           
-          <Button 
+          <Button
             onClick={onSaveClick}
             className="sm:hidden"
             size="icon"
-            variant="primary"
           >
             <Plus className="w-5 h-5" />
           </Button>

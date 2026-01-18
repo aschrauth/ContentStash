@@ -11,9 +11,9 @@ import { Lock, Mail } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),

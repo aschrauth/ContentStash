@@ -3,7 +3,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/Button';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -13,7 +13,7 @@ interface ConfirmationModalProps {
   description: string;
   confirmText?: string;
   cancelText?: string;
-  variant?: 'danger' | 'primary';
+  variant?: 'danger' | 'default';
   isLoading?: boolean;
 }
 
@@ -25,7 +25,7 @@ export default function ConfirmationModal({
   description,
   confirmText = "Confirm",
   cancelText = "Cancel",
-  variant = 'primary',
+  variant = 'default',
   isLoading = false,
 }: ConfirmationModalProps) {
   if (!isOpen) return null;
@@ -66,9 +66,9 @@ export default function ConfirmationModal({
             <Button variant="ghost" onClick={onClose} disabled={isLoading}>
               {cancelText}
             </Button>
-            <Button 
-              variant={variant === 'danger' ? 'danger' : 'primary'} 
-              onClick={onConfirm} 
+            <Button
+              variant={variant === 'danger' ? 'destructive' : 'default'}
+              onClick={onConfirm}
               isLoading={isLoading}
             >
               {confirmText}
