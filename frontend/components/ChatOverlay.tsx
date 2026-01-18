@@ -21,19 +21,20 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [isNewChat, setIsNewChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Initialize or get active thread
   useEffect(() => {
-    if (isOpen && !activeThreadId) {
-      // Find most recent thread or create new one if none exists? 
+    if (isOpen && !activeThreadId && !isNewChat) {
+      // Find most recent thread or create new one if none exists?
       // For MVP, let's just start fresh or show history list.
       // Let's auto-create a thread if none exists for simplicity in this view
       if (chatThreads.length > 0) {
         setActiveThreadId(chatThreads[0].id);
       }
     }
-  }, [isOpen, chatThreads, activeThreadId]);
+  }, [isOpen, chatThreads, activeThreadId, isNewChat]);
 
   const activeThread = chatThreads.find(t => t.id === activeThreadId);
   const messages = React.useMemo(() => activeThread?.messages || [], [activeThread]);
@@ -61,6 +62,7 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
         // Create new thread with first message
         threadId = await createChatThread(userMessage);
         setActiveThreadId(threadId);
+        setIsNewChat(false);
       } else {
         // Send message to existing thread
         await sendChatMessage(threadId, userMessage);
@@ -78,6 +80,7 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
 
   const handleNewChat = () => {
     setActiveThreadId(null);
+    setIsNewChat(true);
   };
 
   return (
