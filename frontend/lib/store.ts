@@ -227,6 +227,13 @@ export const useStore = create<AppState>()(
           });
 
           if (!response.ok) {
+            if (response.status === 401) {
+              // Clear token and redirect to login
+              localStorage.removeItem('token');
+              set({ currentUser: null, token: null });
+              window.location.href = '/login';
+              return;
+            }
             throw new Error('Failed to fetch items');
           }
 

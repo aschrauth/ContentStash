@@ -13,3 +13,4 @@ openai
 readability-lxml
 lxml_html_clean
 markdownify
+youtube-transcript-api

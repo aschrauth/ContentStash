@@ -69,6 +69,12 @@ export default function LibraryPage() {
     if (!currentUser || !hasPendingItems) return;
 
     const pollInterval = setInterval(() => {
+      // Verify currentUser still exists before polling
+      const { currentUser: user } = useStore.getState();
+      if (!user) {
+        clearInterval(pollInterval);
+        return;
+      }
       fetchItems(searchQuery, selectedTags);
     }, 3000); // Poll every 3 seconds
 

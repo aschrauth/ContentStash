@@ -6,6 +6,7 @@ from readability import Document
 from typing import Optional
 import logging
 from markdownify import markdownify as md
+from .youtube import is_youtube_url, extract_video_id, get_video_transcript
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 def extract_content(url: str) -> Optional[str]:
     """
     Extract main content text from a URL using readability-lxml.
+    For YouTube URLs, attempts to extract video transcript first.
     
     Args:
         url: The URL to extract content from
@@ -20,6 +22,22 @@ def extract_content(url: str) -> Optional[str]:
     Returns:
         Extracted text content or None if extraction fails
     """
+    # Check if this is a YouTube URL and try to get transcript
+    if is_youtube_url(url):
+        logger.info(f"Detected YouTube URL: {url}")
+        video_id = extract_video_id(url)
+        
+        if video_id:
+            transcript = get_video_transcript(video_id)
+            if transcript:
+                logger.info(f"Successfully extracted YouTube transcript for {url}")
+                return transcript
+            else:
+                logger.warning(f"Failed to get YouTube transcript for {url}, falling back to standard extraction")
+        else:
+            logger.warning(f"Failed to extract video ID from YouTube URL: {url}, falling back to standard extraction")
+    
+    # Fall back to standard web content extraction
     try:
         # Fetch the page content
         response = requests.get(url, timeout=10)
