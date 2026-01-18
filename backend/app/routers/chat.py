@@ -131,7 +131,7 @@ async def ask_question(
             )
         
         # Generate answer using Gemini with citations
-        result = generate_answer(request.question, chunks)
+        result = await generate_answer(request.question, chunks)
         
         logger.info(f"Generated answer with {len(result['citations'])} citations")
         
@@ -170,7 +170,7 @@ async def create_thread(
     chunks = await vector_search(request.message, current_user.id, k=8)
     
     # Generate answer using RAG with Gemini
-    rag_result = generate_answer(request.message, chunks)
+    rag_result = await generate_answer(request.message, chunks)
     
     # Create user message
     user_message = ChatMessage(
@@ -393,7 +393,7 @@ async def add_message(
     chunks = await vector_search(request.message, current_user.id, k=8)
     
     # Generate answer using RAG with Gemini
-    rag_result = generate_answer(request.message, chunks)
+    rag_result = await generate_answer(request.message, chunks)
     
     # Create user message
     user_message = ChatMessage(

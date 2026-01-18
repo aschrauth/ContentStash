@@ -217,7 +217,7 @@ async def _fallback_search(user_id: str, query: str, limit: int = 5) -> List[Dic
         return []
 
 
-def generate_answer(query: str, chunks: List[Dict]) -> Dict[str, any]:
+async def generate_answer(query: str, chunks: List[Dict]) -> Dict[str, any]:
     """
     Generate an answer using Gemini 2.5 Flash-Lite based on retrieved chunks.
     
@@ -256,11 +256,11 @@ def generate_answer(query: str, chunks: List[Dict]) -> Dict[str, any]:
         }
     
     try:
-        # Build evidence from chunks
-        evidence = _build_evidence_from_chunks(chunks)
+        # Build evidence from chunks with numbered sources
+        evidence, source_mapping = await _build_evidence_from_chunks(chunks)
         
         # Build the prompt with strict citation requirements
-        prompt = _build_citation_prompt(query, evidence, chunks)
+        prompt = _build_citation_prompt(query, evidence, source_mapping)
         
         # Call Gemini API with Flash-Lite model for cost optimization
         logger.info(f"Generating answer with Gemini for query: '{query[:50]}...'")
@@ -277,8 +277,8 @@ def generate_answer(query: str, chunks: List[Dict]) -> Dict[str, any]:
                 'chunks_used': 0
             }
         
-        # Parse response and extract citations
-        answer, citations = _parse_answer_with_citations(response_text, chunks)
+        # Parse response and extract citations with source mapping
+        answer, citations = await _parse_answer_with_citations(response_text, chunks, source_mapping)
         
         logger.info(f"Generated answer with {len(citations)} citations from {len(chunks)} chunks")
         
@@ -304,56 +304,82 @@ def generate_answer(query: str, chunks: List[Dict]) -> Dict[str, any]:
         }
 
 
-def _build_evidence_from_chunks(chunks: List[Dict]) -> str:
+async def _build_evidence_from_chunks(chunks: List[Dict]) -> tuple:
     """
-    Build evidence string from chunks for the prompt.
+    Build evidence string from chunks for the prompt with numbered sources.
     
     Args:
         chunks: List of chunk dicts from vector_search
         
     Returns:
-        Formatted evidence string with numbered chunks
+        Tuple of (evidence_string, source_mapping)
+        - evidence_string: Formatted evidence with numbered sources
+        - source_mapping: Dict mapping source numbers to titles
     """
     evidence_parts = []
+    source_mapping = {}
+    seen_items = {}  # Track unique items by item_id
+    current_number = 1
     
-    for i, chunk in enumerate(chunks, 1):
+    for chunk in chunks:
         text = chunk.get('text', '')
         # Truncate very long chunks to keep token usage low
         if len(text) > 500:
             text = text[:500] + "..."
-        evidence_parts.append(f"[Chunk {i}] {text}")
+        
+        # Fetch item metadata to get the title
+        item_metadata = await _get_item_metadata(chunk)
+        item_id = chunk.get('item_id')
+        title = item_metadata.get('title', f'Source {current_number}')
+        
+        # Assign a number to this source if we haven't seen it before
+        if item_id not in seen_items:
+            seen_items[item_id] = current_number
+            source_mapping[current_number] = title
+            current_number += 1
+        
+        source_num = seen_items[item_id]
+        evidence_parts.append(f"[{source_num}] {text}")
     
-    return "\n\n".join(evidence_parts)
+    return "\n\n".join(evidence_parts), source_mapping
 
 
-def _build_citation_prompt(query: str, evidence: str, chunks: List[Dict]) -> str:
+def _build_citation_prompt(query: str, evidence: str, source_mapping: Dict[int, str]) -> str:
     """
-    Build the RAG prompt with strict citation requirements.
+    Build the RAG prompt with strict citation requirements using numbered sources.
     
     This prompt enforces:
     - Answer ONLY using provided evidence
-    - Include citations with quoted excerpts
+    - Include numbered citations (e.g., [1], [2])
     - Say "I don't have enough information" if evidence is insufficient
     - Keep answers concise
     
     Args:
         query: User's question
-        evidence: Formatted evidence from chunks
-        chunks: Original chunk data (for context)
+        evidence: Formatted evidence from chunks with numbers
+        source_mapping: Dict mapping source numbers to titles
         
     Returns:
         Complete prompt string for Gemini
     """
+    # Build source list for reference
+    source_list = "\n".join([f"{num}. {title}" for num, title in sorted(source_mapping.items())])
+    
     return f"""You are a helpful assistant that answers questions based ONLY on the provided evidence.
 
 EVIDENCE:
 {evidence}
 
+SOURCE LIST:
+{source_list}
+
 QUESTION: {query}
 
 INSTRUCTIONS:
 - Answer using ONLY the evidence provided above
-- Include citations like [Chunk 1] when referencing evidence
+- Include citations using numbered references (e.g., [1], [2]) when referencing evidence
+- Use the source numbers shown in the evidence (e.g., [1], [2], [3])
+- You may cite the same source multiple times if needed
 - Quote relevant excerpts to support your answer (use quotation marks)
 - If the evidence doesn't contain enough information, say "I don't have enough information to answer that question."
 - Keep your answer concise and factual
@@ -402,18 +428,19 @@ async def _get_item_metadata(chunk: Dict) -> Dict:
         return {}
 
 
-def _parse_answer_with_citations(response_text: str, chunks: List[Dict]) -> tuple:
+async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], source_mapping: Dict[int, str]) -> tuple:
     """
-    Parse Gemini response to extract answer and generate citations.
+    Parse Gemini response to extract answer and generate citations using numbered references.
     
     This function:
     1. Extracts the answer text
-    2. Identifies which chunks were cited (e.g., [Chunk 1])
-    3. Creates Citation objects with quoted excerpts
+    2. Identifies which sources were cited by number (e.g., [1], [2])
+    3. Creates Citation objects with titles and excerpts
     
     Args:
         response_text: Raw response from Gemini
         chunks: Original chunks used for evidence
+        source_mapping: Dict mapping source numbers to titles
         
     Returns:
         Tuple of (answer_text, list_of_citations)
@@ -424,43 +451,66 @@ def _parse_answer_with_citations(response_text: str, chunks: List[Dict]) -> tupl
     # Extract answer (everything is the answer)
     answer = response_text.strip()
     
-    # Find all chunk citations in the answer (e.g., [Chunk 1], [Chunk 2])
-    citation_pattern = r'\[Chunk (\d+)\]'
-    cited_chunk_numbers = set(int(match) for match in re.findall(citation_pattern, answer))
+    # Build a mapping of item_id to chunk for quick lookup
+    item_to_chunk = {}
+    for chunk in chunks:
+        item_id = chunk.get('item_id')
+        if item_id and item_id not in item_to_chunk:
+            item_to_chunk[item_id] = chunk
     
-    # Generate citations for cited chunks
+    # Build reverse mapping: title -> source number
+    title_to_number = {title: num for num, title in source_mapping.items()}
+    
+    # Build mapping: item_id -> source number
+    item_to_number = {}
+    for chunk in chunks:
+        item_metadata = await _get_item_metadata(chunk)
+        title = item_metadata.get('title', '')
+        item_id = chunk.get('item_id')
+        if title in title_to_number and item_id:
+            item_to_number[item_id] = title_to_number[title]
+    
+    # Find all numbered citations in the answer (e.g., [1], [2], [3])
+    citation_pattern = r'\[(\d+)\]'
+    cited_numbers = set(re.findall(citation_pattern, answer))
+    
+    # Generate citations for cited sources
     citations = []
     seen_items = set()  # Track items to avoid duplicate citations
     
-    for chunk_num in sorted(cited_chunk_numbers):
-        # Chunk numbers are 1-indexed
-        chunk_idx = chunk_num - 1
+    for num_str in sorted(cited_numbers, key=int):
+        source_num = int(num_str)
         
-        if chunk_idx < 0 or chunk_idx >= len(chunks):
+        # Get the title for this source number
+        title = source_mapping.get(source_num)
+        if not title:
             continue
         
-        chunk = chunks[chunk_idx]
-        item_id = chunk.get('item_id')
+        # Find the corresponding chunk/item
+        matching_item_id = None
+        for item_id, num in item_to_number.items():
+            if num == source_num and item_id not in seen_items:
+                matching_item_id = item_id
+                break
         
-        # Skip if we already have a citation for this item
-        if item_id in seen_items:
+        if not matching_item_id:
             continue
-        seen_items.add(item_id)
+        
+        seen_items.add(matching_item_id)
+        chunk = item_to_chunk.get(matching_item_id)
         
         # Create excerpt from chunk text (first 200 chars)
-        text = chunk.get('text', '')
-        excerpt = text[:200]
-        if len(text) > 200:
-            excerpt += "..."
-        
-        # Try to get item title (synchronously for now - we'll need to fetch async later)
-        # For now, use a placeholder title
-        title = f"Source {chunk_num}"
+        excerpt = "No preview available"
+        if chunk:
+            text = chunk.get('text', '')
+            excerpt = text[:200]
+            if len(text) > 200:
+                excerpt += "..."
         
         citation = Citation(
-            id=str(item_id) if item_id else f"chunk_{chunk_num}",
-            title=title,
-            excerpt=excerpt or "No preview available"
+            id=str(matching_item_id),
+            title=f"{source_num}. {title}",
+            excerpt=excerpt
         )
         citations.append(citation)
     

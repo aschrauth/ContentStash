@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatOverlayProps {
   isOpen: boolean;
@@ -149,7 +151,40 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
                           : "bg-white/10 text-slate-200 rounded-tl-none border border-white/5"
                       )}
                     >
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      {msg.role === 'user' ? (
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      ) : (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          className="prose prose-invert prose-sm max-w-none"
+                          components={{
+                            // Customize markdown rendering
+                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                            ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+                            li: ({ children }) => <li className="ml-2">{children}</li>,
+                            strong: ({ children }) => <strong className="font-bold text-white">{children}</strong>,
+                            em: ({ children }) => <em className="italic">{children}</em>,
+                            code: ({ children }) => <code className="bg-black/30 px-1.5 py-0.5 rounded text-violet-300">{children}</code>,
+                            pre: ({ children }) => <pre className="bg-black/30 p-3 rounded-lg overflow-x-auto mb-2">{children}</pre>,
+                            a: ({ href, children }) => (
+                              <a href={href} className="text-violet-300 hover:text-violet-200 underline" target="_blank" rel="noopener noreferrer">
+                                {children}
+                              </a>
+                            ),
+                            h1: ({ children }) => <h1 className="text-xl font-bold mb-2 text-white">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-lg font-bold mb-2 text-white">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-base font-bold mb-2 text-white">{children}</h3>,
+                            blockquote: ({ children }) => (
+                              <blockquote className="border-l-4 border-violet-500 pl-4 italic my-2 text-slate-300">
+                                {children}
+                              </blockquote>
+                            ),
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      )}
                     </div>
 
                     {/* Citations */}
