@@ -458,21 +458,33 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
         if item_id and item_id not in item_to_chunk:
             item_to_chunk[item_id] = chunk
     
-    # Build reverse mapping: title -> source number
-    title_to_number = {title: num for num, title in source_mapping.items()}
+    # Build reverse mapping from source_mapping that was created in _build_evidence_from_chunks
+    # source_mapping already maps source_num -> title
+    # We need to map item_id -> source_num
     
-    # Build mapping: item_id -> source number
+    # Build mapping: item_id -> source number by re-using the logic from _build_evidence_from_chunks
     item_to_number = {}
-    for chunk in chunks:
-        item_metadata = await _get_item_metadata(chunk)
-        title = item_metadata.get('title', '')
-        item_id = chunk.get('item_id')
-        if title in title_to_number and item_id:
-            item_to_number[item_id] = title_to_number[title]
+    seen_items = {}
+    current_number = 1
     
-    # Find all numbered citations in the answer (e.g., [1], [2], [3])
-    citation_pattern = r'\[(\d+)\]'
-    cited_numbers = set(re.findall(citation_pattern, answer))
+    for chunk in chunks:
+        item_id = chunk.get('item_id')
+        if item_id and item_id not in seen_items:
+            seen_items[item_id] = current_number
+            item_to_number[item_id] = current_number
+            current_number += 1
+    
+    # Find all numbered citations in the answer
+    # Handles both [1] and [1, 2, 3] formats
+    citation_pattern = r'\[(\d+(?:,\s*\d+)*)\]'
+    matches = re.findall(citation_pattern, answer)
+    
+    # Extract individual numbers from matches (handles comma-separated lists)
+    cited_numbers = set()
+    for match in matches:
+        # Split by comma and extract each number
+        numbers = re.findall(r'\d+', match)
+        cited_numbers.update(numbers)
     
     # Generate citations for cited sources - one per unique source number
     citations = []
