@@ -14,9 +14,21 @@ async def connect_to_mongo():
         # Test the connection
         await mongodb_client.admin.command('ping')
         print("✅ Successfully connected to MongoDB")
+        
+        # Create text index on saved_items collection for full-text search
+        db = mongodb_client.contentstash
+        await db.saved_items.create_index([
+            ("title", "text"),
+            ("description", "text"),
+            ("notes_markdown", "text"),
+            ("tags", "text"),
+            ("archived_text", "text")
+        ], name="text_search_index")
+        print("✅ Text search index created/verified on saved_items collection")
     except Exception as e:
-        print(f"❌ Error connecting to MongoDB: {e}")
-        raise
+        print(f"⚠️  Warning: Could not connect to MongoDB: {e}")
+        print("⚠️  Server will start but database operations will fail")
+        # Don't raise - allow server to start without DB connection
 
 
 async def close_mongo_connection():

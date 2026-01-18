@@ -3,10 +3,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, MessageSquare, Sparkles, ChevronRight, ExternalLink } from 'lucide-react';
-import { useStore, ChatMessage } from '@/lib/store';
-import { simulateRAGChat } from '@/lib/simulation';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { useStore } from '@/lib/store';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
@@ -16,7 +15,7 @@ interface ChatOverlayProps {
 }
 
 export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
-  const { items, currentUser, addChatThread, addChatMessage, chatThreads } = useStore();
+  const { currentUser, createChatThread, sendChatMessage, chatThreads, fetchChatThread } = useStore();
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -51,36 +50,25 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
 
     const userMessage = input;
     setInput('');
-
-    let threadId = activeThreadId;
-    if (!threadId) {
-      threadId = addChatThread(userMessage);
-      setActiveThreadId(threadId);
-    }
-
-    // Add user message
-    addChatMessage(threadId, {
-      role: 'user',
-      content: userMessage,
-    });
-
     setIsTyping(true);
 
     try {
-      // Simulate RAG
-      const userItems = items.filter(i => i.ownerId === currentUser.id);
-      const response = await simulateRAGChat(userMessage, userItems);
-
-      addChatMessage(threadId, {
-        role: 'assistant',
-        content: response.answer,
-        citations: response.citations,
-      });
+      let threadId = activeThreadId;
+      
+      if (!threadId) {
+        // Create new thread with first message
+        threadId = await createChatThread(userMessage);
+        setActiveThreadId(threadId);
+      } else {
+        // Send message to existing thread
+        await sendChatMessage(threadId, userMessage);
+      }
+      
+      // Fetch updated thread to get the latest messages
+      await fetchChatThread(threadId);
     } catch (error) {
-      addChatMessage(threadId, {
-        role: 'assistant',
-        content: "I'm sorry, I encountered an error while searching your library.",
-      });
+      console.error('Error sending message:', error);
+      // Optionally show error to user
     } finally {
       setIsTyping(false);
     }
@@ -145,9 +133,9 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
                   </p>
                 </div>
               ) : (
-                messages.map((msg) => (
+                messages.map((msg, idx) => (
                   <div
-                    key={msg.id}
+                    key={idx}
                     className={cn(
                       "flex flex-col max-w-[90%]",
                       msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start"
@@ -169,9 +157,9 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
                       <div className="mt-3 space-y-2 w-full">
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider ml-1">Sources</p>
                         {msg.citations.map((citation, idx) => (
-                          <Link 
-                            key={idx} 
-                            href={`/items/${citation.savedItemId}`}
+                          <Link
+                            key={idx}
+                            href={`/items/${citation.id}`}
                             onClick={onClose}
                             className="block p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-violet-500/30 transition-all group"
                           >

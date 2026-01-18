@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
+import { API_ENDPOINTS } from './api';
 
 // --- Types ---
 
@@ -10,10 +11,9 @@ export type User = {
   id: string;
   email: string;
   name: string;
-  passwordHash: string; // Simulated hash
   createdAt: string;
   preferences?: {
-    viewMode: 'grid' | 'list';
+    viewMode?: 'grid' | 'list';
   };
 };
 
@@ -37,11 +37,10 @@ export type SavedItem = {
 };
 
 export type ChatMessage = {
-  id: string;
   role: 'user' | 'assistant';
   content: string;
   citations?: {
-    savedItemId: string;
+    id: string;
     excerpt: string;
     title: string;
   }[];
@@ -55,15 +54,20 @@ export type ChatThread = {
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
-  messages: ChatMessage[];
+};
+
+export type TagWithCount = {
+  name: string;
+  count: number;
 };
 
 // --- Store ---
 
 interface AppState {
   currentUser: User | null;
-  users: User[];
+  token: string | null;
   items: SavedItem[];
+  tags: TagWithCount[];
   chatThreads: ChatThread[];
   
   // Actions
@@ -73,67 +77,124 @@ interface AppState {
   updateProfile: (name: string, email: string) => void;
   updatePreferences: (preferences: Partial<User['preferences']>) => void;
   
+  fetchItems: (searchQuery?: string, tags?: string[]) => Promise<void>;
+  fetchTags: () => Promise<void>;
   addItem: (item: Omit<SavedItem, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>) => Promise<string>;
-  updateItem: (id: string, updates: Partial<SavedItem>) => void;
-  deleteItem: (id: string) => void; // Soft delete
+  updateItem: (id: string, updates: Partial<SavedItem>) => Promise<void>;
+  deleteItem: (id: string) => Promise<void>; // Soft delete
   restoreItem: (id: string) => void;
   permanentlyDeleteItem: (id: string) => void;
   
-  addChatThread: (firstMessage: string) => string;
-  addChatMessage: (threadId: string, message: Omit<ChatMessage, 'id' | 'createdAt'>) => void;
-  deleteChatThread: (id: string) => void;
+  fetchChatThreads: () => Promise<void>;
+  fetchChatThread: (threadId: string) => Promise<ChatThread | null>;
+  createChatThread: (firstMessage: string) => Promise<string>;
+  sendChatMessage: (threadId: string, message: string) => Promise<void>;
+  deleteChatThread: (id: string) => Promise<void>;
 }
 
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       currentUser: null,
-      users: [],
+      token: null,
       items: [],
+      tags: [],
       chatThreads: [],
 
       register: async (email, password, name) => {
-        const { users } = get();
-        if (users.find(u => u.email === email)) {
-          throw new Error("User already exists");
+        try {
+          const response = await fetch(API_ENDPOINTS.signup, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, password, name }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Registration failed');
+          }
+
+          const data = await response.json();
+          
+          // Store token in localStorage
+          localStorage.setItem('token', data.token);
+          
+          set({
+            currentUser: data.user,
+            token: data.token
+          });
+          
+          // Fetch items after successful registration
+          await get().fetchItems();
+        } catch (error) {
+          console.error('Registration error:', error);
+          throw error;
         }
-        const newUser: User = {
-          id: uuidv4(),
-          email,
-          name,
-          passwordHash: btoa(password), // Simple mock hash
-          createdAt: new Date().toISOString(),
-          preferences: { viewMode: 'list' }, // Default preference set to list
-        };
-        set({ users: [...users, newUser], currentUser: newUser });
       },
 
       login: async (email, password) => {
-        const { users } = get();
-        const user = users.find(u => u.email === email && u.passwordHash === btoa(password));
-        if (!user) {
-          throw new Error("Invalid credentials");
+        try {
+          const response = await fetch(API_ENDPOINTS.login, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, password }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Login failed');
+          }
+
+          const data = await response.json();
+          
+          // Store token in localStorage
+          localStorage.setItem('token', data.token);
+          
+          set({
+            currentUser: data.user,
+            token: data.token
+          });
+          
+          // Fetch items after successful login
+          await get().fetchItems();
+        } catch (error) {
+          console.error('Login error:', error);
+          throw error;
         }
-        set({ currentUser: user });
       },
 
       logout: () => {
-        set({ currentUser: null });
+        // Remove token from localStorage
+        localStorage.removeItem('token');
+        
+        // Call logout endpoint (optional, mainly for server-side cleanup)
+        const { token } = get();
+        if (token) {
+          fetch(API_ENDPOINTS.logout, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          }).catch(err => console.error('Logout error:', err));
+        }
+        
+        set({ currentUser: null, token: null });
       },
 
       updateProfile: (name, email) => {
-        const { currentUser, users } = get();
+        const { currentUser } = get();
         if (!currentUser) return;
         
         const updatedUser = { ...currentUser, name, email };
-        set({
-          currentUser: updatedUser,
-          users: users.map(u => u.id === currentUser.id ? updatedUser : u)
-        });
+        set({ currentUser: updatedUser });
       },
 
       updatePreferences: (preferences) => {
-        const { currentUser, users } = get();
+        const { currentUser } = get();
         if (!currentUser) return;
 
         const updatedUser = { 
@@ -141,48 +202,235 @@ export const useStore = create<AppState>()(
           preferences: { ...currentUser.preferences, ...preferences } 
         };
 
-        set({
-          currentUser: updatedUser,
-          users: users.map(u => u.id === currentUser.id ? updatedUser : u)
-        });
+        set({ currentUser: updatedUser });
+      },
+
+      fetchItems: async (searchQuery?: string, tags?: string[]) => {
+        const { token } = get();
+        if (!token) return;
+
+        try {
+          // Build query parameters
+          const params = new URLSearchParams();
+          if (searchQuery && searchQuery.trim()) {
+            params.append('search', searchQuery.trim());
+          }
+          if (tags && tags.length > 0) {
+            params.append('tags', tags.join(','));
+          }
+
+          const url = `${API_ENDPOINTS.items}${params.toString() ? `?${params.toString()}` : ''}`;
+          
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch items');
+          }
+
+          const itemsData = await response.json();
+          
+          // Convert snake_case to camelCase for all items
+          const formattedItems: SavedItem[] = itemsData.map((item: any) => ({
+            id: item.id,
+            ownerId: item.owner_id,
+            url: item.url,
+            title: item.title,
+            description: item.description,
+            imageUrl: item.image_url,
+            faviconUrl: item.favicon_url,
+            notesMarkdown: item.notes_markdown,
+            tags: item.tags || [],
+            suggestedTags: item.suggested_tags,
+            suggestedTopic: item.suggested_topic,
+            archivedText: item.archived_text,
+            processingStatus: item.processing_status,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at,
+            archivedAt: item.archived_at,
+          }));
+
+          set({ items: formattedItems });
+        } catch (error) {
+          console.error('Failed to fetch items:', error);
+        }
+      },
+
+      fetchTags: async () => {
+        const { token } = get();
+        if (!token) return;
+
+        try {
+          const response = await fetch(API_ENDPOINTS.tags, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch tags');
+          }
+
+          const tagsData = await response.json();
+          set({ tags: tagsData });
+        } catch (error) {
+          console.error('Failed to fetch tags:', error);
+        }
       },
 
       addItem: async (itemData) => {
-        const { currentUser, items } = get();
-        if (!currentUser) throw new Error("Not authenticated");
+        const { token } = get();
+        if (!token) throw new Error("Not authenticated");
 
-        const newItem: SavedItem = {
-          id: uuidv4(),
-          ownerId: currentUser.id,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          ...itemData,
-        };
+        try {
+          const response = await fetch(API_ENDPOINTS.items, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              url: itemData.url,
+              title: itemData.title,
+              description: itemData.description,
+              imageUrl: itemData.imageUrl,
+              faviconUrl: itemData.faviconUrl,
+              notesMarkdown: itemData.notesMarkdown,
+              tags: itemData.tags,
+              archivedText: itemData.archivedText,
+            }),
+          });
 
-        set({ items: [newItem, ...items] });
-        return newItem.id;
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create item');
+          }
+
+          const newItem = await response.json();
+          
+          // Convert snake_case to camelCase for frontend
+          const formattedItem: SavedItem = {
+            id: newItem.id,
+            ownerId: newItem.owner_id,
+            url: newItem.url,
+            title: newItem.title,
+            description: newItem.description,
+            imageUrl: newItem.image_url,
+            faviconUrl: newItem.favicon_url,
+            notesMarkdown: newItem.notes_markdown,
+            tags: newItem.tags || [],
+            suggestedTags: newItem.suggested_tags,
+            suggestedTopic: newItem.suggested_topic,
+            archivedText: newItem.archived_text,
+            processingStatus: newItem.processing_status,
+            createdAt: newItem.created_at,
+            updatedAt: newItem.updated_at,
+            archivedAt: newItem.archived_at,
+          };
+
+          // Add to local state
+          const { items } = get();
+          set({ items: [formattedItem, ...items] });
+          
+          return formattedItem.id;
+        } catch (error) {
+          console.error('Failed to create item:', error);
+          throw error;
+        }
       },
 
-      updateItem: (id, updates) => {
-        const { items } = get();
-        set({
-          items: items.map(item => 
-            item.id === id 
-              ? { ...item, ...updates, updatedAt: new Date().toISOString() } 
-              : item
-          )
-        });
+      updateItem: async (id, updates) => {
+        const { token } = get();
+        if (!token) throw new Error("Not authenticated");
+
+        try {
+          const response = await fetch(API_ENDPOINTS.itemById(id), {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              url: updates.url,
+              title: updates.title,
+              description: updates.description,
+              image_url: updates.imageUrl,
+              favicon_url: updates.faviconUrl,
+              notes_markdown: updates.notesMarkdown,
+              tags: updates.tags,
+              archived_text: updates.archivedText,
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update item');
+          }
+
+          const updatedItem = await response.json();
+          
+          // Convert snake_case to camelCase
+          const formattedItem: SavedItem = {
+            id: updatedItem.id,
+            ownerId: updatedItem.owner_id,
+            url: updatedItem.url,
+            title: updatedItem.title,
+            description: updatedItem.description,
+            imageUrl: updatedItem.image_url,
+            faviconUrl: updatedItem.favicon_url,
+            notesMarkdown: updatedItem.notes_markdown,
+            tags: updatedItem.tags || [],
+            suggestedTags: updatedItem.suggested_tags,
+            suggestedTopic: updatedItem.suggested_topic,
+            archivedText: updatedItem.archived_text,
+            processingStatus: updatedItem.processing_status,
+            createdAt: updatedItem.created_at,
+            updatedAt: updatedItem.updated_at,
+            archivedAt: updatedItem.archived_at,
+          };
+
+          // Update local state
+          const { items } = get();
+          set({
+            items: items.map(item =>
+              item.id === id ? formattedItem : item
+            )
+          });
+        } catch (error) {
+          console.error('Failed to update item:', error);
+          throw error;
+        }
       },
 
-      deleteItem: (id) => {
-        const { items } = get();
-        set({
-          items: items.map(item => 
-            item.id === id 
-              ? { ...item, archivedAt: new Date().toISOString() } 
-              : item
-          )
-        });
+      deleteItem: async (id) => {
+        const { token } = get();
+        if (!token) throw new Error("Not authenticated");
+
+        try {
+          const response = await fetch(API_ENDPOINTS.itemById(id), {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete item');
+          }
+
+          // Remove from local state (soft delete - filter out)
+          const { items } = get();
+          set({
+            items: items.filter(item => item.id !== id)
+          });
+        } catch (error) {
+          console.error('Failed to delete item:', error);
+          throw error;
+        }
       },
 
       restoreItem: (id) => {
@@ -201,56 +449,240 @@ export const useStore = create<AppState>()(
         set({ items: items.filter(item => item.id !== id) });
       },
 
-      addChatThread: (firstMessage) => {
-        const { currentUser, chatThreads } = get();
-        if (!currentUser) throw new Error("Not authenticated");
+      fetchChatThreads: async () => {
+        const { token } = get();
+        if (!token) return;
 
-        const newThread: ChatThread = {
-          id: uuidv4(),
-          ownerId: currentUser.id,
-          title: firstMessage.slice(0, 30) + (firstMessage.length > 30 ? '...' : ''),
-          messages: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
+        try {
+          const response = await fetch(API_ENDPOINTS.chatThreads, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
 
-        set({ chatThreads: [newThread, ...chatThreads] });
-        return newThread.id;
+          if (!response.ok) {
+            throw new Error('Failed to fetch chat threads');
+          }
+
+          const threadsData = await response.json();
+          
+          // Convert snake_case to camelCase
+          const formattedThreads: ChatThread[] = threadsData.map((thread: any) => ({
+            id: thread.id,
+            ownerId: thread.owner_id,
+            title: thread.title,
+            messages: thread.messages?.map((msg: any) => ({
+              role: msg.role,
+              content: msg.content,
+              citations: msg.citations?.map((cit: any) => ({
+                id: cit.id,
+                title: cit.title,
+                excerpt: cit.excerpt,
+              })) || [],
+              createdAt: msg.created_at,
+            })) || [],
+            createdAt: thread.created_at,
+            updatedAt: thread.updated_at,
+          }));
+
+          set({ chatThreads: formattedThreads });
+        } catch (error) {
+          console.error('Failed to fetch chat threads:', error);
+        }
       },
 
-      addChatMessage: (threadId, message) => {
-        const { chatThreads } = get();
-        const newMessage: ChatMessage = {
-          id: uuidv4(),
-          createdAt: new Date().toISOString(),
-          ...message,
-        };
+      fetchChatThread: async (threadId: string) => {
+        const { token } = get();
+        if (!token) return null;
 
-        set({
-          chatThreads: chatThreads.map(thread => 
-            thread.id === threadId 
-              ? { ...thread, messages: [...thread.messages, newMessage], updatedAt: new Date().toISOString() } 
-              : thread
-          )
-        });
+        try {
+          const response = await fetch(API_ENDPOINTS.chatThreadById(threadId), {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch chat thread');
+          }
+
+          const threadData = await response.json();
+          
+          // Convert snake_case to camelCase
+          const formattedThread: ChatThread = {
+            id: threadData.id,
+            ownerId: threadData.owner_id,
+            title: threadData.title,
+            messages: threadData.messages?.map((msg: any) => ({
+              role: msg.role,
+              content: msg.content,
+              citations: msg.citations?.map((cit: any) => ({
+                id: cit.id,
+                title: cit.title,
+                excerpt: cit.excerpt,
+              })) || [],
+              createdAt: msg.created_at,
+            })) || [],
+            createdAt: threadData.created_at,
+            updatedAt: threadData.updated_at,
+          };
+
+          // Update local state
+          const { chatThreads } = get();
+          const existingIndex = chatThreads.findIndex(t => t.id === threadId);
+          if (existingIndex >= 0) {
+            const updatedThreads = [...chatThreads];
+            updatedThreads[existingIndex] = formattedThread;
+            set({ chatThreads: updatedThreads });
+          } else {
+            set({ chatThreads: [formattedThread, ...chatThreads] });
+          }
+
+          return formattedThread;
+        } catch (error) {
+          console.error('Failed to fetch chat thread:', error);
+          return null;
+        }
       },
 
-      deleteChatThread: (id) => {
-        const { chatThreads } = get();
-        set({ chatThreads: chatThreads.filter(t => t.id !== id) });
+      createChatThread: async (firstMessage: string) => {
+        const { token } = get();
+        if (!token) throw new Error("Not authenticated");
+
+        try {
+          const response = await fetch(API_ENDPOINTS.chatThreads, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ message: firstMessage }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create chat thread');
+          }
+
+          const threadData = await response.json();
+          
+          // Convert snake_case to camelCase
+          const formattedThread: ChatThread = {
+            id: threadData.id,
+            ownerId: threadData.owner_id,
+            title: threadData.title,
+            messages: threadData.messages?.map((msg: any) => ({
+              role: msg.role,
+              content: msg.content,
+              citations: msg.citations?.map((cit: any) => ({
+                id: cit.id,
+                title: cit.title,
+                excerpt: cit.excerpt,
+              })) || [],
+              createdAt: msg.created_at,
+            })) || [],
+            createdAt: threadData.created_at,
+            updatedAt: threadData.updated_at,
+          };
+
+          // Add to local state
+          const { chatThreads } = get();
+          set({ chatThreads: [formattedThread, ...chatThreads] });
+          
+          return formattedThread.id;
+        } catch (error) {
+          console.error('Failed to create chat thread:', error);
+          throw error;
+        }
+      },
+
+      sendChatMessage: async (threadId: string, message: string) => {
+        const { token } = get();
+        if (!token) throw new Error("Not authenticated");
+
+        try {
+          const response = await fetch(API_ENDPOINTS.chatThreadMessages(threadId), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ message }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to send message');
+          }
+
+          const threadData = await response.json();
+          
+          // Convert snake_case to camelCase
+          const formattedThread: ChatThread = {
+            id: threadData.id,
+            ownerId: threadData.owner_id,
+            title: threadData.title,
+            messages: threadData.messages?.map((msg: any) => ({
+              role: msg.role,
+              content: msg.content,
+              citations: msg.citations?.map((cit: any) => ({
+                id: cit.id,
+                title: cit.title,
+                excerpt: cit.excerpt,
+              })) || [],
+              createdAt: msg.created_at,
+            })) || [],
+            createdAt: threadData.created_at,
+            updatedAt: threadData.updated_at,
+          };
+
+          // Update local state
+          const { chatThreads } = get();
+          set({
+            chatThreads: chatThreads.map(thread =>
+              thread.id === threadId ? formattedThread : thread
+            )
+          });
+        } catch (error) {
+          console.error('Failed to send message:', error);
+          throw error;
+        }
+      },
+
+      deleteChatThread: async (id: string) => {
+        const { token } = get();
+        if (!token) throw new Error("Not authenticated");
+
+        try {
+          const response = await fetch(API_ENDPOINTS.chatThreadById(id), {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete thread');
+          }
+
+          // Remove from local state
+          const { chatThreads } = get();
+          set({ chatThreads: chatThreads.filter(t => t.id !== id) });
+        } catch (error) {
+          console.error('Failed to delete thread:', error);
+          throw error;
+        }
       },
     }),
     {
       name: 'stash-storage',
       partialize: (state) => ({
-        users: state.users,
         items: state.items,
         chatThreads: state.chatThreads,
-        // Don't persist currentUser session automatically if we wanted strict security, 
-        // but for MVP convenience we will to keep them logged in on refresh.
-        currentUser: state.currentUser, 
+        // Store token separately in localStorage, not in zustand persist
+        // currentUser will be fetched from /me endpoint on app load
       }),
     }
   )
 );
-

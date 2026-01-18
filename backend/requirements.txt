@@ -5,6 +5,10 @@ pydantic
 pydantic-settings
 python-dotenv
 argon2-cffi
-pyjwt[crypto]
+python-jose[cryptography]
+email-validator
 beautifulsoup4
 requests
+openai
+trafilatura
+lxml_html_clean

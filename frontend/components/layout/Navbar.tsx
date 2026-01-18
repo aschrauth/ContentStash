@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, Plus, LogOut, Settings, User as UserIcon, MessageSquare } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface NavbarProps {
   onSaveClick: () => void;

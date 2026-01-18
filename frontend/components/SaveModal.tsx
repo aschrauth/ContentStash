@@ -10,9 +10,10 @@ import toast from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';
 import { simulateMetadataFetch, simulateContentExtraction, simulateContentAnalysis } from '@/lib/simulation';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
+import { API_ENDPOINTS } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import RichTextEditor from '@/components/RichTextEditor';
 
 const saveSchema = z.object({
@@ -35,6 +36,7 @@ interface SaveModalProps {
 export default function SaveModal({ onClose }: SaveModalProps) {
   const addItem = useStore((state) => state.addItem);
   const updateItem = useStore((state) => state.updateItem);
+  const token = useStore((state) => state.token);
   
   const [activeTab, setActiveTab] = useState<'url' | 'paste'>('url');
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
@@ -44,6 +46,8 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
   const [suggestedTopic, setSuggestedTopic] = useState<string | null>(null);
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
 
   const { register, handleSubmit, setValue, watch, control, formState: { errors } } = useForm<SaveFormValues>({
     resolver: zodResolver(saveSchema),
@@ -58,6 +62,55 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   const urlValue = watch('url');
   const contentValue = watch('content');
   const currentTags = watch('tags') || '';
+
+  // Autocomplete for tags
+  useEffect(() => {
+    const fetchAutocomplete = async (query: string) => {
+      if (!token || query.length < 1) {
+        setAutocompleteSuggestions([]);
+        setShowAutocomplete(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(API_ENDPOINTS.tagsAutocomplete(query), {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const suggestions = await response.json();
+          setAutocompleteSuggestions(suggestions);
+          setShowAutocomplete(suggestions.length > 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch autocomplete suggestions:', error);
+      }
+    };
+
+    // Check if user is typing a tag (after a comma or at the start)
+    const tags = currentTags.split(',').map(t => t.trim());
+    const lastTag = tags[tags.length - 1];
+    
+    // Only show autocomplete if the last tag starts with # or has some text
+    if (lastTag && lastTag.length > 0) {
+      const query = lastTag.startsWith('#') ? lastTag.slice(1) : lastTag;
+      if (query.length > 0) {
+        const timer = setTimeout(() => fetchAutocomplete(query), 300);
+        return () => clearTimeout(timer);
+      }
+    }
+    
+    setShowAutocomplete(false);
+  }, [currentTags, token]);
+
+  const selectAutocompleteTag = (tag: string) => {
+    const tags = currentTags.split(',').map(t => t.trim());
+    tags[tags.length - 1] = tag;
+    setValue('tags', tags.join(', '));
+    setShowAutocomplete(false);
+  };
 
   // Auto-fetch metadata when URL changes (debounced)
   useEffect(() => {
@@ -318,15 +371,30 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                   </div>
                 )}
 
-                <div className="space-y-2">
+                <div className="space-y-2 relative">
                   <Label htmlFor="tags">Tags (comma separated)</Label>
-                  <Input 
-                    id="tags" 
-                    placeholder="design, research, ai" 
+                  <Input
+                    id="tags"
+                    placeholder="design, research, ai"
                     {...register('tags')}
                   />
+                  {showAutocomplete && autocompleteSuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-[#1e293b] border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                      {autocompleteSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => selectAutocompleteTag(suggestion)}
+                          className="w-full px-3 py-2 text-left text-sm text-slate-300 hover:bg-violet-600/20 hover:text-violet-300 transition-colors flex items-center gap-2"
+                        >
+                          <span className="text-violet-400">#</span>
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <p className="text-xs text-slate-500">
-                    Tip: You can add more tags later.
+                    Tip: Start typing to see tag suggestions from your library.
                   </p>
                 </div>
 

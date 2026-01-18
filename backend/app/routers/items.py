@@ -1,0 +1,466 @@
+from fastapi import APIRouter, HTTPException, status, Depends, Query, BackgroundTasks
+from typing import List, Optional
+from datetime import datetime
+from bson import ObjectId
+from ..database import get_database
+from ..models.saved_item import SavedItem, SavedItemCreate, SavedItemUpdate
+from ..models.user import User
+from ..dependencies import get_current_user
+from ..services.background import process_item_background
+
+router = APIRouter()
+
+
+@router.post("", response_model=SavedItem, status_code=status.HTTP_201_CREATED)
+async def create_item(
+    item_data: SavedItemCreate,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Create a new saved item.
+    
+    - Validates that either URL or content is provided
+    - Sets processing_status to "pending"
+    - Sets owner_id from current user
+    - Schedules background processing if URL is provided
+    - Returns created item
+    """
+    db = get_database()
+    
+    # Validate that either URL or content (title) is provided
+    if not item_data.url and not item_data.title:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either URL or title must be provided"
+        )
+    
+    # Create item document
+    now = datetime.utcnow()
+    item_doc = {
+        "owner_id": ObjectId(current_user.id),
+        "url": item_data.url,
+        "title": item_data.title,
+        "description": item_data.description,
+        "image_url": item_data.image_url,
+        "favicon_url": item_data.favicon_url,
+        "notes_markdown": item_data.notes_markdown,
+        "tags": item_data.tags,
+        "archived_text": item_data.archived_text,
+        "suggested_tags": None,
+        "suggested_topic": None,
+        "processing_status": "pending",
+        "processing_error": None,
+        "created_at": now,
+        "updated_at": now,
+        "archived_at": None
+    }
+    
+    # Insert into database
+    result = await db.saved_items.insert_one(item_doc)
+    item_id = str(result.inserted_id)
+    
+    # Schedule background processing if URL is provided
+    if item_data.url:
+        background_tasks.add_task(
+            process_item_background,
+            item_id,
+            current_user.id
+        )
+    
+    # Return created item
+    return SavedItem(
+        id=item_id,
+        owner_id=current_user.id,
+        url=item_data.url,
+        title=item_data.title,
+        description=item_data.description,
+        image_url=item_data.image_url,
+        favicon_url=item_data.favicon_url,
+        notes_markdown=item_data.notes_markdown,
+        tags=item_data.tags,
+        archived_text=item_data.archived_text,
+        suggested_tags=None,
+        suggested_topic=None,
+        processing_status="pending",
+        processing_error=None,
+        created_at=now,
+        updated_at=now,
+        archived_at=None
+    )
+
+
+@router.get("", response_model=List[SavedItem])
+async def list_items(
+    current_user: User = Depends(get_current_user),
+    tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by"),
+    search: Optional[str] = Query(None, description="Search query for full-text search"),
+    sort: Optional[str] = Query("newest", description="Sort order: newest, oldest, title")
+):
+    """
+    List user's saved items.
+    
+    - Filters by owner_id (from JWT)
+    - Excludes soft-deleted items
+    - Supports full-text search using MongoDB text index
+    - Supports tag filtering with AND logic
+    """
+    db = get_database()
+    
+    # Build query
+    query = {
+        "owner_id": ObjectId(current_user.id),
+        "archived_at": None  # Exclude soft-deleted items
+    }
+    
+    # Add tag filtering (AND logic)
+    if tags:
+        tag_list = [tag.strip() for tag in tags.split(",")]
+        query["tags"] = {"$all": tag_list}
+    
+    # Add full-text search using MongoDB text index
+    if search:
+        query["$text"] = {"$search": search}
+    
+    # Determine sort order
+    sort_criteria = []
+    
+    if search:
+        # When searching, sort by text relevance score first
+        sort_criteria.append(("score", {"$meta": "textScore"}))
+    
+    # Add secondary sort
+    if sort == "oldest":
+        sort_criteria.append(("created_at", 1))
+    elif sort == "title":
+        sort_criteria.append(("title", 1))
+    else:  # newest (default)
+        sort_criteria.append(("created_at", -1))
+    
+    # Build projection to include text score when searching
+    projection = None
+    if search:
+        projection = {"score": {"$meta": "textScore"}}
+    
+    # Fetch items
+    cursor = db.saved_items.find(query, projection)
+    
+    # Apply sorting
+    for field, direction in sort_criteria:
+        cursor = cursor.sort(field, direction)
+    
+    items_docs = await cursor.to_list(length=None)
+    
+    # Convert to SavedItem models
+    items = []
+    for doc in items_docs:
+        items.append(SavedItem(
+            id=str(doc["_id"]),
+            owner_id=str(doc["owner_id"]),
+            url=doc.get("url"),
+            title=doc["title"],
+            description=doc.get("description"),
+            image_url=doc.get("image_url"),
+            favicon_url=doc.get("favicon_url"),
+            notes_markdown=doc.get("notes_markdown"),
+            tags=doc.get("tags", []),
+            archived_text=doc.get("archived_text"),
+            suggested_tags=doc.get("suggested_tags"),
+            suggested_topic=doc.get("suggested_topic"),
+            processing_status=doc.get("processing_status", "pending"),
+            processing_error=doc.get("processing_error"),
+            created_at=doc["created_at"],
+            updated_at=doc["updated_at"],
+            archived_at=doc.get("archived_at")
+        ))
+    
+    return items
+
+
+@router.get("/{item_id}", response_model=SavedItem)
+async def get_item(
+    item_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get a single saved item by ID.
+    
+    - Verifies ownership
+    - Returns full item details
+    """
+    db = get_database()
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(item_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid item ID"
+        )
+    
+    # Fetch item
+    item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+    
+    if not item_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found"
+        )
+    
+    # Verify ownership
+    if str(item_doc["owner_id"]) != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this item"
+        )
+    
+    # Return item
+    return SavedItem(
+        id=str(item_doc["_id"]),
+        owner_id=str(item_doc["owner_id"]),
+        url=item_doc.get("url"),
+        title=item_doc["title"],
+        description=item_doc.get("description"),
+        image_url=item_doc.get("image_url"),
+        favicon_url=item_doc.get("favicon_url"),
+        notes_markdown=item_doc.get("notes_markdown"),
+        tags=item_doc.get("tags", []),
+        archived_text=item_doc.get("archived_text"),
+        suggested_tags=item_doc.get("suggested_tags"),
+        suggested_topic=item_doc.get("suggested_topic"),
+        processing_status=item_doc.get("processing_status", "pending"),
+        processing_error=item_doc.get("processing_error"),
+        created_at=item_doc["created_at"],
+        updated_at=item_doc["updated_at"],
+        archived_at=item_doc.get("archived_at")
+    )
+
+
+@router.patch("/{item_id}", response_model=SavedItem)
+async def update_item(
+    item_id: str,
+    updates: SavedItemUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update a saved item.
+    
+    - Allows updating: title, description, notes_markdown, tags, url, image_url, favicon_url, archived_text
+    - Verifies ownership
+    - Returns updated item
+    """
+    db = get_database()
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(item_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid item ID"
+        )
+    
+    # Fetch item to verify ownership
+    item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+    
+    if not item_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found"
+        )
+    
+    # Verify ownership
+    if str(item_doc["owner_id"]) != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this item"
+        )
+    
+    # Build update document (only include fields that were provided)
+    update_doc = {"updated_at": datetime.utcnow()}
+    
+    if updates.title is not None:
+        update_doc["title"] = updates.title
+    
+    if updates.description is not None:
+        update_doc["description"] = updates.description
+    
+    if updates.url is not None:
+        update_doc["url"] = updates.url
+    
+    if updates.image_url is not None:
+        update_doc["image_url"] = updates.image_url
+    
+    if updates.favicon_url is not None:
+        update_doc["favicon_url"] = updates.favicon_url
+    
+    if updates.notes_markdown is not None:
+        update_doc["notes_markdown"] = updates.notes_markdown
+    
+    if updates.tags is not None:
+        update_doc["tags"] = updates.tags
+    
+    if updates.archived_text is not None:
+        update_doc["archived_text"] = updates.archived_text
+    
+    # Update item in database
+    await db.saved_items.update_one(
+        {"_id": ObjectId(item_id)},
+        {"$set": update_doc}
+    )
+    
+    # Fetch updated item
+    updated_item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+    
+    # Return updated item
+    return SavedItem(
+        id=str(updated_item_doc["_id"]),
+        owner_id=str(updated_item_doc["owner_id"]),
+        url=updated_item_doc.get("url"),
+        title=updated_item_doc["title"],
+        description=updated_item_doc.get("description"),
+        image_url=updated_item_doc.get("image_url"),
+        favicon_url=updated_item_doc.get("favicon_url"),
+        notes_markdown=updated_item_doc.get("notes_markdown"),
+        tags=updated_item_doc.get("tags", []),
+        archived_text=updated_item_doc.get("archived_text"),
+        suggested_tags=updated_item_doc.get("suggested_tags"),
+        suggested_topic=updated_item_doc.get("suggested_topic"),
+        processing_status=updated_item_doc.get("processing_status", "pending"),
+        processing_error=updated_item_doc.get("processing_error"),
+        created_at=updated_item_doc["created_at"],
+        updated_at=updated_item_doc["updated_at"],
+        archived_at=updated_item_doc.get("archived_at")
+    )
+
+
+@router.delete("/{item_id}")
+async def delete_item(
+    item_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Soft delete a saved item.
+    
+    - Sets archived_at to current timestamp
+    - Verifies ownership
+    - Returns success message
+    """
+    db = get_database()
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(item_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid item ID"
+        )
+    
+    # Fetch item to verify ownership
+    item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+    
+    if not item_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found"
+        )
+    
+    # Verify ownership
+    if str(item_doc["owner_id"]) != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this item"
+        )
+    
+    # Soft delete: set archived_at to current time
+    await db.saved_items.update_one(
+        {"_id": ObjectId(item_id)},
+        {"$set": {"archived_at": datetime.utcnow()}}
+    )
+    
+    return {"message": "Item archived"}
+
+
+@router.post("/{item_id}/reprocess", response_model=SavedItem)
+async def reprocess_item(
+    item_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Reprocess a saved item.
+    
+    - Verifies ownership
+    - Resets processing status to 'pending'
+    - Triggers background processing again
+    - Returns updated item
+    """
+    db = get_database()
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(item_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid item ID"
+        )
+    
+    # Fetch item to verify ownership
+    item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+    
+    if not item_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found"
+        )
+    
+    # Verify ownership
+    if str(item_doc["owner_id"]) != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to reprocess this item"
+        )
+    
+    # Check if item has a URL
+    if not item_doc.get("url"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot reprocess item without URL"
+        )
+    
+    # Reset processing status to pending
+    await db.saved_items.update_one(
+        {"_id": ObjectId(item_id)},
+        {
+            "$set": {
+                "processing_status": "pending",
+                "processing_error": None,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Schedule background processing
+    background_tasks.add_task(
+        process_item_background,
+        item_id,
+        current_user.id
+    )
+    
+    # Fetch and return updated item
+    updated_item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+    
+    return SavedItem(
+        id=str(updated_item_doc["_id"]),
+        owner_id=str(updated_item_doc["owner_id"]),
+        url=updated_item_doc.get("url"),
+        title=updated_item_doc["title"],
+        description=updated_item_doc.get("description"),
+        image_url=updated_item_doc.get("image_url"),
+        favicon_url=updated_item_doc.get("favicon_url"),
+        notes_markdown=updated_item_doc.get("notes_markdown"),
+        tags=updated_item_doc.get("tags", []),
+        archived_text=updated_item_doc.get("archived_text"),
+        suggested_tags=updated_item_doc.get("suggested_tags"),
+        suggested_topic=updated_item_doc.get("suggested_topic"),
+        processing_status=updated_item_doc.get("processing_status", "pending"),
+        processing_error=updated_item_doc.get("processing_error"),
+        created_at=updated_item_doc["created_at"],
+        updated_at=updated_item_doc["updated_at"],
+        archived_at=updated_item_doc.get("archived_at")
+    )

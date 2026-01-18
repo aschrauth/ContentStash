@@ -10,13 +10,24 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost
  */
 export const API_ENDPOINTS = {
   // Auth
+  signup: `${API_BASE_URL}/auth/signup`,
   login: `${API_BASE_URL}/auth/login`,
-  register: `${API_BASE_URL}/auth/register`,
   logout: `${API_BASE_URL}/auth/logout`,
+  me: `${API_BASE_URL}/auth/me`,
   
   // Items
   items: `${API_BASE_URL}/items`,
   itemById: (id: string) => `${API_BASE_URL}/items/${id}`,
+  itemReprocess: (id: string) => `${API_BASE_URL}/items/${id}/reprocess`,
+  
+  // Tags
+  tags: `${API_BASE_URL}/tags`,
+  tagsAutocomplete: (query: string) => `${API_BASE_URL}/tags/autocomplete?q=${encodeURIComponent(query)}`,
+  
+  // Chat
+  chatThreads: `${API_BASE_URL}/chat/threads`,
+  chatThreadById: (id: string) => `${API_BASE_URL}/chat/threads/${id}`,
+  chatThreadMessages: (id: string) => `${API_BASE_URL}/chat/threads/${id}/messages`,
   
   // Collections
   collections: `${API_BASE_URL}/collections`,

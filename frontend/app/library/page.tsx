@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Filter, Grid, List, Search, Tag } from 'lucide-react';
@@ -8,14 +8,14 @@ import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import ItemCard from '@/components/ItemCard';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 export default function LibraryPage() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
   
-  const { items, currentUser, updatePreferences } = useStore();
+  const { items, currentUser, updatePreferences, fetchItems, fetchTags, tags } = useStore();
   
   // Initialize viewMode from user preferences or default to 'list'
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -29,47 +29,68 @@ export default function LibraryPage() {
     }
   }, [currentUser]);
 
+  // Fetch tags on mount
+  useEffect(() => {
+    if (currentUser) {
+      fetchTags();
+    }
+  }, [currentUser, fetchTags]);
+
+  // Debounced fetch function
+  const debouncedFetchItems = useCallback(
+    (() => {
+      let timeoutId: NodeJS.Timeout;
+      return (search: string, tags: string[]) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          fetchItems(search, tags);
+        }, 300); // 300ms debounce
+      };
+    })(),
+    [fetchItems]
+  );
+
+  // Fetch items when search or tags change
+  useEffect(() => {
+    if (currentUser) {
+      debouncedFetchItems(searchQuery, selectedTags);
+    }
+  }, [searchQuery, selectedTags, currentUser, debouncedFetchItems]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    if (currentUser) {
+      fetchItems();
+    }
+  }, [currentUser, fetchItems]);
+
   const handleViewModeChange = (mode: 'grid' | 'list') => {
     setViewMode(mode);
     updatePreferences({ viewMode: mode });
   };
 
-  // Filter items based on search and tags
-  const filteredItems = useMemo(() => {
+  // Filter items to show only user's non-archived items
+  const displayItems = useMemo(() => {
     if (!currentUser) return [];
-    
-    let result = items.filter(item => item.ownerId === currentUser.id && !item.archivedAt);
+    return items.filter(item => item.ownerId === currentUser.id && !item.archivedAt);
+  }, [items, currentUser]);
 
-    // Search Filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(item => 
-        item.title.toLowerCase().includes(query) || 
-        item.description?.toLowerCase().includes(query) ||
-        item.tags.some(tag => tag.toLowerCase().includes(query))
-      );
-    }
-
-    // Tag Filter
-    if (selectedTags.length > 0) {
-      result = result.filter(item => 
-        selectedTags.every(tag => item.tags.includes(tag))
-      );
-    }
-
-    // Sort by newest
-    return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [items, currentUser, searchQuery, selectedTags]);
-
-  // Get all unique tags for filter
+  // Get all unique tags for filter - use tags from store (with counts) or fallback to local computation
   const allTags = useMemo(() => {
     if (!currentUser) return [];
-    const tags = new Set<string>();
+    
+    // If we have tags from the backend, use those (they're already sorted by frequency)
+    if (tags && tags.length > 0) {
+      return tags.map(t => t.name);
+    }
+    
+    // Fallback to computing from items (for backwards compatibility)
+    const tagSet = new Set<string>();
     items.filter(i => i.ownerId === currentUser.id).forEach(item => {
-      item.tags.forEach(tag => tags.add(tag));
+      item.tags.forEach(tag => tagSet.add(tag));
     });
-    return Array.from(tags).sort();
-  }, [items, currentUser]);
+    return Array.from(tagSet).sort();
+  }, [items, currentUser, tags]);
 
   const toggleTag = (tag: string) => {
     setSelectedTags(prev => 
@@ -85,7 +106,7 @@ export default function LibraryPage() {
           <div>
             <h1 className="text-3xl font-bold text-white mb-1">Library</h1>
             <p className="text-slate-400">
-              {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'} saved
+              {displayItems.length} {displayItems.length === 1 ? 'item' : 'items'} saved
             </p>
           </div>
 
@@ -152,14 +173,14 @@ export default function LibraryPage() {
         )}
 
         {/* Grid/List View */}
-        {filteredItems.length > 0 ? (
+        {displayItems.length > 0 ? (
           <div className={cn(
             "grid gap-6",
-            viewMode === 'grid' 
-              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
+            viewMode === 'grid'
+              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
               : "grid-cols-1"
           )}>
-            {filteredItems.map(item => (
+            {displayItems.map(item => (
               <ItemCard key={item.id} item={item} viewMode={viewMode} />
             ))}
           </div>

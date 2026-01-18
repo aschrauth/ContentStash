@@ -10,9 +10,10 @@ import toast from 'react-hot-toast';
 import { useStore } from '@/lib/store';
 import { formatDate, cn } from '@/lib/utils';
 import { simulateContentExtraction } from '@/lib/simulation';
+import { API_ENDPOINTS } from '@/lib/api';
 import AppLayout from '@/components/layout/AppLayout';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import RichTextEditor from '@/components/RichTextEditor';
 import ConfirmationModal from '@/components/ConfirmationModal';
 
@@ -21,7 +22,7 @@ export default function ItemDetailPage() {
   // In Next.js 15, params is a Promise. We need to handle it correctly.
   const params = useParams();
   const router = useRouter();
-  const { items, updateItem, deleteItem, currentUser } = useStore();
+  const { items, updateItem, deleteItem, currentUser, token } = useStore();
   
   const [itemId, setItemId] = useState<string | null>(null);
   const [item, setItem] = useState<any>(null);
@@ -30,6 +31,8 @@ export default function ItemDetailPage() {
   const [editDescription, setEditDescription] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [newTag, setNewTag] = useState('');
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -47,7 +50,7 @@ export default function ItemDetailPage() {
     
     // Wait for hydration
     if (items.length === 0 && typeof window !== 'undefined') {
-       // If items are empty, it might be initial hydration. 
+       // If items are empty, it might be initial hydration.
        // We'll wait a bit or let the store hydration finish.
     }
 
@@ -72,6 +75,88 @@ export default function ItemDetailPage() {
       return () => clearTimeout(timer);
     }
   }, [items, itemId, router]);
+
+  // Polling effect for pending items
+  useEffect(() => {
+    if (!itemId || !token || !item) return;
+    
+    // Only poll if status is pending
+    if (item.processingStatus !== 'pending') return;
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(API_ENDPOINTS.itemById(itemId), {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
+        if (response.ok) {
+          const updatedItem = await response.json();
+          
+          // Update the item in the store
+          updateItem(itemId, updatedItem);
+          
+          // If processing is complete, stop polling
+          if (updatedItem.processingStatus !== 'pending') {
+            clearInterval(pollInterval);
+            
+            if (updatedItem.processingStatus === 'processed') {
+              toast.success('Content processed successfully!');
+            } else if (updatedItem.processingStatus === 'failed') {
+              toast.error('Processing failed: ' + (updatedItem.processingError || 'Unknown error'));
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error polling item status:', error);
+      }
+    }, 2000); // Poll every 2 seconds
+    
+    return () => clearInterval(pollInterval);
+  }, [itemId, token, item?.processingStatus, updateItem]);
+
+  // Autocomplete for tags
+  useEffect(() => {
+    const fetchAutocomplete = async (query: string) => {
+      if (!token || query.length < 1) {
+        setAutocompleteSuggestions([]);
+        setShowAutocomplete(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(API_ENDPOINTS.tagsAutocomplete(query), {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const suggestions = await response.json();
+          setAutocompleteSuggestions(suggestions);
+          setShowAutocomplete(suggestions.length > 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch autocomplete suggestions:', error);
+      }
+    };
+
+    if (newTag && newTag.length > 0) {
+      const query = newTag.startsWith('#') ? newTag.slice(1) : newTag;
+      if (query.length > 0) {
+        const timer = setTimeout(() => fetchAutocomplete(query), 300);
+        return () => clearTimeout(timer);
+      }
+    }
+    
+    setShowAutocomplete(false);
+  }, [newTag, token]);
+
+  const selectAutocompleteTag = (tag: string) => {
+    setNewTag(tag);
+    setShowAutocomplete(false);
+  };
 
   if (!currentUser) return null;
   
@@ -139,20 +224,27 @@ export default function ItemDetailPage() {
   };
 
   const handleReprocess = async () => {
-    if (!item.url) return;
+    if (!item.url || !token) return;
     setIsReprocessing(true);
     try {
-      updateItem(item.id, { processingStatus: 'pending' });
-      const result = await simulateContentExtraction(item.url);
-      updateItem(item.id, {
-        processingStatus: 'processed',
-        archivedText: result.archivedText,
-        suggestedTags: result.suggestedTags,
-        suggestedTopic: result.suggestedTopic,
+      const response = await fetch(API_ENDPOINTS.itemReprocess(item.id), {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
-      toast.success("Reprocessed successfully");
+      
+      if (response.ok) {
+        const updatedItem = await response.json();
+        updateItem(item.id, updatedItem);
+        toast.success("Reprocessing started");
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || "Reprocessing failed");
+      }
     } catch (error) {
-      updateItem(item.id, { processingStatus: 'failed' });
+      console.error('Reprocess error:', error);
       toast.error("Reprocessing failed");
     } finally {
       setIsReprocessing(false);
@@ -309,14 +401,16 @@ export default function ItemDetailPage() {
             {/* Actions */}
             <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
               <h3 className="font-semibold text-white mb-2">Actions</h3>
-              {item.processingStatus === 'failed' && (
-                <Button 
-                  variant="secondary" 
-                  className="w-full justify-start" 
+              {(item.processingStatus === 'failed' || item.processingStatus === 'processed') && item.url && (
+                <Button
+                  variant="secondary"
+                  className="w-full justify-start"
                   onClick={handleReprocess}
                   isLoading={isReprocessing}
+                  disabled={isReprocessing}
                 >
-                  <RefreshCw className="w-4 h-4 mr-2" /> Reprocess Content
+                  <RefreshCw className={cn("w-4 h-4 mr-2", isReprocessing && "animate-spin")} />
+                  {isReprocessing ? 'Reprocessing...' : 'Reprocess Content'}
                 </Button>
               )}
               <Button 
@@ -352,13 +446,28 @@ export default function ItemDetailPage() {
               </div>
 
               <form onSubmit={handleAddTag} className="relative">
-                <Input 
-                  placeholder="Add tag..." 
+                <Input
+                  placeholder="Add tag..."
                   value={newTag}
                   onChange={(e) => setNewTag(e.target.value)}
                   className="pr-8"
                 />
-                <button 
+                {showAutocomplete && autocompleteSuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-[#1e293b] border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    {autocompleteSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => selectAutocompleteTag(suggestion)}
+                        className="w-full px-3 py-2 text-left text-sm text-slate-300 hover:bg-violet-600/20 hover:text-violet-300 transition-colors flex items-center gap-2"
+                      >
+                        <span className="text-violet-400">#</span>
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
                   type="submit"
                   className="absolute right-2 top-2.5 text-slate-400 hover:text-white"
                 >
