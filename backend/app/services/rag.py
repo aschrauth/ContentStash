@@ -474,29 +474,33 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
     citation_pattern = r'\[(\d+)\]'
     cited_numbers = set(re.findall(citation_pattern, answer))
     
-    # Generate citations for cited sources
+    # Generate citations for cited sources - one per unique source number
     citations = []
-    seen_items = set()  # Track items to avoid duplicate citations
+    seen_source_numbers = set()  # Track source numbers to avoid duplicate citations
     
     for num_str in sorted(cited_numbers, key=int):
         source_num = int(num_str)
+        
+        # Skip if we've already created a citation for this source number
+        if source_num in seen_source_numbers:
+            continue
         
         # Get the title for this source number
         title = source_mapping.get(source_num)
         if not title:
             continue
         
-        # Find the corresponding chunk/item
+        # Find the corresponding chunk/item for this source number
         matching_item_id = None
         for item_id, num in item_to_number.items():
-            if num == source_num and item_id not in seen_items:
+            if num == source_num:
                 matching_item_id = item_id
                 break
         
         if not matching_item_id:
             continue
         
-        seen_items.add(matching_item_id)
+        seen_source_numbers.add(source_num)
         chunk = item_to_chunk.get(matching_item_id)
         
         # Create excerpt from chunk text (first 200 chars)
