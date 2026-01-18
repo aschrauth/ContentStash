@@ -8,7 +8,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion } from 'framer-motion';
 import { Lock, Mail } from 'lucide-react';
-import toast, { Toaster } from 'react-hot-toast';
+import { toast } from 'sonner';
+import { Toaster } from '@/components/ui/sonner';
 
 import { useStore } from '@/lib/store';
 import { Button } from '@/components/ui/Button';
@@ -35,7 +36,9 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       await login(data.email, data.password);
-      toast.success("Welcome back!");
+      toast.success("Welcome back!", {
+        duration: 3000,
+      });
       router.push('/library');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to login");
@@ -46,7 +49,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
-      <Toaster position="top-center" />
+      <Toaster />
       
       {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
