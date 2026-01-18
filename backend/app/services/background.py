@@ -169,21 +169,9 @@ async def process_item_background(item_id: str, user_id: str):
             logger.error(f"Ownership verification failed for item {item_id}")
             return
         
-        # Get the URL
+        # Get the URL and archived_text
         url = item_doc.get("url")
-        
-        if not url:
-            logger.warning(f"No URL provided for item {item_id}, skipping processing")
-            await db.saved_items.update_one(
-                {"_id": ObjectId(item_id)},
-                {
-                    "$set": {
-                        "processing_status": "processed",
-                        "updated_at": datetime.utcnow()
-                    }
-                }
-            )
-            return
+        archived_text = item_doc.get("archived_text")
         
         # Update status to pending
         await db.saved_items.update_one(
@@ -197,15 +185,30 @@ async def process_item_background(item_id: str, user_id: str):
             }
         )
         
-        # Step 1: Fetch metadata (if missing)
+        # Step 1: Fetch metadata (if missing and URL exists)
         metadata = {}
-        if not item_doc.get("title") or not item_doc.get("description"):
+        if url and (not item_doc.get("title") or not item_doc.get("description")):
             logger.info(f"Fetching metadata for {url}")
             metadata = fetch_metadata(url)
         
-        # Step 2: Extract content
-        logger.info(f"Extracting content from {url}")
-        archived_text = extract_content(url)
+        # Step 2: Extract content (only if URL exists and no archived_text)
+        if url and not archived_text:
+            logger.info(f"Extracting content from {url}")
+            archived_text = extract_content(url)
+        elif archived_text:
+            logger.info(f"Using existing archived_text for item {item_id} (pasted content)")
+        else:
+            logger.warning(f"No URL or archived_text for item {item_id}, skipping processing")
+            await db.saved_items.update_one(
+                {"_id": ObjectId(item_id)},
+                {
+                    "$set": {
+                        "processing_status": "processed",
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+            return
         
         # Step 3: Generate AI suggestions (legacy)
         ai_suggestions = {"tags": [], "topic": None}
