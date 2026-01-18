@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: Optional[str] = None
     
+    # Google Gemini
+    gemini_api_key: Optional[str] = None
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

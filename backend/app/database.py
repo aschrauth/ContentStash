@@ -46,6 +46,12 @@ def get_database():
     return mongodb_client.contentstash
 
 
+def get_item_chunks_collection():
+    """Get the item_chunks collection"""
+    db = get_database()
+    return db.item_chunks
+
+
 async def ping_database() -> bool:
     """Ping the database to check connection"""
     try:

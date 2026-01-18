@@ -6,10 +6,12 @@ from datetime import datetime
 from bson import ObjectId
 from typing import Optional
 
-from app.database import get_database
+from app.database import get_database, get_item_chunks_collection
 from app.services.metadata import fetch_metadata
 from app.services.extraction import extract_content
 from app.services.ai import generate_tags_and_topic
+from app.services.chunking import chunk_text
+from app.services.gemini import gemini_service, GeminiServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +104,68 @@ async def process_item_background(item_id: str, user_id: str):
         else:
             logger.warning(f"No content extracted for item {item_id}, skipping AI suggestions")
         
-        # Step 4: Update item with results
+        # Step 4: Chunk and embed archived_text (if available and Gemini is configured)
+        if archived_text and gemini_service.is_available():
+            try:
+                logger.info(f"Starting chunking and embedding for item {item_id}")
+                
+                # Chunk the archived text
+                chunks = chunk_text(archived_text, chunk_size=500, overlap=75)
+                logger.info(f"Created {len(chunks)} chunks for item {item_id}")
+                
+                if chunks:
+                    # Embed all chunks in batch for efficiency
+                    logger.info(f"Generating embeddings for {len(chunks)} chunks")
+                    embeddings = gemini_service.embed_batch(chunks)
+                    
+                    if len(embeddings) != len(chunks):
+                        logger.error(
+                            f"Embedding count mismatch: {len(embeddings)} embeddings "
+                            f"for {len(chunks)} chunks"
+                        )
+                    else:
+                        # Store chunks with embeddings in item_chunks collection
+                        chunks_collection = get_item_chunks_collection()
+                        
+                        # Prepare chunk documents
+                        chunk_docs = []
+                        for idx, (chunk_text, embedding) in enumerate(zip(chunks, embeddings)):
+                            chunk_doc = {
+                                "item_id": item_id,
+                                "owner_id": user_id,
+                                "chunk_index": idx,
+                                "text": chunk_text,
+                                "embedding": embedding,
+                                "created_at": datetime.utcnow()
+                            }
+                            chunk_docs.append(chunk_doc)
+                        
+                        # Delete any existing chunks for this item (in case of reprocessing)
+                        await chunks_collection.delete_many({"item_id": item_id})
+                        
+                        # Insert new chunks
+                        if chunk_docs:
+                            result = await chunks_collection.insert_many(chunk_docs)
+                            logger.info(
+                                f"Successfully stored {len(result.inserted_ids)} chunks "
+                                f"with embeddings for item {item_id}"
+                            )
+                        
+            except GeminiServiceError as e:
+                logger.error(f"Gemini service error during chunking/embedding for item {item_id}: {str(e)}")
+                # Don't fail the entire processing - just log the error
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error during chunking/embedding for item {item_id}: {str(e)}",
+                    exc_info=True
+                )
+                # Don't fail the entire processing - just log the error
+        elif archived_text and not gemini_service.is_available():
+            logger.info(
+                f"Gemini service not available, skipping chunking/embedding for item {item_id}"
+            )
+        
+        # Step 5: Update item with results
         update_doc = {
             "processing_status": "processed",
             "updated_at": datetime.utcnow(),
