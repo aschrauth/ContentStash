@@ -9,7 +9,6 @@ import * as z from 'zod';
 import { motion } from 'framer-motion';
 import { Lock, Mail } from 'lucide-react';
 import { toast } from 'sonner';
-import { Toaster } from '@/components/ui/sonner';
 
 import { useStore } from '@/lib/store';
 import { Button } from '@/components/ui/Button';
@@ -49,8 +48,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
-      <Toaster />
-      
       {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-violet-600/10 rounded-full blur-[100px]" />
