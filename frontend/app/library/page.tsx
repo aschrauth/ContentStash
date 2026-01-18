@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Filter, Grid, List, Search } from 'lucide-react';
 import { useStore } from '@/lib/store';
@@ -10,7 +10,8 @@ import ItemCard from '@/components/ItemCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
-export default function LibraryPage() {
+// Separate component that uses useSearchParams
+function LibraryContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
   
@@ -216,6 +217,29 @@ export default function LibraryPage() {
         )}
       </div>
     </AppLayout>
+  );
+}
+
+// Main page component with Suspense boundary
+export default function LibraryPage() {
+  return (
+    <Suspense fallback={
+      <AppLayout>
+        <div className="space-y-8">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-white mb-1">Library</h1>
+              <p className="text-slate-400">Loading...</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-center py-20">
+            <div className="animate-pulse text-slate-400">Loading your library...</div>
+          </div>
+        </div>
+      </AppLayout>
+    }>
+      <LibraryContent />
+    </Suspense>
   );
 }
 
