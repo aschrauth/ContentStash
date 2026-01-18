@@ -19,6 +19,8 @@ export const API_ENDPOINTS = {
   items: `${API_BASE_URL}/items`,
   itemById: (id: string) => `${API_BASE_URL}/items/${id}`,
   itemReprocess: (id: string) => `${API_BASE_URL}/items/${id}/reprocess`,
+  itemPreview: `${API_BASE_URL}/items/preview`,
+  itemGenerateMetadata: `${API_BASE_URL}/items/generate-metadata`,
   
   // Tags
   tags: `${API_BASE_URL}/tags`,

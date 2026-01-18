@@ -48,8 +48,8 @@ export default function RichTextEditor({ value, onChange, placeholder, className
     ],
     editorProps: {
       attributes: {
-        // Removed 'prose' class to rely on our custom global styles for better control
-        class: 'focus:outline-none min-h-[300px] p-4 text-slate-200',
+        // Auto-growing editor: starts compact, expands with content
+        class: 'focus:outline-none min-h-[60px] p-4 text-slate-200',
       },
     },
     onUpdate: ({ editor }) => {
@@ -73,7 +73,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
   }, [editor, value, isMounted]);
 
   if (!editor) {
-    return <div className="h-[300px] bg-white/5 rounded-lg animate-pulse border border-white/10" />;
+    return <div className="h-[60px] bg-white/5 rounded-lg animate-pulse border border-white/10" />;
   }
 
   const ToolbarButton = ({ onClick, isActive = false, icon: Icon, title }: any) => (

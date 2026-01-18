@@ -10,5 +10,6 @@ email-validator
 beautifulsoup4
 requests
 openai
-trafilatura
+readability-lxml
 lxml_html_clean
+markdownify

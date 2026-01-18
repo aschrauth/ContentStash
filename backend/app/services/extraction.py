@@ -1,16 +1,18 @@
 """
-Content extraction service using trafilatura for robust text extraction.
+Content extraction service using readability-lxml for robust text extraction.
 """
-import trafilatura
+import requests
+from readability import Document
 from typing import Optional
 import logging
+from markdownify import markdownify as md
 
 logger = logging.getLogger(__name__)
 
 
 def extract_content(url: str) -> Optional[str]:
     """
-    Extract main content text from a URL using trafilatura.
+    Extract main content text from a URL using readability-lxml.
     
     Args:
         url: The URL to extract content from
@@ -20,31 +22,40 @@ def extract_content(url: str) -> Optional[str]:
     """
     try:
         # Fetch the page content
-        downloaded = trafilatura.fetch_url(url)
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
         
-        if not downloaded:
-            logger.warning(f"Failed to download content from {url}")
-            return None
+        # Parse with readability
+        doc = Document(response.text)
         
-        # Extract the main content
-        # include_comments=False to exclude comment sections
-        # include_tables=True to preserve table data
-        # no_fallback=False to use fallback extraction if needed
-        extracted = trafilatura.extract(
-            downloaded,
-            include_comments=False,
-            include_tables=True,
-            no_fallback=False,
-            favor_precision=False  # Favor recall to get more content
-        )
+        # Get the main content HTML
+        html_content = doc.summary()
         
-        if extracted:
-            logger.info(f"Successfully extracted {len(extracted)} characters from {url}")
-            return extracted
-        else:
+        if not html_content:
             logger.warning(f"No content extracted from {url}")
             return None
+        
+        # Convert HTML to Markdown using markdownify
+        # markdownify preserves list structures including ordered lists
+        markdown_content = md(
+            html_content,
+            heading_style="ATX",  # Use # style headers
+            strip=['script', 'style']  # Remove script and style tags
+        )
+        
+        if markdown_content:
+            logger.info(f"Successfully extracted {len(markdown_content)} characters from {url}")
+            # Debug: Log a sample of the markdown to check list formatting
+            sample = markdown_content[:500] if len(markdown_content) > 500 else markdown_content
+            logger.debug(f"Markdown sample from {url}:\n{sample}")
+            return markdown_content
+        else:
+            logger.warning(f"Failed to convert HTML to Markdown for {url}")
+            return None
             
+    except requests.RequestException as e:
+        logger.error(f"Error fetching content from {url}: {str(e)}")
+        return None
     except Exception as e:
         logger.error(f"Error extracting content from {url}: {str(e)}")
         return None
@@ -52,7 +63,7 @@ def extract_content(url: str) -> Optional[str]:
 
 def extract_content_with_metadata(url: str) -> dict:
     """
-    Extract content and metadata using trafilatura.
+    Extract content and metadata using readability-lxml.
     
     Args:
         url: The URL to extract from
@@ -61,34 +72,41 @@ def extract_content_with_metadata(url: str) -> dict:
         Dictionary with 'text' and optional metadata fields
     """
     try:
-        downloaded = trafilatura.fetch_url(url)
+        # Fetch the page content
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
         
-        if not downloaded:
+        # Parse with readability
+        doc = Document(response.text)
+        
+        # Get the main content HTML
+        html_content = doc.summary()
+        
+        if not html_content:
             return {'text': None}
         
-        # Extract with metadata
-        result = trafilatura.extract(
-            downloaded,
-            include_comments=False,
-            include_tables=True,
-            output_format='json',
-            with_metadata=True
+        # Convert to markdown using markdownify
+        markdown_text = md(
+            html_content,
+            heading_style="ATX",
+            strip=['script', 'style']
         )
         
-        if result:
-            import json
-            data = json.loads(result)
-            logger.info(f"Extracted content with metadata from {url}")
-            return {
-                'text': data.get('text'),
-                'title': data.get('title'),
-                'author': data.get('author'),
-                'date': data.get('date'),
-                'url': data.get('url')
-            }
+        # Extract metadata from readability
+        title = doc.title()
         
+        logger.info(f"Extracted content with metadata from {url}")
+        return {
+            'text': markdown_text,
+            'title': title,
+            'author': None,  # readability-lxml doesn't extract author
+            'date': None,    # readability-lxml doesn't extract date
+            'url': url
+        }
+        
+    except requests.RequestException as e:
+        logger.error(f"Error fetching content from {url}: {str(e)}")
         return {'text': None}
-        
     except Exception as e:
         logger.error(f"Error extracting content with metadata from {url}: {str(e)}")
         return {'text': None}

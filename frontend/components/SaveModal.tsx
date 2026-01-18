@@ -9,7 +9,6 @@ import * as z from 'zod';
 import toast from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';
-import { simulateMetadataFetch, simulateContentExtraction, simulateContentAnalysis } from '@/lib/simulation';
 import { API_ENDPOINTS } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -128,24 +127,58 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         // Basic URL validation
         new URL(urlValue);
         
+        if (!token) {
+          return;
+        }
+        
         setIsFetchingMeta(true);
-        const meta = await simulateMetadataFetch(urlValue);
-        setValue('title', meta.title);
-        setValue('description', meta.description);
-        setPreviewImage(meta.imageUrl);
-        setSuggestedTags(meta.suggestedTags || []);
-        setSuggestedTopic(meta.suggestedTopic || null);
+        
+        // Call the real preview endpoint
+        const response = await fetch(API_ENDPOINTS.itemPreview, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ url: urlValue }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch metadata');
+        }
+        
+        const meta = await response.json();
+        
+        // Populate form fields with fetched metadata
+        if (meta.title) {
+          setValue('title', meta.title);
+        }
+        if (meta.description) {
+          setValue('description', meta.description);
+        }
+        if (meta.image_url) {
+          setPreviewImage(meta.image_url);
+        }
+        
+        // Note: Backend doesn't return suggested tags yet, so we'll keep these empty for now
+        setSuggestedTags([]);
+        setSuggestedTopic(null);
+        
         toast.success("Metadata fetched!");
         setHasFetchedMeta(true);
       } catch (e) {
-        // Ignore invalid URLs during typing
+        // Only show error if it's not just an invalid URL during typing
+        if (e instanceof Error && e.message !== 'Invalid URL') {
+          console.error('Failed to fetch metadata:', e);
+          toast.error("Failed to fetch metadata");
+        }
       } finally {
         setIsFetchingMeta(false);
       }
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [urlValue, activeTab, setValue]);
+  }, [urlValue, activeTab, setValue, token]);
 
   const handleGenerateMetadata = async () => {
     if (!contentValue || contentValue.trim().length < 10) {
@@ -153,15 +186,38 @@ export default function SaveModal({ onClose }: SaveModalProps) {
       return;
     }
 
+    if (!token) {
+      toast.error("Authentication required");
+      return;
+    }
+
     setIsGeneratingMeta(true);
     try {
-      const analysis = await simulateContentAnalysis(contentValue);
-      setValue('title', analysis.title);
-      setValue('description', analysis.description);
-      setValue('tags', analysis.tags.join(', '));
+      // Call the real backend endpoint
+      const response = await fetch(API_ENDPOINTS.itemGenerateMetadata, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: contentValue }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate metadata');
+      }
+
+      const metadata = await response.json();
+      
+      // Populate form fields with generated metadata
+      setValue('title', metadata.title);
+      setValue('description', metadata.description);
+      setValue('tags', metadata.tags.join(', '));
+      
       toast.success("Metadata generated!");
       setHasFetchedMeta(true); // Reveal fields
     } catch (error) {
+      console.error('Failed to generate metadata:', error);
       toast.error("Failed to generate metadata");
     } finally {
       setIsGeneratingMeta(false);
@@ -181,7 +237,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   const onSubmit = async (data: SaveFormValues) => {
     setIsSaving(true);
     try {
-      const tags = data.tags 
+      const tags = data.tags
         ? data.tags.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean)
         : [];
 
@@ -199,26 +255,11 @@ export default function SaveModal({ onClose }: SaveModalProps) {
       toast.success("Item saved to library!");
       onClose();
 
-      // Trigger background processing simulation
-      if (activeTab === 'url' && data.url) {
-        simulateContentExtraction(data.url)
-          .then(result => {
-            updateItem(newItemId, {
-              processingStatus: 'processed',
-              archivedText: result.archivedText,
-              suggestedTags: result.suggestedTags,
-              suggestedTopic: result.suggestedTopic,
-            });
-            toast.success("Content processed successfully!", { id: 'processing-success' });
-          })
-          .catch(() => {
-            updateItem(newItemId, { processingStatus: 'failed' });
-            toast.error("Content processing failed", { id: 'processing-fail' });
-          });
-      } else {
-        // For pasted content, we just mark as processed immediately
+      // For pasted content, mark as processed immediately since content is already provided
+      if (activeTab === 'paste') {
         updateItem(newItemId, { processingStatus: 'processed' });
       }
+      // For URLs, the backend will process in background - no client-side simulation needed
 
     } catch (error) {
       toast.error("Failed to save item");

@@ -5,10 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import toast from 'react-hot-toast';
 
 import { useStore } from '@/lib/store';
-import { formatDate, cn } from '@/lib/utils';
+import { formatDate, cn, cleanMarkdown } from '@/lib/utils';
 import { simulateContentExtraction } from '@/lib/simulation';
 import { API_ENDPOINTS } from '@/lib/api';
 import AppLayout from '@/components/layout/AppLayout';
@@ -36,6 +37,30 @@ export default function ItemDetailPage() {
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [isAuthInitializing, setIsAuthInitializing] = useState(true);
+
+  // Detect when Zustand has finished hydrating from localStorage
+  useEffect(() => {
+    // Small delay to ensure persist middleware has hydrated
+    const timer = setTimeout(() => {
+      setHasHydrated(true);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Wait for auth initialization (token restoration from localStorage)
+  useEffect(() => {
+    const checkAuth = async () => {
+      // Wait a bit for useAuth hook to restore token from localStorage
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setIsAuthInitializing(false);
+    };
+    
+    if (hasHydrated) {
+      checkAuth();
+    }
+  }, [hasHydrated]);
 
   // Handle params safely
   useEffect(() => {
@@ -46,35 +71,60 @@ export default function ItemDetailPage() {
 
   // Load item data once itemId and items are available
   useEffect(() => {
+    // Wait for both hydration and auth initialization
+    if (!hasHydrated || isAuthInitializing) return;
+    
+    // If no token after auth initialization, redirect to login
+    if (!token) {
+      router.push('/login');
+      return;
+    }
+    
     if (!itemId) return;
     
-    // Wait for hydration
-    if (items.length === 0 && typeof window !== 'undefined') {
-       // If items are empty, it might be initial hydration.
-       // We'll wait a bit or let the store hydration finish.
-    }
-
     const foundItem = items.find(i => i.id === itemId);
     
     if (foundItem) {
+      // Item found in store
       setItem(foundItem);
       setEditTitle(foundItem.title);
       setEditDescription(foundItem.description || '');
       setNoteContent(foundItem.notesMarkdown || '');
       setIsLoading(false);
-    } else if (items.length > 0) {
-      // Only redirect if we have items but didn't find this one
-      toast.error("Item not found");
-      router.push('/library');
     } else {
-      // Still loading or empty library
-      // We'll keep loading state true for a moment
-      const timer = setTimeout(() => {
-         if (items.length === 0) setIsLoading(false); // Stop loading if still empty after timeout
-      }, 1000);
-      return () => clearTimeout(timer);
+      // Item not in store - fetch from API (handles refresh case)
+      const fetchItem = async () => {
+        try {
+          const response = await fetch(API_ENDPOINTS.itemById(itemId), {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+          
+          if (response.ok) {
+            const fetchedItem = await response.json();
+            setItem(fetchedItem);
+            setEditTitle(fetchedItem.title);
+            setEditDescription(fetchedItem.description || '');
+            setNoteContent(fetchedItem.notesMarkdown || '');
+            setIsLoading(false);
+          } else if (response.status === 404) {
+            toast.error("Item not found");
+            router.push('/library');
+          } else {
+            toast.error("Failed to load item");
+            setIsLoading(false);
+          }
+        } catch (error) {
+          console.error('Error fetching item:', error);
+          toast.error("Failed to load item");
+          setIsLoading(false);
+        }
+      };
+      
+      fetchItem();
     }
-  }, [items, itemId, router]);
+  }, [items, itemId, token, router, hasHydrated, isAuthInitializing]);
 
   // Polling effect for pending items
   useEffect(() => {
@@ -158,9 +208,8 @@ export default function ItemDetailPage() {
     setShowAutocomplete(false);
   };
 
-  if (!currentUser) return null;
-  
-  if (isLoading || !item) {
+  // Show loading while hydrating, auth initializing, or loading item
+  if (!hasHydrated || isAuthInitializing || isLoading || !item) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center min-h-[50vh]">
@@ -267,7 +316,7 @@ export default function ItemDetailPage() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
             
-            {/* Header Section */}
+            {/* Summary Panel - Header Section */}
             <div className="glass-panel p-8 rounded-2xl border border-white/10 relative overflow-hidden">
               {/* Background Image Blur */}
               {item.imageUrl && (
@@ -361,7 +410,7 @@ export default function ItemDetailPage() {
               </div>
             </div>
 
-            {/* Notes Section */}
+            {/* Personal Notes Panel */}
             <div className="glass-panel p-8 rounded-2xl border border-white/10">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -372,21 +421,46 @@ export default function ItemDetailPage() {
                 </Button>
               </div>
               
-              <div className="min-h-[300px]">
-                <RichTextEditor 
-                  value={noteContent} 
-                  onChange={setNoteContent} 
-                  placeholder="Write your thoughts here..."
-                />
-              </div>
+              <RichTextEditor
+                value={noteContent}
+                onChange={setNoteContent}
+                placeholder="Write your thoughts here..."
+              />
             </div>
 
-            {/* Archived Content Preview */}
+            {/* Archived Content Panel */}
             {item.archivedText && (
               <div className="glass-panel p-8 rounded-2xl border border-white/10">
                 <h2 className="text-xl font-bold text-white mb-4">Archived Content</h2>
-                <div className="prose prose-invert prose-sm max-w-none text-slate-300 leading-relaxed ProseMirror">
-                  <ReactMarkdown>{item.archivedText}</ReactMarkdown>
+                {console.log('Archived Text:', item.archivedText)}
+                <div className="prose-archived max-w-none text-slate-300">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({node, ...props}) => <p {...props} />,
+                      h1: ({node, ...props}) => <h1 {...props} />,
+                      h2: ({node, ...props}) => <h2 {...props} />,
+                      h3: ({node, ...props}) => <h3 {...props} />,
+                      h4: ({node, ...props}) => <h4 {...props} />,
+                      h5: ({node, ...props}) => <h5 {...props} />,
+                      h6: ({node, ...props}) => <h6 {...props} />,
+                      strong: ({node, ...props}) => <strong {...props} />,
+                      em: ({node, ...props}) => <em {...props} />,
+                      ul: ({node, ...props}) => <ul {...props} />,
+                      ol: ({node, ...props}) => <ol {...props} />,
+                      li: ({node, ...props}) => <li {...props} />,
+                      a: ({node, ...props}) => <a {...props} />,
+                      code: ({node, inline, ...props}: any) =>
+                        inline ? (
+                          <code {...props} />
+                        ) : (
+                          <code {...props} />
+                        ),
+                      blockquote: ({node, ...props}) => <blockquote {...props} />,
+                    }}
+                  >
+                    {cleanMarkdown(item.archivedText || '')}
+                  </ReactMarkdown>
                 </div>
                 <div className="mt-4 text-center">
                   <Button variant="ghost" size="sm">View Full Content</Button>
@@ -395,34 +469,10 @@ export default function ItemDetailPage() {
             )}
           </div>
 
-          {/* Sidebar */}
+          {/* Right Rail - Sidebar */}
           <div className="space-y-6">
             
-            {/* Actions */}
-            <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
-              <h3 className="font-semibold text-white mb-2">Actions</h3>
-              {(item.processingStatus === 'failed' || item.processingStatus === 'processed') && item.url && (
-                <Button
-                  variant="secondary"
-                  className="w-full justify-start"
-                  onClick={handleReprocess}
-                  isLoading={isReprocessing}
-                  disabled={isReprocessing}
-                >
-                  <RefreshCw className={cn("w-4 h-4 mr-2", isReprocessing && "animate-spin")} />
-                  {isReprocessing ? 'Reprocessing...' : 'Reprocess Content'}
-                </Button>
-              )}
-              <Button 
-                variant="danger" 
-                className="w-full justify-start"
-                onClick={handleDeleteClick}
-              >
-                <Trash2 className="w-4 h-4 mr-2" /> Delete Item
-              </Button>
-            </div>
-
-            {/* Tags */}
+            {/* Tags Panel */}
             <div className="glass-panel p-6 rounded-2xl border border-white/10">
               <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
                 <Tag className="w-4 h-4 text-violet-400" /> Tags
@@ -430,12 +480,12 @@ export default function ItemDetailPage() {
               
               <div className="flex flex-wrap gap-2 mb-4">
                 {item.tags.map(tag => (
-                  <span 
-                    key={tag} 
+                  <span
+                    key={tag}
                     className="px-2 py-1 rounded-md bg-violet-600/20 text-violet-300 text-sm border border-violet-500/30 flex items-center gap-1 group"
                   >
                     #{tag}
-                    <button 
+                    <button
                       onClick={() => removeTag(tag)}
                       className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
                     >
@@ -474,29 +524,53 @@ export default function ItemDetailPage() {
                   <Check className="w-4 h-4" />
                 </button>
               </form>
+
+              {/* AI Suggestions - moved inline with Tags */}
+              {item.suggestedTags && item.suggestedTags.length > 0 && (
+                <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-violet-900/20 to-transparent border border-violet-500/20">
+                  <h4 className="font-semibold text-white mb-2 text-sm">AI Suggestions</h4>
+                  <p className="text-xs text-slate-400 mb-3">Based on content analysis</p>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {item.suggestedTags.map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => acceptSuggestion(tag)}
+                        className="px-2 py-1 rounded-md bg-white/5 hover:bg-violet-600/20 text-slate-300 hover:text-violet-300 text-xs border border-white/10 hover:border-violet-500/30 transition-all flex items-center gap-1"
+                      >
+                        + #{tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Suggestions */}
-            {item.suggestedTags && item.suggestedTags.length > 0 && (
-              <div className="glass-panel p-6 rounded-2xl border border-white/10 bg-gradient-to-br from-violet-900/20 to-transparent">
-                <h3 className="font-semibold text-white mb-2">AI Suggestions</h3>
-                <p className="text-xs text-slate-400 mb-4">Based on content analysis</p>
-                
-                <div className="flex flex-wrap gap-2">
-                  {item.suggestedTags.map(tag => (
-                    <button
-                      key={tag}
-                      onClick={() => acceptSuggestion(tag)}
-                      className="px-2 py-1 rounded-md bg-white/5 hover:bg-violet-600/20 text-slate-300 hover:text-violet-300 text-xs border border-white/10 hover:border-violet-500/30 transition-all flex items-center gap-1"
-                    >
-                      + #{tag}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Actions Panel */}
+            <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
+              <h3 className="font-semibold text-white mb-2">Actions</h3>
+              {(item.processingStatus === 'failed' || item.processingStatus === 'processed') && item.url && (
+                <Button
+                  variant="secondary"
+                  className="w-full justify-start"
+                  onClick={handleReprocess}
+                  isLoading={isReprocessing}
+                  disabled={isReprocessing}
+                >
+                  <RefreshCw className={cn("w-4 h-4 mr-2", isReprocessing && "animate-spin")} />
+                  {isReprocessing ? 'Reprocessing...' : 'Reprocess Content'}
+                </Button>
+              )}
+              <Button 
+                variant="danger" 
+                className="w-full justify-start"
+                onClick={handleDeleteClick}
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Delete Item
+              </Button>
+            </div>
 
-            {/* Topic */}
+            {/* Topic Panel */}
             {item.suggestedTopic && (
               <div className="glass-panel p-6 rounded-2xl border border-white/10">
                 <h3 className="font-semibold text-white mb-2">Topic</h3>

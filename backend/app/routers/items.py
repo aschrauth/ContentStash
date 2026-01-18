@@ -2,13 +2,111 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query, Background
 from typing import List, Optional
 from datetime import datetime
 from bson import ObjectId
+from pydantic import BaseModel, HttpUrl
 from ..database import get_database
 from ..models.saved_item import SavedItem, SavedItemCreate, SavedItemUpdate
 from ..models.user import User
 from ..dependencies import get_current_user
 from ..services.background import process_item_background
+from ..services.metadata import fetch_metadata
+from ..services.ai import generate_metadata_from_content
 
 router = APIRouter()
+
+
+class PreviewRequest(BaseModel):
+    """Request model for URL preview."""
+    url: HttpUrl
+
+
+class PreviewResponse(BaseModel):
+    """Response model for URL preview."""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    favicon_url: Optional[str] = None
+
+
+class GenerateMetadataRequest(BaseModel):
+    """Request model for generating metadata from pasted content."""
+    content: str
+
+
+class GenerateMetadataResponse(BaseModel):
+    """Response model for generated metadata."""
+    title: str
+    description: str
+    tags: List[str]
+
+
+@router.post("/preview", response_model=PreviewResponse)
+async def preview_url(
+    request: PreviewRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Preview metadata for a URL without saving it.
+    
+    - Fetches title, description, image, and favicon
+    - Does not save to database
+    - Returns metadata for frontend to display
+    """
+    try:
+        # Convert HttpUrl to string for the metadata service
+        url_str = str(request.url)
+        
+        # Fetch metadata using the metadata service
+        metadata = fetch_metadata(url_str)
+        
+        return PreviewResponse(
+            title=metadata.get('title'),
+            description=metadata.get('description'),
+            image_url=metadata.get('image_url'),
+            favicon_url=metadata.get('favicon_url')
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch metadata: {str(e)}"
+        )
+
+
+@router.post("/generate-metadata", response_model=GenerateMetadataResponse)
+async def generate_metadata(
+    request: GenerateMetadataRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Generate metadata (title, description, tags) from pasted content.
+    
+    - Uses AI if OpenAI key is configured
+    - Falls back to basic text processing if not
+    - Does not save to database
+    - Returns generated metadata for frontend to populate form
+    """
+    try:
+        # Validate content
+        if not request.content or len(request.content.strip()) < 10:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Content must be at least 10 characters long"
+            )
+        
+        # Generate metadata using AI service
+        metadata = generate_metadata_from_content(request.content)
+        
+        return GenerateMetadataResponse(
+            title=metadata['title'],
+            description=metadata['description'],
+            tags=metadata['tags']
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate metadata: {str(e)}"
+        )
 
 
 @router.post("", response_model=SavedItem, status_code=status.HTTP_201_CREATED)
@@ -24,6 +122,8 @@ async def create_item(
     - Sets processing_status to "pending"
     - Sets owner_id from current user
     - Schedules background processing if URL is provided
+    - For URLs: archived_text is ignored and will be extracted by background task
+    - For pasted content: archived_text is saved directly
     - Returns created item
     """
     db = get_database()
@@ -37,6 +137,11 @@ async def create_item(
     
     # Create item document
     now = datetime.utcnow()
+    
+    # For URLs, ignore any archived_text sent by client - it will be extracted by background task
+    # For pasted content (no URL), use the provided archived_text
+    archived_text = None if item_data.url else item_data.archived_text
+    
     item_doc = {
         "owner_id": ObjectId(current_user.id),
         "url": item_data.url,
@@ -46,7 +151,7 @@ async def create_item(
         "favicon_url": item_data.favicon_url,
         "notes_markdown": item_data.notes_markdown,
         "tags": item_data.tags,
-        "archived_text": item_data.archived_text,
+        "archived_text": archived_text,
         "suggested_tags": None,
         "suggested_topic": None,
         "processing_status": "pending",
@@ -79,7 +184,7 @@ async def create_item(
         favicon_url=item_data.favicon_url,
         notes_markdown=item_data.notes_markdown,
         tags=item_data.tags,
-        archived_text=item_data.archived_text,
+        archived_text=archived_text,
         suggested_tags=None,
         suggested_topic=None,
         processing_status="pending",

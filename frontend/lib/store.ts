@@ -296,11 +296,11 @@ export const useStore = create<AppState>()(
               url: itemData.url,
               title: itemData.title,
               description: itemData.description,
-              imageUrl: itemData.imageUrl,
-              faviconUrl: itemData.faviconUrl,
-              notesMarkdown: itemData.notesMarkdown,
+              image_url: itemData.imageUrl,  // Convert camelCase to snake_case
+              favicon_url: itemData.faviconUrl,  // Convert camelCase to snake_case
+              notes_markdown: itemData.notesMarkdown,  // Convert camelCase to snake_case
               tags: itemData.tags,
-              archivedText: itemData.archivedText,
+              archived_text: itemData.archivedText,  // Convert camelCase to snake_case
             }),
           });
 

@@ -21,6 +21,7 @@ export default function LibraryPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [hasPendingItems, setHasPendingItems] = useState(false);
 
   // Sync local state with store preference on mount and when currentUser changes
   useEffect(() => {
@@ -63,6 +64,23 @@ export default function LibraryPage() {
       fetchItems();
     }
   }, [currentUser, fetchItems]);
+
+  // Check if there are any pending items
+  useEffect(() => {
+    const pending = items.some(item => item.processingStatus === 'pending');
+    setHasPendingItems(pending);
+  }, [items]);
+
+  // Poll for updates when there are pending items
+  useEffect(() => {
+    if (!currentUser || !hasPendingItems) return;
+
+    const pollInterval = setInterval(() => {
+      fetchItems(searchQuery, selectedTags);
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [currentUser, hasPendingItems, searchQuery, selectedTags, fetchItems]);
 
   const handleViewModeChange = (mode: 'grid' | 'list') => {
     setViewMode(mode);
