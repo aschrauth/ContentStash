@@ -473,9 +473,10 @@ async def delete_item(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Soft delete a saved item.
+    Soft delete a saved item and remove its chunks from vector search.
     
     - Sets archived_at to current timestamp
+    - Deletes all associated chunks from item_chunks collection
     - Verifies ownership
     - Returns success message
     """
@@ -508,6 +509,17 @@ async def delete_item(
     await db.saved_items.update_one(
         {"_id": ObjectId(item_id)},
         {"$set": {"archived_at": datetime.utcnow()}}
+    )
+    
+    # Delete all associated chunks from vector search index
+    # This ensures deleted items don't appear in AI search results
+    chunks_deleted = await db.item_chunks.delete_many({"item_id": item_id})
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"Deleted item {item_id} and removed {chunks_deleted.deleted_count} "
+        f"associated chunks from vector search index"
     )
     
     return {"message": "Item archived"}
