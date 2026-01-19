@@ -4,12 +4,13 @@ Falls back to Playwright for JavaScript-heavy sites.
 """
 import requests
 from readability import Document
-from typing import Optional
+from typing import Optional, Dict
 import logging
 from markdownify import markdownify as md
-from .youtube import is_youtube_url, extract_video_id, get_video_transcript
+from .youtube import is_youtube_url, extract_video_id, get_video_transcript, get_video_metadata_from_api
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import asyncio
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -310,14 +311,33 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
         video_id = extract_video_id(url)
         
         if video_id:
+            logger.info(f"Attempting to extract transcript for video ID: {video_id}")
             transcript = get_video_transcript(video_id)
+            
             if transcript:
-                logger.info(f"Successfully extracted YouTube transcript for {url}")
+                logger.info(f"✓ Successfully extracted YouTube transcript for {url} ({len(transcript)} characters)")
                 return transcript
             else:
-                logger.warning(f"Failed to get YouTube transcript for {url}, falling back to standard extraction")
+                logger.warning(f"✗ YouTube transcript extraction failed for {url}")
+                logger.info(f"Attempting YouTube Data API fallback for video ID: {video_id}")
+                
+                # Try YouTube Data API as fallback
+                youtube_metadata = get_video_metadata_from_api(video_id, settings.youtube_api_key)
+                
+                if youtube_metadata:
+                    logger.info(f"✓ Successfully fetched metadata from YouTube API for {url}")
+                    # Create content from metadata
+                    content = f"# {youtube_metadata.get('title', 'YouTube Video')}\n\n"
+                    content += f"**Channel:** {youtube_metadata.get('channel_name', 'Unknown')}\n\n"
+                    if youtube_metadata.get('description'):
+                        content += f"{youtube_metadata['description']}"
+                    
+                    logger.info(f"Using YouTube API metadata as content ({len(content)} characters)")
+                    return content
+                else:
+                    logger.error(f"✗ Both transcript and YouTube API failed for {url}, falling back to web scraping")
         else:
-            logger.warning(f"Failed to extract video ID from YouTube URL: {url}, falling back to standard extraction")
+            logger.error(f"✗ Failed to extract video ID from YouTube URL: {url}, falling back to standard extraction")
     
     # Fall back to standard web content extraction
     try:
@@ -388,6 +408,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
     """
     Extract content and metadata using readability-lxml.
     Falls back to Playwright for JavaScript-heavy sites.
+    For YouTube URLs, uses transcript API with YouTube Data API v3 fallback.
     
     Args:
         url: The URL to extract from
@@ -397,6 +418,78 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
     Returns:
         Dictionary with 'text' and optional metadata fields
     """
+    # Check if this is a YouTube URL and handle it specially
+    if is_youtube_url(url):
+        logger.info(f"Detected YouTube URL for metadata extraction: {url}")
+        video_id = extract_video_id(url)
+        
+        if video_id:
+            # Try to get transcript first
+            transcript = get_video_transcript(video_id)
+            
+            # Try to get metadata from YouTube Data API
+            youtube_metadata = get_video_metadata_from_api(video_id, settings.youtube_api_key)
+            
+            if transcript:
+                logger.info(f"Successfully extracted YouTube transcript and metadata for {url}")
+                # If we have both transcript and API metadata, use them
+                if youtube_metadata:
+                    return {
+                        'text': transcript,
+                        'title': youtube_metadata.get('title'),
+                        'description': youtube_metadata.get('description'),
+                        'image_url': youtube_metadata.get('thumbnail_url'),
+                        'author': youtube_metadata.get('channel_name'),
+                        'date': youtube_metadata.get('published_at'),
+                        'url': url
+                    }
+                else:
+                    # Transcript succeeded but API failed - still return transcript with basic metadata
+                    logger.warning(f"YouTube API metadata unavailable for {url}, using transcript only")
+                    return {
+                        'text': transcript,
+                        'title': None,
+                        'description': None,
+                        'image_url': None,
+                        'author': None,
+                        'date': None,
+                        'url': url
+                    }
+            elif youtube_metadata:
+                # Transcript failed but we have API metadata
+                logger.warning(f"YouTube transcript unavailable for {url}, using API metadata with description as content")
+                # Use description as content if transcript is unavailable
+                content = f"# {youtube_metadata.get('title', 'YouTube Video')}\n\n"
+                content += f"**Channel:** {youtube_metadata.get('channel_name', 'Unknown')}\n\n"
+                if youtube_metadata.get('description'):
+                    content += f"{youtube_metadata['description']}"
+                
+                return {
+                    'text': content,
+                    'title': youtube_metadata.get('title'),
+                    'description': youtube_metadata.get('description'),
+                    'image_url': youtube_metadata.get('thumbnail_url'),
+                    'author': youtube_metadata.get('channel_name'),
+                    'date': youtube_metadata.get('published_at'),
+                    'url': url
+                }
+            else:
+                # Both transcript and API failed
+                logger.error(f"Failed to extract both transcript and metadata from YouTube for {url}")
+                return {
+                    'text': None,
+                    'title': None,
+                    'description': None,
+                    'image_url': None,
+                    'author': None,
+                    'date': None,
+                    'url': url
+                }
+        else:
+            logger.error(f"Failed to extract video ID from YouTube URL: {url}")
+            return {'text': None}
+    
+    # For non-YouTube URLs, use the existing extraction logic
     try:
         # For "complete" extraction type, skip Readability and go directly to Playwright
         if extraction_type == "complete":

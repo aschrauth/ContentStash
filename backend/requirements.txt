@@ -14,5 +14,6 @@ readability-lxml
 lxml_html_clean
 markdownify
 youtube-transcript-api
+google-api-python-client>=2.100.0
 google-generativeai
 playwright

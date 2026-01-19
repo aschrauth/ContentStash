@@ -1,9 +1,9 @@
 """
-YouTube transcript extraction service.
+YouTube transcript extraction service with YouTube Data API v3 fallback.
 """
 import re
 import logging
-from typing import Optional
+from typing import Optional, Dict
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import (
     TranscriptsDisabled,
@@ -130,3 +130,73 @@ def is_youtube_url(url: str) -> bool:
     """
     youtube_domains = ['youtube.com', 'youtu.be', 'www.youtube.com', 'm.youtube.com']
     return any(domain in url.lower() for domain in youtube_domains)
+
+
+def get_video_metadata_from_api(video_id: str, api_key: Optional[str] = None) -> Optional[Dict]:
+    """
+    Fetch video metadata using YouTube Data API v3.
+    This is used as a fallback when transcript extraction fails.
+    
+    Args:
+        video_id: YouTube video ID
+        api_key: YouTube Data API v3 key (optional, will gracefully fail if not provided)
+        
+    Returns:
+        Dictionary with metadata fields or None if extraction fails:
+        {
+            'title': str,
+            'description': str,
+            'thumbnail_url': str,
+            'channel_name': str,
+            'published_at': str
+        }
+    """
+    if not api_key:
+        logger.warning(f"YouTube API key not configured, cannot fetch metadata for video ID: {video_id}")
+        return None
+    
+    try:
+        from googleapiclient.discovery import build
+        from googleapiclient.errors import HttpError
+        
+        logger.info(f"Attempting to fetch metadata from YouTube Data API for video ID: {video_id}")
+        
+        # Build the YouTube API client
+        youtube = build('youtube', 'v3', developerKey=api_key)
+        
+        # Request video details
+        request = youtube.videos().list(
+            part='snippet',
+            id=video_id
+        )
+        response = request.execute()
+        
+        if not response.get('items'):
+            logger.warning(f"No video found for video ID: {video_id}")
+            return None
+        
+        # Extract metadata from the response
+        video_data = response['items'][0]['snippet']
+        
+        metadata = {
+            'title': video_data.get('title', ''),
+            'description': video_data.get('description', ''),
+            'thumbnail_url': video_data.get('thumbnails', {}).get('high', {}).get('url', ''),
+            'channel_name': video_data.get('channelTitle', ''),
+            'published_at': video_data.get('publishedAt', '')
+        }
+        
+        logger.info(f"Successfully fetched metadata from YouTube API for video ID: {video_id}")
+        logger.debug(f"Metadata: title='{metadata['title']}', channel='{metadata['channel_name']}'")
+        
+        return metadata
+        
+    except HttpError as e:
+        logger.error(f"YouTube API HTTP error for video ID {video_id}: {str(e)}")
+        return None
+    except ImportError:
+        logger.error("google-api-python-client not installed. Install with: pip install google-api-python-client")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error fetching metadata from YouTube API for video ID {video_id}: {str(e)}")
+        return None

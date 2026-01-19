@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Google Gemini
     gemini_api_key: Optional[str] = None
     
+    # YouTube Data API v3
+    youtube_api_key: Optional[str] = None
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
