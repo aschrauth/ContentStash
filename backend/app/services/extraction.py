@@ -59,7 +59,8 @@ def _clean_extracted_content(content: str) -> str:
         
         # Detect "Related articles" or similar sections and skip everything after
         # Also detect "More useful" or "Discover more" type sections
-        if re.search(r'(related articles|you might also like|more from|read next|more useful|discover more|in our library)', stripped, re.IGNORECASE):
+        # Use word boundaries to avoid matching legitimate headings like "Relatedness"
+        if re.search(r'\b(related articles|you might also like|more from|read next|more useful|discover more|in our library)\b', stripped, re.IGNORECASE):
             in_related_section = True
             continue
         
@@ -148,11 +149,14 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
                     });
                     
                     // Remove elements containing "More useful" or similar text
+                    // Use more specific patterns to avoid removing legitimate headings like "Relatedness"
                     document.querySelectorAll('h3, h4, h5').forEach(el => {
-                        const text = el.textContent.toLowerCase();
+                        const text = el.textContent.toLowerCase().trim();
                         if (text.includes('more useful') ||
                             text.includes('you might also') ||
-                            text.includes('related') ||
+                            text.includes('related articles') ||
+                            text.includes('related posts') ||
+                            text.includes('related content') ||
                             text.includes('discover more')) {
                             // Remove this heading and all following siblings
                             let sibling = el.nextElementSibling;
