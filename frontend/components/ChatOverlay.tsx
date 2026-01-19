@@ -53,23 +53,53 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
 
     const userMessage = input;
     setInput('');
-    setIsTyping(true);
 
     try {
       let threadId = activeThreadId;
       
       if (!threadId) {
         // Create new thread with first message
+        // Show user message immediately by setting typing state
+        setIsTyping(true);
         threadId = await createChatThread(userMessage);
         setActiveThreadId(threadId);
         setIsNewChat(false);
+        // Fetch updated thread to get both user message and AI response
+        await fetchChatThread(threadId);
       } else {
+        // For existing threads, optimistically add user message to UI
+        // First fetch current thread state to get existing messages
+        const currentThread = chatThreads.find(t => t.id === threadId);
+        const currentMessages = currentThread?.messages || [];
+        
+        // Optimistically update the store with user message
+        useStore.setState((state) => ({
+          chatThreads: state.chatThreads.map(thread =>
+            thread.id === threadId
+              ? {
+                  ...thread,
+                  messages: [
+                    ...currentMessages,
+                    {
+                      role: 'user' as const,
+                      content: userMessage,
+                      timestamp: new Date().toISOString(),
+                    }
+                  ]
+                }
+              : thread
+          )
+        }));
+
+        // Show loading indicator
+        setIsTyping(true);
+        
         // Send message to existing thread
         await sendChatMessage(threadId, userMessage);
+        
+        // Fetch updated thread to get the AI response
+        await fetchChatThread(threadId);
       }
-      
-      // Fetch updated thread to get the latest messages
-      await fetchChatThread(threadId);
     } catch (error) {
       console.error('Error sending message:', error);
       // Optionally show error to user

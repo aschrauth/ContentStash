@@ -466,9 +466,6 @@ export default function ItemDetailPage() {
                     {cleanMarkdown(item.archivedText || '')}
                   </ReactMarkdown>
                 </div>
-                <div className="mt-4 text-center">
-                  <Button variant="ghost" size="sm">View Full Content</Button>
-                </div>
               </div>
             )}
           </div>

@@ -58,9 +58,14 @@ def _clean_extracted_content(content: str) -> str:
             continue
         
         # Detect "Related articles" or similar sections and skip everything after
-        # Also detect "More useful" or "Discover more" type sections
-        # Use word boundaries to avoid matching legitimate headings like "Relatedness"
-        if re.search(r'\b(related articles|you might also like|more from|read next|more useful|discover more|in our library)\b', stripped, re.IGNORECASE):
+        # Be VERY specific to avoid false positives that would remove article content
+        # Only trigger on exact heading patterns, not inline mentions
+        if re.match(r'^#+\s*(related articles|you might also like|more from|read next|discover more|in our library)$', stripped, re.IGNORECASE):
+            in_related_section = True
+            continue
+        
+        # Also check for these as standalone lines (not headings)
+        if stripped.lower() in ['related articles', 'you might also like', 'more from', 'read next', 'discover more', 'in our library']:
             in_related_section = True
             continue
         
@@ -106,82 +111,139 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
     try:
         logger.info(f"Attempting Playwright extraction for {url}")
         async with async_playwright() as p:
-            # Launch browser in headless mode
+            # Launch browser in headless mode with realistic user agent
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
             
-            # Navigate to the page and wait for network to be idle
-            await page.goto(url, wait_until="networkidle", timeout=30000)
+            # Set a realistic user agent to avoid bot detection
+            await page.set_extra_http_headers({
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            })
+            
+            # Detect if this is a Substack URL
+            is_substack = 'substack.com' in url or '.so/p/' in url
+            
+            # Increase timeout for Substack and other slow-loading sites
+            timeout = 90000 if is_substack else 30000
+            
+            # Navigate to the page - use 'domcontentloaded' for faster loading
+            # networkidle can be too slow for some sites
+            await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            
+            # For Substack, wait for specific content elements to load
+            if is_substack:
+                try:
+                    # Wait for the main article content to be present
+                    await page.wait_for_selector('article, .post-content, .body', timeout=10000)
+                    logger.info("Substack article content loaded")
+                except:
+                    logger.warning("Substack content selector not found, continuing anyway")
             
             # Wait a bit more for any lazy-loaded content
-            await asyncio.sleep(2)
+            await asyncio.sleep(3 if is_substack else 2)
             
             # Remove unwanted elements before extraction
-            await page.evaluate("""
-                () => {
+            # For Substack, be VERY conservative - don't remove elements that might contain article content
+            is_substack_js = 'true' if is_substack else 'false'
+            await page.evaluate(f"""
+                () => {{
+                    const isSubstack = {is_substack_js};
+                    
                     // Remove script and style tags
                     document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
                     
                     // Remove JSON data blocks (often in square brackets)
-                    document.querySelectorAll('*').forEach(el => {
+                    document.querySelectorAll('*').forEach(el => {{
                         if (el.textContent.trim().startsWith('[') &&
                             el.textContent.includes('"type":') &&
-                            el.textContent.includes('"id":')) {
+                            el.textContent.includes('"id":')) {{
                             el.remove();
-                        }
-                    });
+                        }}
+                    }});
                     
-                    // Remove common navigation and footer elements
-                    const unwantedSelectors = [
-                        'nav', 'header', 'footer',
-                        '.navigation', '.nav', '.menu',
-                        '.sidebar', '.related', '.comments',
-                        '.share', '.social', '.newsletter',
-                        '[class*="related"]', '[class*="share"]',
-                        '[class*="subscribe"]', '[class*="newsletter"]',
-                        '.blog-meta-item', '.blog-categories',
-                        '.blog-tags', '.author-bio',
-                        '[class*="summary-item"]', '.summary-item-list'
-                    ];
-                    
-                    unwantedSelectors.forEach(selector => {
-                        document.querySelectorAll(selector).forEach(el => el.remove());
-                    });
+                    if (isSubstack) {{
+                        // For Substack, only remove very specific elements
+                        // DO NOT use broad selectors that might catch article content
+                        const unwantedSelectors = [
+                            'nav:not(.post-header)',
+                            'header:not(.post-header)',
+                            'footer',
+                            '.comments-container',
+                            '.subscription-widget-wrap'
+                        ];
+                        
+                        unwantedSelectors.forEach(selector => {{
+                            document.querySelectorAll(selector).forEach(el => el.remove());
+                        }});
+                    }} else {{
+                        // For non-Substack sites, use broader cleanup
+                        const unwantedSelectors = [
+                            'nav', 'header', 'footer',
+                            '.navigation', '.nav', '.menu',
+                            '.sidebar', '.related', '.comments',
+                            '.share', '.social', '.newsletter',
+                            '[class*="related"]', '[class*="share"]',
+                            '[class*="subscribe"]', '[class*="newsletter"]',
+                            '.blog-meta-item', '.blog-categories',
+                            '.blog-tags', '.author-bio',
+                            '[class*="summary-item"]', '.summary-item-list'
+                        ];
+                        
+                        unwantedSelectors.forEach(selector => {{
+                            document.querySelectorAll(selector).forEach(el => el.remove());
+                        }});
+                    }}
                     
                     // Remove elements containing "More useful" or similar text
-                    // Use more specific patterns to avoid removing legitimate headings like "Relatedness"
-                    document.querySelectorAll('h3, h4, h5').forEach(el => {
+                    // Be VERY specific - only match exact phrases as standalone headings
+                    document.querySelectorAll('h3, h4, h5, h6').forEach(el => {{
                         const text = el.textContent.toLowerCase().trim();
-                        if (text.includes('more useful') ||
-                            text.includes('you might also') ||
-                            text.includes('related articles') ||
-                            text.includes('related posts') ||
-                            text.includes('related content') ||
-                            text.includes('discover more')) {
+                        // Only match exact phrases, not partial matches
+                        if (text === 'more useful' ||
+                            text === 'you might also like' ||
+                            text === 'related articles' ||
+                            text === 'related posts' ||
+                            text === 'related content' ||
+                            text === 'discover more' ||
+                            text === 'read next' ||
+                            text === 'more from' ||
+                            text === 'in our library') {{
                             // Remove this heading and all following siblings
                             let sibling = el.nextElementSibling;
                             el.remove();
-                            while (sibling) {
+                            while (sibling) {{
                                 const next = sibling.nextElementSibling;
                                 sibling.remove();
                                 sibling = next;
-                            }
-                        }
-                    });
-                }
+                            }}
+                        }}
+                    }});
+                }}
             """)
             
             # Try to find the main content area using common selectors
-            # Squarespace typically uses article, main, or specific content divs
-            content_selectors = [
-                'article',
-                'main',
-                '[role="main"]',
-                '.blog-item-content',
-                '.sqs-block-content',
-                '#page',
-                '.page-content'
-            ]
+            # Different selectors for different platforms
+            if is_substack:
+                # Substack-specific selectors (in priority order)
+                content_selectors = [
+                    '.body.markup',  # Main article body in Substack
+                    'article .body',  # Article body
+                    '.post-content',  # Post content wrapper
+                    'article',  # Generic article tag
+                    '.available-content',  # Available content section
+                    'main',  # Main content area
+                ]
+            else:
+                # Generic selectors for other sites (Squarespace, etc.)
+                content_selectors = [
+                    'article',
+                    'main',
+                    '[role="main"]',
+                    '.blog-item-content',
+                    '.sqs-block-content',
+                    '#page',
+                    '.page-content'
+                ]
             
             extracted_html = None
             for selector in content_selectors:
@@ -222,10 +284,10 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
             return markdown_content
             
     except PlaywrightTimeoutError:
-        logger.error(f"Playwright timeout while loading {url}")
+        logger.error(f"Playwright timeout while loading {url}. The page took too long to load.")
         return None
     except Exception as e:
-        logger.error(f"Playwright error extracting content from {url}: {str(e)}")
+        logger.error(f"Playwright error extracting content from {url}: {str(e)}", exc_info=True)
         return None
 
 

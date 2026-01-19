@@ -1,0 +1,61 @@
+Testing Substack extraction for: https://creatoreconomy.so/p/curious-beginners-guide-to-ai-evaluations
+================================================================================
+
+1. Testing with 'fast' extraction type (Readability → Playwright fallback)...
+✅ Successfully extracted content (fast mode)
+   Content length: 8382 characters
+
+   First 500 characters:
+   Dear subscribers,
+
+Today, I want to share an extremely practical guide on AI evaluations.
+
+> **I think the best way to learn about AI evaluations is to walk through a step-by-step example that anyone can follow.**
+
+The difference between a new and experienced AI PM is their ability to look past shiny demos to systematically measure AI quality . So let’s cover:
+
+1. Why AI evaluations matter
+2. **Programmatic evals** to catch obvious failures
+3. **Human evals** to label your golden dataset
+4. **LL
+
+   Last 500 characters:
+   ain LLM judges in the next step.
+
+---
+
+What I imagine an LLM judge looks like
+
+Can you imagine manually labeling 50-100 responses every time you update your AI product’s prompt or data? It gives me a headache just thinking about it.
+
+Luckily, LLM judges are here to help. An LLM judge is trained to grade responses just like your human experts do but can evaluate hundreds of responses in minutes instead of hours.
+
+LLM judges seem magical but are easy to screw up. Here’s exactly how to set them up:
+
+================================================================================
+
+2. Testing with 'complete' extraction type (direct Playwright)...
+✅ Successfully extracted content (complete mode)
+   Content length: 1836 characters
+
+   First 500 characters:
+   [![Behind the Craft](https://substackcdn.com/image/fetch/$s_!DV7q!,w_80,h_80,c_fill,f_auto,q_auto:good,fl_progressive:steep,g_auto/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fc944a891-b38f-40ba-a756-7ddd70824b7e_1024x1024.png)](/)
+
+# [Behind the Craft](/)
+
+© 2026 Peter Yang · [Privacy](https://substack.com/privacy) ∙ [Terms](https://substack.com/tos) ∙ [Collection notice](https://substack.com/ccpa#personal-data-collected)
+
+[Start your Substack](https://substack.com/sig
+
+   Last 500 characters:
+   ica%2FLos_Angeles%26en-US%26Google%20Inc.%26MacIntel%26127%261280%26720%2611%2624%261280%26720%260%26na&eci=3&event=%7B%7D&event_id=7fc7aea4-db33-4152-bd02-136bf795dd4b&integration=advertiser&p_id=Twitter&p_user_id=0&pl_id=ea9aca25-34ee-4cb2-bfdb-080722958614&pt=Curious%20Beginner's%20Guide%20to%20AI%20Evaluations%20-%20by%20Peter%20Yang&tw_document_href=https%3A%2F%2Fcreatoreconomy.so%2Fp%2Fcurious-beginners-guide-to-ai-evaluations&tw_iframe_status=0&txn_id=ofaik&type=javascript&version=2.3.35)
+
+================================================================================
+
+📊 SUMMARY:
+   Fast mode: ✅ SUCCESS
+   Complete mode: ✅ SUCCESS
+
+✅ At least one extraction method succeeded!
+✅ Content length looks good (>2000 chars)
+✅ Content does not appear to be just a footer

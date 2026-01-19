@@ -192,8 +192,10 @@ async def process_item_background(item_id: str, user_id: str):
             logger.info(f"Fetching metadata for {url}")
             metadata = fetch_metadata(url)
         
-        # Step 2: Extract content (only if URL exists and no archived_text)
-        if url and not archived_text:
+        # Step 2: Extract content
+        # - If URL exists, always extract (to support reprocessing with different extraction_type)
+        # - If no URL but archived_text exists, use existing text (pasted content)
+        if url:
             logger.info(f"Extracting content from {url} using extraction_type={extraction_type}")
             archived_text = await extract_content(url, extraction_type=extraction_type)
         elif archived_text:
