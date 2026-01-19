@@ -59,11 +59,41 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
       
       if (!threadId) {
         // Create new thread with first message
-        // Show user message immediately by setting typing state
-        setIsTyping(true);
-        threadId = await createChatThread(userMessage);
-        setActiveThreadId(threadId);
+        // Optimistically create a temporary thread with user message
+        const tempThreadId = `temp-${Date.now()}`;
+        useStore.setState((state) => ({
+          chatThreads: [
+            ...state.chatThreads,
+            {
+              id: tempThreadId,
+              user_id: currentUser.id,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              messages: [
+                {
+                  role: 'user' as const,
+                  content: userMessage,
+                  timestamp: new Date().toISOString(),
+                }
+              ]
+            }
+          ]
+        }));
+        setActiveThreadId(tempThreadId);
         setIsNewChat(false);
+        
+        // Show loading indicator
+        setIsTyping(true);
+        
+        // Create actual thread
+        threadId = await createChatThread(userMessage);
+        
+        // Replace temp thread with real thread
+        useStore.setState((state) => ({
+          chatThreads: state.chatThreads.filter(t => t.id !== tempThreadId)
+        }));
+        setActiveThreadId(threadId);
+        
         // Fetch updated thread to get both user message and AI response
         await fetchChatThread(threadId);
       } else {

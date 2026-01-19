@@ -11,20 +11,22 @@ from app.services.gemini import gemini_service, GeminiServiceError
 
 logger = logging.getLogger(__name__)
 
-async def vector_search(query: str, owner_id: str, k: int = 8) -> List[Dict]:
+async def vector_search(query: str, owner_id: str, k: int = 8, max_chunks_per_item: int = 2) -> List[Dict]:
     """
-    Perform semantic search using MongoDB Atlas Vector Search.
+    Perform semantic search using MongoDB Atlas Vector Search with diversity.
     
     This function:
     1. Embeds the query using Gemini text-embedding-004
     2. Executes MongoDB Atlas $vectorSearch aggregation on item_chunks
     3. Filters by owner_id for security
-    4. Returns top K most similar chunks with scores and metadata
+    4. Applies diversity filtering to ensure multiple unique articles
+    5. Returns top K most similar chunks with scores and metadata
     
     Args:
         query: The search query text
         owner_id: User ID to filter chunks (security)
         k: Number of top results to return (default: 8)
+        max_chunks_per_item: Maximum chunks per article to ensure diversity (default: 2)
         
     Returns:
         List of dicts with keys: chunk_id, item_id, text, score, chunk_index
@@ -33,6 +35,7 @@ async def vector_search(query: str, owner_id: str, k: int = 8) -> List[Dict]:
     Raises:
         Does not raise exceptions - returns empty list on errors
     """
+    logger.info(f"[DEBUG] vector_search called with k={k}, max_chunks_per_item={max_chunks_per_item}")
     try:
         # Check if Gemini service is available
         if not gemini_service.is_available():
@@ -54,15 +57,21 @@ async def vector_search(query: str, owner_id: str, k: int = 8) -> List[Dict]:
         # Step 2: Execute MongoDB Atlas Vector Search
         db = get_database()
         
+        # Retrieve more chunks initially to ensure diversity
+        # We'll filter down to k chunks with diversity constraints
+        retrieval_limit = k * 5  # Get 5x more chunks for diversity filtering (increased from 3x)
+        
         # MongoDB Atlas Vector Search aggregation pipeline
+        # Note: We filter by owner_id in vectorSearch, then join with saved_items
+        # to exclude chunks from soft-deleted items (archived_at != null)
         pipeline = [
             {
                 "$vectorSearch": {
                     "index": "vector_index",  # Name of the Atlas Search index
                     "path": "embedding",       # Field containing embeddings
                     "queryVector": query_embedding,
-                    "numCandidates": k * 10,   # Number of candidates to consider
-                    "limit": k,                # Number of results to return
+                    "numCandidates": retrieval_limit * 10,   # Number of candidates to consider
+                    "limit": retrieval_limit,                 # Get more candidates for diversity
                     "filter": {
                         "owner_id": owner_id   # Security: only search user's chunks
                     }
@@ -77,23 +86,62 @@ async def vector_search(query: str, owner_id: str, k: int = 8) -> List[Dict]:
                     "owner_id": 1,
                     "score": {"$meta": "vectorSearchScore"}
                 }
+            },
+            {
+                # Join with saved_items to check if item is deleted
+                "$lookup": {
+                    "from": "saved_items",
+                    "let": {"item_id_str": "$item_id"},
+                    "pipeline": [
+                        {
+                            "$match": {
+                                "$expr": {
+                                    "$eq": [{"$toString": "$_id"}, "$$item_id_str"]
+                                }
+                            }
+                        },
+                        {
+                            "$project": {
+                                "archived_at": 1
+                            }
+                        }
+                    ],
+                    "as": "item_info"
+                }
+            },
+            {
+                # Filter out chunks where parent item is deleted (archived_at is not null)
+                "$match": {
+                    "item_info": {"$ne": []},  # Item must exist
+                    "item_info.archived_at": None  # Item must not be archived
+                }
+            },
+            {
+                # Remove the joined item_info field from results
+                "$project": {
+                    "item_info": 0
+                }
+            },
+            {
+                # Limit to retrieval_limit after filtering
+                "$limit": retrieval_limit
             }
         ]
         
-        logger.info(f"Executing vector search for owner_id={owner_id}, k={k}")
+        logger.info(f"Executing vector search for owner_id={owner_id}, k={k}, retrieval_limit={retrieval_limit}")
         
         try:
             cursor = db.item_chunks.aggregate(pipeline)
-            chunks = await cursor.to_list(length=k)
+            chunks = await cursor.to_list(length=retrieval_limit)
             
             if not chunks:
                 logger.info(f"No chunks found for query: '{query[:50]}...'")
                 return []
             
             # Format results
-            results = []
+            all_results = []
             for chunk in chunks:
-                results.append({
+                all_results.append({
                     "chunk_id": str(chunk["_id"]),
                     "item_id": chunk["item_id"],
                     "text": chunk["text"],
@@ -101,8 +149,50 @@ async def vector_search(query: str, owner_id: str, k: int = 8) -> List[Dict]:
                     "chunk_index": chunk["chunk_index"]
                 })
             
-            logger.info(f"Vector search returned {len(results)} chunks with scores: {[r['score'] for r in results]}")
-            return results
+            # Log the distribution of chunks before diversity filtering
+            item_distribution_before = {}
+            for r in all_results:
+                item_id = r['item_id']
+                item_distribution_before[item_id] = item_distribution_before.get(item_id, 0) + 1
+            
+            logger.info(f"[DEBUG] Before diversity filter: {len(all_results)} chunks from {len(item_distribution_before)} unique articles")
+            logger.info(f"[DEBUG] Distribution before: {dict(list(item_distribution_before.items())[:10])}")
+            
+            # Apply diversity filtering with two-pass approach
+            # First pass: strict diversity (max 2 chunks per article)
+            diverse_results = _apply_diversity_filter(all_results, k, max_chunks_per_item)
+            
+            # Second pass: relax constraints if we didn't get enough chunks
+            if len(diverse_results) < k:
+                logger.warning(
+                    f"First pass only got {len(diverse_results)}/{k} chunks with max_chunks_per_item={max_chunks_per_item}, "
+                    f"trying second pass with relaxed constraint"
+                )
+                # Relax to allow 3 chunks per item
+                diverse_results = _apply_diversity_filter(all_results, k, max_chunks_per_item=3)
+            
+            # Final fallback: just take top k if still not enough
+            if len(diverse_results) < k:
+                logger.warning(
+                    f"Second pass only got {len(diverse_results)}/{k} chunks, "
+                    f"using top-{k} without diversity constraints"
+                )
+                diverse_results = all_results[:k]
+            
+            # Log the distribution after diversity filtering
+            item_distribution_after = {}
+            for r in diverse_results:
+                item_id = r['item_id']
+                item_distribution_after[item_id] = item_distribution_after.get(item_id, 0) + 1
+            
+            logger.info(f"[DEBUG] After diversity filter: {len(diverse_results)} chunks from {len(item_distribution_after)} unique articles")
+            logger.info(f"[DEBUG] Distribution after: {item_distribution_after}")
+            logger.info(
+                f"Vector search: retrieved {len(all_results)} chunks, "
+                f"filtered to {len(diverse_results)} diverse chunks from "
+                f"{len(set(r['item_id'] for r in diverse_results))} unique articles"
+            )
+            return diverse_results
             
         except Exception as e:
             error_msg = str(e)
@@ -127,6 +217,57 @@ async def vector_search(query: str, owner_id: str, k: int = 8) -> List[Dict]:
     except Exception as e:
         logger.error(f"Unexpected error in vector_search: {str(e)}")
         return []
+
+
+def _apply_diversity_filter(chunks: List[Dict], k: int, max_chunks_per_item: int) -> List[Dict]:
+    """
+    Apply diversity filtering to ensure multiple unique articles in results.
+    
+    This function implements a greedy selection algorithm that:
+    1. Prioritizes high-scoring chunks (relevance)
+    2. Limits chunks per article to ensure diversity
+    3. Selects up to k chunks total
+    
+    Args:
+        chunks: List of chunks sorted by relevance score (descending)
+        k: Target number of chunks to return
+        max_chunks_per_item: Maximum chunks allowed per article
+        
+    Returns:
+        List of up to k diverse chunks
+    """
+    logger.info(f"[DEBUG] _apply_diversity_filter: input={len(chunks)} chunks, k={k}, max_per_item={max_chunks_per_item}")
+    
+    if not chunks:
+        return []
+    
+    # Track how many chunks we've selected per item
+    item_chunk_counts = {}
+    selected_chunks = []
+    
+    # Greedy selection: iterate through chunks in score order
+    for i, chunk in enumerate(chunks):
+        item_id = chunk['item_id']
+        
+        # Check if we've reached the limit for this item
+        current_count = item_chunk_counts.get(item_id, 0)
+        
+        logger.info(f"[DEBUG] Chunk {i}: item_id={item_id}, score={chunk.get('score', 0):.4f}, current_count={current_count}, max={max_chunks_per_item}")
+        
+        if current_count < max_chunks_per_item:
+            selected_chunks.append(chunk)
+            item_chunk_counts[item_id] = current_count + 1
+            logger.info(f"[DEBUG]   -> SELECTED (total selected: {len(selected_chunks)}/{k})")
+            
+            # Stop if we've selected enough chunks
+            if len(selected_chunks) >= k:
+                logger.info(f"[DEBUG] Reached k={k} chunks, stopping selection")
+                break
+        else:
+            logger.info(f"[DEBUG]   -> SKIPPED (already have {current_count} chunks from this item)")
+    
+    logger.info(f"[DEBUG] _apply_diversity_filter: returning {len(selected_chunks)} chunks from {len(item_chunk_counts)} unique items")
+    return selected_chunks
 
 
 
@@ -448,6 +589,8 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
     import re
     from bson import ObjectId
     
+    logger.info(f"[DEBUG] _parse_answer_with_citations: chunks={len(chunks)}, source_mapping={source_mapping}")
+    
     # Extract answer (everything is the answer)
     answer = response_text.strip()
     
@@ -490,16 +633,23 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
     citations = []
     seen_source_numbers = set()  # Track source numbers to avoid duplicate citations
     
+    logger.info(f"[DEBUG] Found cited numbers: {sorted(cited_numbers, key=int)}")
+    logger.info(f"[DEBUG] item_to_number mapping: {item_to_number}")
+    
     for num_str in sorted(cited_numbers, key=int):
         source_num = int(num_str)
         
+        logger.info(f"[DEBUG] Processing citation for source {source_num}")
+        
         # Skip if we've already created a citation for this source number
         if source_num in seen_source_numbers:
+            logger.info(f"[DEBUG]   -> SKIPPED (already seen)")
             continue
         
         # Get the title for this source number
         title = source_mapping.get(source_num)
         if not title:
+            logger.info(f"[DEBUG]   -> SKIPPED (no title in source_mapping)")
             continue
         
         # Find the corresponding chunk/item for this source number
@@ -510,6 +660,7 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
                 break
         
         if not matching_item_id:
+            logger.info(f"[DEBUG]   -> SKIPPED (no matching item_id)")
             continue
         
         seen_source_numbers.add(source_num)
@@ -529,7 +680,9 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
             excerpt=excerpt
         )
         citations.append(citation)
+        logger.info(f"[DEBUG]   -> CREATED citation: id={matching_item_id}, title={title}")
     
+    logger.info(f"[DEBUG] Total citations created: {len(citations)}")
     return answer, citations
 
 
