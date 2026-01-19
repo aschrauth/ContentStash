@@ -29,6 +29,7 @@ export type SavedItem = {
   suggestedTags?: string[];
   suggestedTopic?: string;
   archivedText?: string;
+  extractionType?: 'fast' | 'complete';
   processingStatus: 'pending' | 'processed' | 'failed';
   createdAt: string;
   updatedAt: string;
@@ -253,6 +254,7 @@ export const useStore = create<AppState>()(
             suggestedTags: item.suggested_tags,
             suggestedTopic: item.suggested_topic,
             archivedText: item.archived_text,
+            extractionType: item.extraction_type as 'fast' | 'complete' | undefined,
             processingStatus: item.processing_status,
             createdAt: item.created_at,
             updatedAt: item.updated_at,
@@ -307,6 +309,7 @@ export const useStore = create<AppState>()(
               notes_markdown: itemData.notesMarkdown,  // Convert camelCase to snake_case
               tags: itemData.tags,
               archived_text: itemData.archivedText,  // Convert camelCase to snake_case
+              extraction_type: itemData.extractionType,  // Convert camelCase to snake_case
             }),
           });
 
@@ -331,6 +334,7 @@ export const useStore = create<AppState>()(
             suggestedTags: newItem.suggested_tags,
             suggestedTopic: newItem.suggested_topic,
             archivedText: newItem.archived_text,
+            extractionType: newItem.extraction_type as 'fast' | 'complete' | undefined,
             processingStatus: newItem.processing_status,
             createdAt: newItem.created_at,
             updatedAt: newItem.updated_at,
@@ -368,6 +372,7 @@ export const useStore = create<AppState>()(
               notes_markdown: updates.notesMarkdown,
               tags: updates.tags,
               archived_text: updates.archivedText,
+              extraction_type: updates.extractionType,
             }),
           });
 
@@ -392,6 +397,7 @@ export const useStore = create<AppState>()(
             suggestedTags: updatedItem.suggested_tags,
             suggestedTopic: updatedItem.suggested_topic,
             archivedText: updatedItem.archived_text,
+            extractionType: updatedItem.extraction_type as 'fast' | 'complete' | undefined,
             processingStatus: updatedItem.processing_status,
             createdAt: updatedItem.created_at,
             updatedAt: updatedItem.updated_at,

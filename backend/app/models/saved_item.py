@@ -14,6 +14,7 @@ class SavedItemBase(BaseModel):
     notes_markdown: Optional[str] = Field(None, max_length=50000)
     tags: List[str] = Field(default_factory=list, max_length=20)
     archived_text: Optional[str] = None
+    extraction_type: Optional[str] = Field(default="fast", pattern="^(fast|complete)$")
     
     @field_validator('tags')
     @classmethod
@@ -42,6 +43,7 @@ class SavedItemUpdate(BaseModel):
     notes_markdown: Optional[str] = Field(None, max_length=50000)
     tags: Optional[List[str]] = Field(None, max_length=20)
     archived_text: Optional[str] = None
+    extraction_type: Optional[str] = Field(None, pattern="^(fast|complete)$")
     
     @field_validator('tags')
     @classmethod

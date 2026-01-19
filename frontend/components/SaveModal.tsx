@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Link as LinkIcon, FileText, Loader2, Sparkles } from 'lucide-react';
+import { X, Link as LinkIcon, FileText, Loader2, Sparkles, Zap, Clock } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -47,6 +47,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   const [suggestedTopic, setSuggestedTopic] = useState<string | null>(null);
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [extractionType, setExtractionType] = useState<'fast' | 'complete'>('fast');
 
   const { register, handleSubmit, setValue, watch, control, formState: { errors } } = useForm<SaveFormValues>({
     resolver: zodResolver(saveSchema),
@@ -250,6 +251,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         processingStatus: 'pending',
         archivedText: activeTab === 'paste' ? data.content : undefined,
         suggestedTopic: suggestedTopic || undefined,
+        extractionType: activeTab === 'url' ? extractionType : undefined,
       });
 
       toast.success("Item saved to library!");
@@ -333,6 +335,44 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                   )}
                 </div>
                 {errors.url && <p className="text-red-400 text-xs">{errors.url.message}</p>}
+                
+                {/* Extraction Type Selector */}
+                <div className="mt-4 space-y-2">
+                  <Label>Extraction Type</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setExtractionType('fast')}
+                      className={`p-3 rounded-lg border transition-all ${
+                        extractionType === 'fast'
+                          ? 'border-violet-500 bg-violet-500/10 text-violet-300'
+                          : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Zap className="w-4 h-4" />
+                        <span className="font-medium text-sm">Fast</span>
+                      </div>
+                      <p className="text-xs text-left">Quick extraction, may miss images on some sites</p>
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setExtractionType('complete')}
+                      className={`p-3 rounded-lg border transition-all ${
+                        extractionType === 'complete'
+                          ? 'border-violet-500 bg-violet-500/10 text-violet-300'
+                          : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Clock className="w-4 h-4" />
+                        <span className="font-medium text-sm">Complete</span>
+                      </div>
+                      <p className="text-xs text-left">Full extraction with images, slower (~5-10s)</p>
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">

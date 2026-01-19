@@ -142,6 +142,9 @@ async def create_item(
     # For pasted content (no URL), use the provided archived_text
     archived_text = None if item_data.url else item_data.archived_text
     
+    # Set extraction_type, defaulting to "fast" if not provided
+    extraction_type = item_data.extraction_type or "fast"
+    
     item_doc = {
         "owner_id": ObjectId(current_user.id),
         "url": item_data.url,
@@ -152,6 +155,7 @@ async def create_item(
         "notes_markdown": item_data.notes_markdown,
         "tags": item_data.tags,
         "archived_text": archived_text,
+        "extraction_type": extraction_type,
         "suggested_tags": None,
         "suggested_topic": None,
         "processing_status": "pending",
@@ -186,6 +190,7 @@ async def create_item(
         notes_markdown=item_data.notes_markdown,
         tags=item_data.tags,
         archived_text=archived_text,
+        extraction_type=extraction_type,
         suggested_tags=None,
         suggested_topic=None,
         processing_status="pending",
@@ -271,6 +276,7 @@ async def list_items(
             notes_markdown=doc.get("notes_markdown"),
             tags=doc.get("tags", []),
             archived_text=doc.get("archived_text"),
+            extraction_type=doc.get("extraction_type", "fast"),
             suggested_tags=doc.get("suggested_tags"),
             suggested_topic=doc.get("suggested_topic"),
             processing_status=doc.get("processing_status", "pending"),
@@ -331,6 +337,7 @@ async def get_item(
         notes_markdown=item_doc.get("notes_markdown"),
         tags=item_doc.get("tags", []),
         archived_text=item_doc.get("archived_text"),
+        extraction_type=item_doc.get("extraction_type", "fast"),
         suggested_tags=item_doc.get("suggested_tags"),
         suggested_topic=item_doc.get("suggested_topic"),
         processing_status=item_doc.get("processing_status", "pending"),
@@ -345,12 +352,14 @@ async def get_item(
 async def update_item(
     item_id: str,
     updates: SavedItemUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user)
 ):
     """
     Update a saved item.
     
-    - Allows updating: title, description, notes_markdown, tags, url, image_url, favicon_url, archived_text
+    - Allows updating: title, description, notes_markdown, tags, url, image_url, favicon_url, archived_text, extraction_type
+    - If extraction_type is changed, automatically triggers reprocessing
     - Verifies ownership
     - Returns updated item
     """
@@ -382,6 +391,9 @@ async def update_item(
     # Build update document (only include fields that were provided)
     update_doc = {"updated_at": datetime.utcnow()}
     
+    # Track if extraction_type is being changed to trigger reprocessing
+    extraction_type_changed = False
+    
     if updates.title is not None:
         update_doc["title"] = updates.title
     
@@ -406,11 +418,28 @@ async def update_item(
     if updates.archived_text is not None:
         update_doc["archived_text"] = updates.archived_text
     
+    if updates.extraction_type is not None:
+        # Check if extraction_type is actually changing
+        if item_doc.get("extraction_type", "fast") != updates.extraction_type:
+            extraction_type_changed = True
+            update_doc["extraction_type"] = updates.extraction_type
+            # Reset processing status to trigger reprocessing
+            update_doc["processing_status"] = "pending"
+            update_doc["processing_error"] = None
+    
     # Update item in database
     await db.saved_items.update_one(
         {"_id": ObjectId(item_id)},
         {"$set": update_doc}
     )
+    
+    # If extraction_type changed and item has a URL, trigger reprocessing
+    if extraction_type_changed and item_doc.get("url"):
+        background_tasks.add_task(
+            process_item_background,
+            item_id,
+            current_user.id
+        )
     
     # Fetch updated item
     updated_item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
@@ -427,6 +456,7 @@ async def update_item(
         notes_markdown=updated_item_doc.get("notes_markdown"),
         tags=updated_item_doc.get("tags", []),
         archived_text=updated_item_doc.get("archived_text"),
+        extraction_type=updated_item_doc.get("extraction_type", "fast"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
@@ -562,6 +592,7 @@ async def reprocess_item(
         notes_markdown=updated_item_doc.get("notes_markdown"),
         tags=updated_item_doc.get("tags", []),
         archived_text=updated_item_doc.get("archived_text"),
+        extraction_type=updated_item_doc.get("extraction_type", "fast"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
         processing_status=updated_item_doc.get("processing_status", "pending"),

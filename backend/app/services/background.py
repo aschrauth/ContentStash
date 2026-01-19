@@ -169,9 +169,10 @@ async def process_item_background(item_id: str, user_id: str):
             logger.error(f"Ownership verification failed for item {item_id}")
             return
         
-        # Get the URL and archived_text
+        # Get the URL, archived_text, and extraction_type
         url = item_doc.get("url")
         archived_text = item_doc.get("archived_text")
+        extraction_type = item_doc.get("extraction_type", "fast")
         
         # Update status to pending
         await db.saved_items.update_one(
@@ -193,8 +194,8 @@ async def process_item_background(item_id: str, user_id: str):
         
         # Step 2: Extract content (only if URL exists and no archived_text)
         if url and not archived_text:
-            logger.info(f"Extracting content from {url}")
-            archived_text = await extract_content(url)
+            logger.info(f"Extracting content from {url} using extraction_type={extraction_type}")
+            archived_text = await extract_content(url, extraction_type=extraction_type)
         elif archived_text:
             logger.info(f"Using existing archived_text for item {item_id} (pasted content)")
         else:

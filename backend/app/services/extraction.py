@@ -229,13 +229,15 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
         return None
 
 
-async def extract_content(url: str) -> Optional[str]:
+async def extract_content(url: str, extraction_type: str = "fast") -> Optional[str]:
     """
     Extract main content text from a URL using readability-lxml.
     For YouTube URLs, attempts to extract video transcript first.
     
     Args:
         url: The URL to extract content from
+        extraction_type: "fast" (default) uses Readability with Playwright fallback,
+                        "complete" skips Readability and goes directly to Playwright
         
     Returns:
         Extracted text content or None if extraction fails
@@ -257,6 +259,19 @@ async def extract_content(url: str) -> Optional[str]:
     
     # Fall back to standard web content extraction
     try:
+        # For "complete" extraction type, skip Readability and go directly to Playwright
+        if extraction_type == "complete":
+            logger.info(f"Using complete extraction (Playwright) for {url}")
+            markdown_content = await _extract_with_playwright(url)
+            
+            if markdown_content:
+                logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using Playwright (complete mode)")
+                return markdown_content
+            else:
+                logger.warning(f"Playwright failed to extract content from {url}")
+                return None
+        
+        # For "fast" extraction type, use the cascade logic (Readability → Playwright fallback)
         # First attempt: Try with requests + readability
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -307,18 +322,47 @@ async def extract_content(url: str) -> Optional[str]:
         return None
 
 
-async def extract_content_with_metadata(url: str) -> dict:
+async def extract_content_with_metadata(url: str, extraction_type: str = "fast") -> dict:
     """
     Extract content and metadata using readability-lxml.
     Falls back to Playwright for JavaScript-heavy sites.
     
     Args:
         url: The URL to extract from
+        extraction_type: "fast" (default) uses Readability with Playwright fallback,
+                        "complete" skips Readability and goes directly to Playwright
         
     Returns:
         Dictionary with 'text' and optional metadata fields
     """
     try:
+        # For "complete" extraction type, skip Readability and go directly to Playwright
+        if extraction_type == "complete":
+            logger.info(f"Using complete extraction (Playwright) for {url}")
+            markdown_text = await _extract_with_playwright(url)
+            
+            if not markdown_text:
+                return {'text': None}
+            
+            # Try to get title from initial request
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                doc = Document(response.text)
+                title = doc.title()
+            except:
+                title = None
+            
+            logger.info(f"Extracted content with metadata from {url} using Playwright (complete mode)")
+            return {
+                'text': markdown_text,
+                'title': title,
+                'author': None,
+                'date': None,
+                'url': url
+            }
+        
+        # For "fast" extraction type, use the cascade logic
         # First attempt: Try with requests + readability
         response = requests.get(url, timeout=10)
         response.raise_for_status()

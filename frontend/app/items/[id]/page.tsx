@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import toast from 'react-hot-toast';
@@ -549,6 +549,39 @@ export default function ItemDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Extraction Type Panel */}
+            {item.url && (
+              <div className="glass-panel p-6 rounded-2xl border border-white/10">
+                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-violet-400" /> Extraction Type
+                </h3>
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-400 mb-3">
+                    Current: <span className="text-violet-300 font-medium">{item.extractionType === 'complete' ? 'Complete' : 'Fast'}</span>
+                  </p>
+                  <select
+                    value={item.extractionType || 'fast'}
+                    onChange={async (e) => {
+                      const newType = e.target.value as 'fast' | 'complete';
+                      try {
+                        await updateItem(item.id, { extractionType: newType });
+                        toast.success(`Extraction type changed to ${newType}. Reprocessing...`);
+                      } catch (error) {
+                        toast.error('Failed to update extraction type');
+                      }
+                    }}
+                    className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-sm text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                  >
+                    <option value="fast">Fast - Quick extraction</option>
+                    <option value="complete">Complete - Full extraction with images</option>
+                  </select>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Changing this will automatically reprocess the content
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Actions Panel */}
             <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
