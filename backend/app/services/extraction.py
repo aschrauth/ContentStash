@@ -8,8 +8,8 @@ from typing import Optional
 import logging
 from markdownify import markdownify as md
 from .youtube import is_youtube_url, extract_video_id, get_video_transcript
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-import time
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 MIN_CONTENT_LENGTH = 1000
 
 
-def _extract_with_playwright(url: str) -> Optional[str]:
+async def _extract_with_playwright(url: str) -> Optional[str]:
     """
     Extract content using Playwright for JavaScript-heavy sites.
     Uses direct text extraction from the main content area instead of relying on readability.
@@ -31,16 +31,16 @@ def _extract_with_playwright(url: str) -> Optional[str]:
     """
     try:
         logger.info(f"Attempting Playwright extraction for {url}")
-        with sync_playwright() as p:
+        async with async_playwright() as p:
             # Launch browser in headless mode
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
             
             # Navigate to the page and wait for network to be idle
-            page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.goto(url, wait_until="networkidle", timeout=30000)
             
             # Wait a bit more for any lazy-loaded content
-            time.sleep(2)
+            await asyncio.sleep(2)
             
             # Try to find the main content area using common selectors
             # Squarespace typically uses article, main, or specific content divs
@@ -57,9 +57,9 @@ def _extract_with_playwright(url: str) -> Optional[str]:
             extracted_html = None
             for selector in content_selectors:
                 try:
-                    element = page.query_selector(selector)
+                    element = await page.query_selector(selector)
                     if element:
-                        extracted_html = element.inner_html()
+                        extracted_html = await element.inner_html()
                         if len(extracted_html) > MIN_CONTENT_LENGTH:
                             logger.info(f"Found content using selector '{selector}' ({len(extracted_html)} chars)")
                             break
@@ -69,11 +69,11 @@ def _extract_with_playwright(url: str) -> Optional[str]:
             # If no selector worked, get the full body
             if not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH:
                 logger.info("Using full body content as fallback")
-                body = page.query_selector('body')
+                body = await page.query_selector('body')
                 if body:
-                    extracted_html = body.inner_html()
+                    extracted_html = await body.inner_html()
             
-            browser.close()
+            await browser.close()
             
             if not extracted_html:
                 logger.warning(f"No content extracted from {url}")
@@ -97,7 +97,7 @@ def _extract_with_playwright(url: str) -> Optional[str]:
         return None
 
 
-def extract_content(url: str) -> Optional[str]:
+async def extract_content(url: str) -> Optional[str]:
     """
     Extract main content text from a URL using readability-lxml.
     For YouTube URLs, attempts to extract video transcript first.
@@ -152,7 +152,7 @@ def extract_content(url: str) -> Optional[str]:
         
         # Second attempt: Use Playwright for JavaScript rendering
         # Note: _extract_with_playwright now returns markdown directly
-        markdown_content = _extract_with_playwright(url)
+        markdown_content = await _extract_with_playwright(url)
         
         if markdown_content:
             logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using Playwright")
@@ -165,7 +165,7 @@ def extract_content(url: str) -> Optional[str]:
         logger.error(f"Error fetching content from {url}: {str(e)}")
         # Try Playwright as a last resort
         logger.info(f"Attempting Playwright extraction after request error")
-        markdown_content = _extract_with_playwright(url)
+        markdown_content = await _extract_with_playwright(url)
         if markdown_content:
             logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using Playwright fallback")
             return markdown_content
@@ -175,7 +175,7 @@ def extract_content(url: str) -> Optional[str]:
         return None
 
 
-def extract_content_with_metadata(url: str) -> dict:
+async def extract_content_with_metadata(url: str) -> dict:
     """
     Extract content and metadata using readability-lxml.
     Falls back to Playwright for JavaScript-heavy sites.
@@ -217,7 +217,7 @@ def extract_content_with_metadata(url: str) -> dict:
         
         # Insufficient content, try Playwright
         logger.warning(f"Readability extracted insufficient content from {url}, trying Playwright")
-        markdown_text = _extract_with_playwright(url)
+        markdown_text = await _extract_with_playwright(url)
         
         if not markdown_text:
             return {'text': None}
@@ -238,7 +238,7 @@ def extract_content_with_metadata(url: str) -> dict:
     except requests.RequestException as e:
         logger.error(f"Error fetching content from {url}: {str(e)}")
         # Try Playwright as fallback
-        markdown_text = _extract_with_playwright(url)
+        markdown_text = await _extract_with_playwright(url)
         if markdown_text:
             return {
                 'text': markdown_text,
