@@ -17,6 +17,79 @@ logger = logging.getLogger(__name__)
 # we'll try Playwright as the site likely uses JavaScript rendering
 MIN_CONTENT_LENGTH = 1000
 
+def _clean_extracted_content(content: str) -> str:
+    """
+    Clean extracted markdown content by removing unwanted patterns.
+    
+    Args:
+        content: The markdown content to clean
+        
+    Returns:
+        Cleaned markdown content
+    """
+    import re
+    
+    # Remove JSON data blocks (lines starting with [ { and containing JSON-like patterns)
+    lines = content.split('\n')
+    cleaned_lines = []
+    in_json_block = False
+    in_related_section = False
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        # Detect start of JSON block
+        if stripped.startswith('[ {') or (stripped.startswith('[') and '"type":' in stripped):
+            in_json_block = True
+            continue
+        
+        # Detect end of JSON block
+        if in_json_block:
+            if stripped.endswith('] ]') or stripped.endswith('}]'):
+                in_json_block = False
+            continue
+        
+        # Skip lines with hex-encoded JavaScript (obfuscated code)
+        if re.search(r'\\x[0-9a-fA-F]{2}', line):
+            continue
+        
+        # Skip lines that look like minified/obfuscated JavaScript
+        if re.search(r'[a-z]\[\'\\x[0-9a-fA-F]{2}', line):
+            continue
+        
+        # Detect "Related articles" or similar sections and skip everything after
+        # Also detect "More useful" or "Discover more" type sections
+        if re.search(r'(related articles|you might also like|more from|read next|more useful|discover more|in our library)', stripped, re.IGNORECASE):
+            in_related_section = True
+            continue
+        
+        # Skip everything in the related section
+        if in_related_section:
+            continue
+        
+        # Skip common footer/navigation patterns
+        skip_patterns = [
+            r'^\[.*\]\(/resources\?author=',  # Author links
+            r'^\[.*\]\(/resources/tag/',       # Tag links
+            r'^\[!\[\].*\]\(/resources/',      # Related article image links
+            r'^\[.*\]\(/resources/[^)]+\)$',   # Generic resource links
+            r'^Share this',
+            r'^Subscribe',
+            r'^Newsletter',
+        ]
+        
+        if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in skip_patterns):
+            continue
+        
+        cleaned_lines.append(line)
+    
+    # Join lines and remove excessive blank lines
+    cleaned_content = '\n'.join(cleaned_lines)
+    cleaned_content = re.sub(r'\n{3,}', '\n\n', cleaned_content)
+    
+    return cleaned_content.strip()
+
+
 
 async def _extract_with_playwright(url: str) -> Optional[str]:
     """
@@ -41,6 +114,58 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
             
             # Wait a bit more for any lazy-loaded content
             await asyncio.sleep(2)
+            
+            # Remove unwanted elements before extraction
+            await page.evaluate("""
+                () => {
+                    // Remove script and style tags
+                    document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+                    
+                    // Remove JSON data blocks (often in square brackets)
+                    document.querySelectorAll('*').forEach(el => {
+                        if (el.textContent.trim().startsWith('[') &&
+                            el.textContent.includes('"type":') &&
+                            el.textContent.includes('"id":')) {
+                            el.remove();
+                        }
+                    });
+                    
+                    // Remove common navigation and footer elements
+                    const unwantedSelectors = [
+                        'nav', 'header', 'footer',
+                        '.navigation', '.nav', '.menu',
+                        '.sidebar', '.related', '.comments',
+                        '.share', '.social', '.newsletter',
+                        '[class*="related"]', '[class*="share"]',
+                        '[class*="subscribe"]', '[class*="newsletter"]',
+                        '.blog-meta-item', '.blog-categories',
+                        '.blog-tags', '.author-bio',
+                        '[class*="summary-item"]', '.summary-item-list'
+                    ];
+                    
+                    unwantedSelectors.forEach(selector => {
+                        document.querySelectorAll(selector).forEach(el => el.remove());
+                    });
+                    
+                    // Remove elements containing "More useful" or similar text
+                    document.querySelectorAll('h3, h4, h5').forEach(el => {
+                        const text = el.textContent.toLowerCase();
+                        if (text.includes('more useful') ||
+                            text.includes('you might also') ||
+                            text.includes('related') ||
+                            text.includes('discover more')) {
+                            // Remove this heading and all following siblings
+                            let sibling = el.nextElementSibling;
+                            el.remove();
+                            while (sibling) {
+                                const next = sibling.nextElementSibling;
+                                sibling.remove();
+                                sibling = next;
+                            }
+                        }
+                    });
+                }
+            """)
             
             # Try to find the main content area using common selectors
             # Squarespace typically uses article, main, or specific content divs
@@ -85,6 +210,9 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
                 heading_style="ATX",
                 strip=['script', 'style', 'nav', 'header', 'footer']
             )
+            
+            # Post-process to remove any remaining JSON blocks and unwanted patterns
+            markdown_content = _clean_extracted_content(markdown_content)
             
             logger.info(f"Playwright successfully extracted {len(markdown_content)} characters from {url}")
             return markdown_content
