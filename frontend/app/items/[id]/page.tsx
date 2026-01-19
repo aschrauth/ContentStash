@@ -447,6 +447,13 @@ export default function ItemDetailPage() {
                       ol: (props) => <ol {...props} />,
                       li: (props) => <li {...props} />,
                       a: (props) => <a {...props} />,
+                      img: ({ src, alt, ...props }) => {
+                        // Skip rendering images with empty src to avoid React warning
+                        if (!src || src.trim() === '') {
+                          return null;
+                        }
+                        return <img src={src} alt={alt} {...props} />;
+                      },
                       code: ({ inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) =>
                         inline ? (
                           <code {...props} />
