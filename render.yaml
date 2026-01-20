@@ -12,7 +12,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: ./ms-playwright-browsers
+        value: /opt/render/project/src/backend/ms-playwright-browsers
       - key: DATABASE_URL
         sync: false
       - key: SECRET_KEY

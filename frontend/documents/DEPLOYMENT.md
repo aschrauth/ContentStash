@@ -154,7 +154,7 @@ Ensure all required environment variables are set in Render.com:
 - `DATABASE_URL` - PostgreSQL connection string
 - `SECRET_KEY` - JWT secret key
 - `GEMINI_API_KEY` - Google Gemini API key
-- `PLAYWRIGHT_BROWSERS_PATH` - Set to `./ms-playwright-browsers` (critical for browser persistence)
+- `PLAYWRIGHT_BROWSERS_PATH` - Set to `/opt/render/project/src/backend/ms-playwright-browsers` (critical for browser persistence)
 
 **Optional:**
 - `YOUTUBE_API_KEY` - YouTube Data API v3 key (for video metadata)
@@ -176,11 +176,11 @@ Executable doesn't exist at /opt/render/.cache/ms-playwright/chromium_headless_s
 
 #### The Solution: PLAYWRIGHT_BROWSERS_PATH
 
-To fix this, we install browsers to a **project-relative path** that persists from build to runtime:
+To fix this, we install browsers to an **absolute path** that persists from build to runtime:
 
 1. **During build** ([`backend/render-build.sh`](../../backend/render-build.sh)):
    ```bash
-   export PLAYWRIGHT_BROWSERS_PATH=./ms-playwright-browsers
+   export PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/backend/ms-playwright-browsers
    playwright install chromium
    ```
 
@@ -188,10 +188,16 @@ To fix this, we install browsers to a **project-relative path** that persists fr
    ```yaml
    envVars:
      - key: PLAYWRIGHT_BROWSERS_PATH
-       value: ./ms-playwright-browsers
+       value: /opt/render/project/src/backend/ms-playwright-browsers
    ```
 
-This ensures Playwright looks for browsers in the same location during both build and runtime.
+**Why Absolute Paths?**
+- Render.com's working directory may differ between build and runtime
+- Relative paths like `./ms-playwright-browsers` can resolve to different locations
+- Using the absolute path `/opt/render/project/src/backend/ms-playwright-browsers` ensures consistency
+- This path is based on Render's standard project structure where code is deployed to `/opt/render/project/src/`
+
+This ensures Playwright looks for browsers in the same absolute location during both build and runtime.
 
 ### Troubleshooting Playwright Issues
 
@@ -200,10 +206,10 @@ This ensures Playwright looks for browsers in the same location during both buil
 **Cause:** `PLAYWRIGHT_BROWSERS_PATH` is not set correctly, causing browsers to install to the default cache location.
 
 **Solution:**
-1. Verify `PLAYWRIGHT_BROWSERS_PATH=./ms-playwright-browsers` is set in [`render.yaml`](../../render.yaml)
-2. Verify the build script exports this variable before installing browsers
+1. Verify `PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/backend/ms-playwright-browsers` is set in [`render.yaml`](../../render.yaml)
+2. Verify the build script exports this variable (with the same absolute path) before installing browsers
 3. Redeploy to apply the changes
-4. Check build logs for "Chromium installed successfully to ./ms-playwright-browsers"
+4. Check build logs for "Chromium installed successfully to /opt/render/project/src/backend/ms-playwright-browsers"
 
 #### Error: "Executable doesn't exist" (general)
 
