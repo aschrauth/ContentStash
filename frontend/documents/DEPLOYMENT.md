@@ -58,63 +58,94 @@ The backend uses Playwright for web content extraction, which requires:
 2. System dependencies for running Chromium in headless mode
 3. Proper build configuration
 
-### Render.com Configuration
+### Automatic Deployment with render.yaml
 
-#### 1. Build Script Setup
+The repository includes a [`render.yaml`](../../render.yaml) file at the project root that automatically configures the entire deployment, including system dependencies. This is the **recommended approach** as it eliminates the need for manual dashboard configuration.
 
-The repository includes a build script at [`backend/render-build.sh`](../../backend/render-build.sh) that handles:
-- Installing Python dependencies
-- Installing Playwright browser binaries (Chromium)
-- Documenting required system dependencies
+#### What render.yaml Provides
 
-**Configure in Render Dashboard:**
+The configuration file automatically handles:
+- **Service definition** - Web service configuration for the backend
+- **System dependencies** - All required Chromium libraries (aptPackages)
+- **Build command** - Executes [`backend/render-build.sh`](../../backend/render-build.sh)
+- **Start command** - Launches the FastAPI application
+- **Environment variables** - Placeholders for required secrets
 
-1. Go to your service settings
-2. Navigate to "Build & Deploy"
-3. Set **Build Command** to:
-   ```bash
-   ./backend/render-build.sh
-   ```
+#### Deployment Steps
 
-#### 2. System Dependencies Configuration
+1. **Connect your repository** to Render.com
+2. **Render will automatically detect** the `render.yaml` file
+3. **Set environment variables** in the Render dashboard:
+   - `DATABASE_URL` - PostgreSQL connection string
+   - `SECRET_KEY` - JWT secret key
+   - `GEMINI_API_KEY` - Google Gemini API key
+   - `YOUTUBE_API_KEY` - (Optional) YouTube Data API v3 key
+4. **Deploy** - Render will use the configuration from `render.yaml`
 
-Chromium requires specific system libraries to run in headless mode. Configure these in Render.com:
+#### System Dependencies (Automatically Installed)
 
-1. Go to your service settings
-2. Navigate to "Environment" → "Native Environment"
-3. Add the following packages (space-separated):
+The `render.yaml` file includes all required Chromium dependencies in the `nativeEnvironments` section:
 
+```yaml
+nativeEnvironments:
+  - libnss3
+  - libatk1.0-0
+  - libatk-bridge2.0-0
+  - libcups2
+  - libdrm2
+  - libxkbcommon0
+  - libxcomposite1
+  - libxdamage1
+  - libxfixes3
+  - libxrandr2
+  - libgbm1
+  - libasound2
+```
+
+**No manual dashboard configuration required!** These packages are installed automatically during deployment.
+
+#### Build and Start Commands
+
+The `render.yaml` file specifies:
+
+**Build Command:**
+```bash
+./backend/render-build.sh
+```
+
+**Start Command:**
+```bash
+cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+These are configured automatically - you don't need to set them in the dashboard.
+
+### Manual Configuration (Alternative)
+
+If you prefer not to use `render.yaml`, you can configure manually in the Render dashboard:
+
+#### 1. Build Command
+
+Set **Build Command** to:
+```bash
+./backend/render-build.sh
+```
+
+#### 2. Start Command
+
+Set **Start Command** to:
+```bash
+cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+#### 3. System Dependencies
+
+Navigate to "Environment" → "Native Environment" and add:
 ```
 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
 ```
 
-**Alternative: Using Dockerfile**
-
-If you prefer using a Dockerfile, ensure it includes:
-
-```dockerfile
-# Install Chromium dependencies
-RUN apt-get update && apt-get install -y \
-    libnss3 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies and Playwright
-RUN pip install -r requirements.txt
-RUN playwright install chromium
-```
-
-#### 3. Environment Variables
+#### 4. Environment Variables
 
 Ensure all required environment variables are set in Render.com:
 
@@ -127,12 +158,6 @@ Ensure all required environment variables are set in Render.com:
 - `YOUTUBE_API_KEY` - YouTube Data API v3 key (for video metadata)
 - `ENVIRONMENT` - Set to `production`
 
-#### 4. Start Command
-
-Set the **Start Command** to:
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
 
 ### Troubleshooting Playwright Issues
 
