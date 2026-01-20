@@ -1,9 +1,14 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from .config import settings
 from .database import connect_to_mongo, close_mongo_connection, ping_database
 from .routers import auth, items, tags, chat
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -32,6 +37,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add custom exception handler for validation errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Log detailed validation errors for debugging"""
+    logger.error(f"=== VALIDATION ERROR ===")
+    logger.error(f"Request URL: {request.url}")
+    logger.error(f"Request method: {request.method}")
+    logger.error(f"Validation errors: {exc.errors()}")
+    logger.error(f"Request body: {await request.body()}")
+    logger.error(f"========================")
+    
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors()},
+    )
 
 # Register routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])

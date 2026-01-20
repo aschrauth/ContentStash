@@ -156,6 +156,22 @@ async def create_item(
     - For pasted content: archived_text is saved directly
     - Returns created item
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Log the incoming request data for debugging
+    logger.info(f"=== CREATE ITEM REQUEST ===")
+    logger.info(f"URL: {item_data.url}")
+    logger.info(f"Title: {item_data.title}")
+    logger.info(f"Description: {item_data.description}")
+    logger.info(f"Image URL: {item_data.image_url}")
+    logger.info(f"Favicon URL: {item_data.favicon_url}")
+    logger.info(f"Tags: {item_data.tags}")
+    logger.info(f"Extraction Type: {item_data.extraction_type}")
+    logger.info(f"Has archived_text: {bool(item_data.archived_text)}")
+    logger.info(f"Has notes_markdown: {bool(item_data.notes_markdown)}")
+    logger.info(f"=========================")
+    
     db = get_database()
     
     # Validate that either URL or content (title) is provided
