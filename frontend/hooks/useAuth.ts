@@ -10,8 +10,12 @@ export function useAuth(requireAuth = true) {
   const pathname = usePathname();
   const currentUser = useStore((state) => state.currentUser);
   const token = useStore((state) => state.token);
+  const hasHydrated = useStore((state) => state._hasHydrated);
 
   useEffect(() => {
+    // Wait for Zustand to hydrate before initializing auth
+    if (!hasHydrated) return;
+
     // If we have a token but no user, fetch the user profile
     const initAuth = async () => {
       const storedToken = localStorage.getItem('token');
@@ -45,15 +49,21 @@ export function useAuth(requireAuth = true) {
     };
 
     initAuth();
-  }, [currentUser]);
+  }, [currentUser, hasHydrated]);
 
   useEffect(() => {
-    if (requireAuth && !currentUser && !localStorage.getItem('token')) {
+    // Wait for hydration before making auth decisions
+    if (!hasHydrated) return;
+
+    // Check both Zustand state and localStorage to handle hydration race
+    const storedToken = localStorage.getItem('token');
+    
+    if (requireAuth && !currentUser && !storedToken) {
       router.push('/login');
     } else if (!requireAuth && currentUser && (pathname === '/login' || pathname === '/register')) {
       router.push('/library');
     }
-  }, [currentUser, requireAuth, router, pathname]);
+  }, [currentUser, requireAuth, router, pathname, hasHydrated]);
 
   return { currentUser, isAuthenticated: !!currentUser };
 }

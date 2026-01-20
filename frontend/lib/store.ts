@@ -69,6 +69,8 @@ interface AppState {
   items: SavedItem[];
   tags: TagWithCount[];
   chatThreads: ChatThread[];
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
   
   // Actions
   register: (email: string, password: string, name: string) => Promise<void>;
@@ -100,6 +102,10 @@ export const useStore = create<AppState>()(
       items: [],
       tags: [],
       chatThreads: [],
+      _hasHydrated: false,
+      setHasHydrated: (state) => {
+        set({ _hasHydrated: state });
+      },
 
       register: async (email, password, name) => {
         try {
@@ -695,6 +701,9 @@ export const useStore = create<AppState>()(
         // Store token separately in localStorage, not in zustand persist
         // currentUser will be fetched from /me endpoint on app load
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

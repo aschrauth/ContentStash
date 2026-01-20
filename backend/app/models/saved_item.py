@@ -8,7 +8,7 @@ class SavedItemBase(BaseModel):
     """Base saved item schema with common fields"""
     url: Optional[str] = None
     title: str = Field(..., max_length=500)
-    description: Optional[str] = Field(None, max_length=2000)
+    description: Optional[str] = Field(None, max_length=5000)
     image_url: Optional[str] = None
     favicon_url: Optional[str] = None
     notes_markdown: Optional[str] = Field(None, max_length=50000)
@@ -37,7 +37,7 @@ class SavedItemUpdate(BaseModel):
     """Schema for updating a saved item"""
     url: Optional[str] = None
     title: Optional[str] = Field(None, max_length=500)
-    description: Optional[str] = Field(None, max_length=2000)
+    description: Optional[str] = Field(None, max_length=5000)
     image_url: Optional[str] = None
     favicon_url: Optional[str] = None
     notes_markdown: Optional[str] = Field(None, max_length=50000)

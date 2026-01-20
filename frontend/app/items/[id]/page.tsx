@@ -21,7 +21,7 @@ export default function ItemDetailPage() {
   // In Next.js 15, params is a Promise. We need to handle it correctly.
   const params = useParams();
   const router = useRouter();
-  const { items, updateItem, deleteItem, token } = useStore();
+  const { items, updateItem, deleteItem, token, _hasHydrated } = useStore();
   
   const [itemId, setItemId] = useState<string | null>(null);
   const [item, setItem] = useState<SavedItem | null>(null);
@@ -35,30 +35,6 @@ export default function ItemDetailPage() {
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [hasHydrated, setHasHydrated] = useState(false);
-  const [isAuthInitializing, setIsAuthInitializing] = useState(true);
-
-  // Detect when Zustand has finished hydrating from localStorage
-  useEffect(() => {
-    // Small delay to ensure persist middleware has hydrated
-    const timer = setTimeout(() => {
-      setHasHydrated(true);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Wait for auth initialization (token restoration from localStorage)
-  useEffect(() => {
-    const checkAuth = async () => {
-      // Wait a bit for useAuth hook to restore token from localStorage
-      await new Promise(resolve => setTimeout(resolve, 100));
-      setIsAuthInitializing(false);
-    };
-    
-    if (hasHydrated) {
-      checkAuth();
-    }
-  }, [hasHydrated]);
 
   // Handle params safely
   useEffect(() => {
@@ -69,11 +45,12 @@ export default function ItemDetailPage() {
 
   // Load item data once itemId and items are available
   useEffect(() => {
-    // Wait for both hydration and auth initialization
-    if (!hasHydrated || isAuthInitializing) return;
+    // Wait for Zustand hydration to complete
+    if (!_hasHydrated) return;
     
-    // If no token after auth initialization, redirect to login
-    if (!token) {
+    // Check both Zustand state and localStorage for token
+    const storedToken = localStorage.getItem('token');
+    if (!token && !storedToken) {
       router.push('/login');
       return;
     }
@@ -92,10 +69,17 @@ export default function ItemDetailPage() {
     } else {
       // Item not in store - fetch from API (handles refresh case)
       const fetchItem = async () => {
+        // Use stored token if Zustand token not yet available
+        const authToken = token || localStorage.getItem('token');
+        if (!authToken) {
+          router.push('/login');
+          return;
+        }
+
         try {
           const response = await fetch(API_ENDPOINTS.itemById(itemId), {
             headers: {
-              'Authorization': `Bearer ${token}`,
+              'Authorization': `Bearer ${authToken}`,
             },
           });
           
@@ -122,7 +106,7 @@ export default function ItemDetailPage() {
       
       fetchItem();
     }
-  }, [items, itemId, token, router, hasHydrated, isAuthInitializing]);
+  }, [items, itemId, token, router, _hasHydrated]);
 
   // Polling effect for pending items
   useEffect(() => {
@@ -206,8 +190,8 @@ export default function ItemDetailPage() {
     setShowAutocomplete(false);
   };
 
-  // Show loading while hydrating, auth initializing, or loading item
-  if (!hasHydrated || isAuthInitializing || isLoading || !item) {
+  // Show loading while hydrating or loading item
+  if (!_hasHydrated || isLoading || !item) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center min-h-[50vh]">

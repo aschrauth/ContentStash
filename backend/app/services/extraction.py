@@ -113,7 +113,22 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
         logger.info(f"Attempting Playwright extraction for {url}")
         async with async_playwright() as p:
             # Launch browser in headless mode with realistic user agent
-            browser = await p.chromium.launch(headless=True)
+            try:
+                browser = await p.chromium.launch(headless=True)
+            except Exception as launch_error:
+                logger.error(
+                    f"Failed to launch Chromium browser. This may indicate missing browser binaries or system dependencies. "
+                    f"Error: {str(launch_error)}",
+                    exc_info=True
+                )
+                logger.error(
+                    "TROUBLESHOOTING: "
+                    "1. Ensure 'playwright install chromium' was run during deployment. "
+                    "2. Verify system dependencies are installed (libnss3, libatk1.0-0, etc.). "
+                    "3. Check Render.com build logs for Playwright installation errors. "
+                    f"See deployment documentation for details."
+                )
+                raise
             page = await browser.new_page()
             
             # Set a realistic user agent to avoid bot detection
@@ -284,11 +299,51 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
             logger.info(f"Playwright successfully extracted {len(markdown_content)} characters from {url}")
             return markdown_content
             
-    except PlaywrightTimeoutError:
-        logger.error(f"Playwright timeout while loading {url}. The page took too long to load.")
+    except PlaywrightTimeoutError as e:
+        logger.error(
+            f"Playwright timeout while loading {url}. The page took too long to load (timeout exceeded). "
+            f"This may indicate a slow website or network issues. Error: {str(e)}"
+        )
         return None
     except Exception as e:
-        logger.error(f"Playwright error extracting content from {url}: {str(e)}", exc_info=True)
+        error_type = type(e).__name__
+        error_msg = str(e)
+        
+        # Provide specific guidance based on error type
+        if "Executable doesn't exist" in error_msg or "Browser closed" in error_msg:
+            logger.error(
+                f"Playwright browser error for {url}: {error_type} - {error_msg}. "
+                f"CAUSE: Chromium browser binaries are not installed or system dependencies are missing. "
+                f"SOLUTION: "
+                f"1. Verify 'playwright install chromium' ran successfully during build. "
+                f"2. Check that all required system packages are installed (see DEPLOYMENT.md). "
+                f"3. Review Render.com build logs for installation errors.",
+                exc_info=True
+            )
+        elif "net::" in error_msg or "NS_ERROR" in error_msg:
+            logger.error(
+                f"Playwright network error for {url}: {error_type} - {error_msg}. "
+                f"CAUSE: Network connectivity issue or DNS resolution failure. "
+                f"SOLUTION: Check network connectivity and verify the URL is accessible.",
+                exc_info=True
+            )
+        elif "Target closed" in error_msg or "Protocol error" in error_msg:
+            logger.error(
+                f"Playwright browser crash for {url}: {error_type} - {error_msg}. "
+                f"CAUSE: Browser process crashed, possibly due to insufficient memory or missing dependencies. "
+                f"SOLUTION: "
+                f"1. Ensure sufficient memory is allocated (minimum 512MB recommended). "
+                f"2. Verify all system dependencies are installed. "
+                f"3. Check for memory-related errors in deployment logs.",
+                exc_info=True
+            )
+        else:
+            logger.error(
+                f"Playwright error extracting content from {url}: {error_type} - {error_msg}. "
+                f"See stack trace for details.",
+                exc_info=True
+            )
+        
         return None
 
 
