@@ -10,6 +10,10 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 echo "=== Installing Playwright Chromium browser ==="
+# Set Playwright browsers path to persist from build to runtime
+# This is critical on Render.com where build and runtime environments are separate
+export PLAYWRIGHT_BROWSERS_PATH=./ms-playwright-browsers
 playwright install chromium
 
+echo "Chromium installed successfully to $PLAYWRIGHT_BROWSERS_PATH"
 echo "=== Build completed successfully ==="

@@ -70,6 +70,7 @@ The configuration file automatically handles:
 - **Build command** - Executes [`backend/render-build.sh`](../../backend/render-build.sh)
 - **Start command** - Launches the FastAPI application
 - **Environment variables** - Placeholders for required secrets
+- **Playwright browser persistence** - Ensures browser binaries persist from build to runtime
 
 #### Deployment Steps
 
@@ -153,15 +154,58 @@ Ensure all required environment variables are set in Render.com:
 - `DATABASE_URL` - PostgreSQL connection string
 - `SECRET_KEY` - JWT secret key
 - `GEMINI_API_KEY` - Google Gemini API key
+- `PLAYWRIGHT_BROWSERS_PATH` - Set to `./ms-playwright-browsers` (critical for browser persistence)
 
 **Optional:**
 - `YOUTUBE_API_KEY` - YouTube Data API v3 key (for video metadata)
 - `ENVIRONMENT` - Set to `production`
 
 
+### Playwright Browser Persistence on Render.com
+
+#### Why Browser Persistence is Critical
+
+Render.com uses **separate environments** for build and runtime:
+- **Build environment**: Where dependencies are installed (including Playwright browsers)
+- **Runtime environment**: Where your application runs
+
+By default, Playwright installs browsers to `/opt/render/.cache/`, which is **not accessible at runtime**. This causes the error:
+```
+Executable doesn't exist at /opt/render/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell
+```
+
+#### The Solution: PLAYWRIGHT_BROWSERS_PATH
+
+To fix this, we install browsers to a **project-relative path** that persists from build to runtime:
+
+1. **During build** ([`backend/render-build.sh`](../../backend/render-build.sh)):
+   ```bash
+   export PLAYWRIGHT_BROWSERS_PATH=./ms-playwright-browsers
+   playwright install chromium
+   ```
+
+2. **At runtime** ([`render.yaml`](../../render.yaml)):
+   ```yaml
+   envVars:
+     - key: PLAYWRIGHT_BROWSERS_PATH
+       value: ./ms-playwright-browsers
+   ```
+
+This ensures Playwright looks for browsers in the same location during both build and runtime.
+
 ### Troubleshooting Playwright Issues
 
-#### Error: "Executable doesn't exist"
+#### Error: "Executable doesn't exist at /opt/render/.cache/..."
+
+**Cause:** `PLAYWRIGHT_BROWSERS_PATH` is not set correctly, causing browsers to install to the default cache location.
+
+**Solution:**
+1. Verify `PLAYWRIGHT_BROWSERS_PATH=./ms-playwright-browsers` is set in [`render.yaml`](../../render.yaml)
+2. Verify the build script exports this variable before installing browsers
+3. Redeploy to apply the changes
+4. Check build logs for "Chromium installed successfully to ./ms-playwright-browsers"
+
+#### Error: "Executable doesn't exist" (general)
 
 **Cause:** Playwright browser binaries were not installed during build.
 
@@ -169,6 +213,7 @@ Ensure all required environment variables are set in Render.com:
 1. Verify the build script is being executed
 2. Check build logs for `playwright install chromium` output
 3. Ensure the build command is set to `./backend/render-build.sh`
+4. Verify `PLAYWRIGHT_BROWSERS_PATH` is set in both build script and runtime environment
 
 #### Error: "Browser closed unexpectedly" or "Failed to launch browser"
 
