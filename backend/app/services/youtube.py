@@ -1,5 +1,5 @@
 """
-YouTube transcript extraction service with YouTube Data API v3 fallback.
+YouTube transcript extraction service with YouTube Data API v3 fallback and yt-dlp support.
 """
 import re
 import logging
@@ -200,3 +200,132 @@ def get_video_metadata_from_api(video_id: str, api_key: Optional[str] = None) ->
     except Exception as e:
         logger.error(f"Unexpected error fetching metadata from YouTube API for video ID {video_id}: {str(e)}")
         return None
+
+
+def get_video_metadata_from_ytdlp(video_id: str) -> Optional[Dict]:
+    """
+    Fetch video metadata using yt-dlp as a robust fallback.
+    This is more resilient to IP blocking and rate limiting than the transcript API.
+    
+    Args:
+        video_id: YouTube video ID
+        
+    Returns:
+        Dictionary with metadata fields or None if extraction fails:
+        {
+            'title': str,
+            'description': str,
+            'thumbnail_url': str,
+            'channel_name': str,
+            'published_at': str
+        }
+    """
+    try:
+        import yt_dlp
+        
+        logger.info(f"Attempting to fetch metadata from yt-dlp for video ID: {video_id}")
+        
+        # Configure yt-dlp to extract metadata only (no download)
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+            'skip_download': True,
+        }
+        
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            if not info:
+                logger.warning(f"No video info found for video ID: {video_id}")
+                return None
+            
+            # Extract metadata from yt-dlp response
+            metadata = {
+                'title': info.get('title', ''),
+                'description': info.get('description', ''),
+                'thumbnail_url': info.get('thumbnail', ''),
+                'channel_name': info.get('uploader', ''),
+                'published_at': info.get('upload_date', '')
+            }
+            
+            logger.info(f"Successfully fetched metadata from yt-dlp for video ID: {video_id}")
+            logger.debug(f"Metadata: title='{metadata['title']}', channel='{metadata['channel_name']}'")
+            
+            return metadata
+            
+    except ImportError:
+        logger.error("yt-dlp not installed. Install with: pip install yt-dlp")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error fetching metadata from yt-dlp for video ID {video_id}: {str(e)}")
+        return None
+
+
+def get_youtube_preview_metadata(url: str, api_key: Optional[str] = None) -> Optional[Dict]:
+    """
+    Get YouTube video metadata for preview purposes.
+    Tries multiple methods in order of preference:
+    1. YouTube Data API (if key available)
+    2. yt-dlp (robust fallback)
+    
+    This function is specifically designed for the preview endpoint to work
+    reliably in production without requiring transcripts.
+    
+    Args:
+        url: YouTube URL
+        api_key: YouTube Data API v3 key (optional)
+        
+    Returns:
+        Dictionary with metadata fields or None if all methods fail:
+        {
+            'title': str,
+            'description': str,
+            'thumbnail': str,
+            'channel_name': str,
+            'published_at': str
+        }
+    """
+    video_id = extract_video_id(url)
+    if not video_id:
+        logger.error(f"Could not extract video ID from URL: {url}")
+        return None
+    
+    logger.info(f"Getting YouTube preview metadata for video ID: {video_id}")
+    
+    # Try YouTube Data API first if key is available
+    if api_key:
+        logger.info("Attempting YouTube Data API for preview metadata")
+        metadata = get_video_metadata_from_api(video_id, api_key)
+        if metadata:
+            logger.info("✓ Successfully fetched preview metadata from YouTube Data API")
+            # Normalize field names for preview response
+            return {
+                'title': metadata.get('title'),
+                'description': metadata.get('description'),
+                'thumbnail': metadata.get('thumbnail_url'),
+                'channel_name': metadata.get('channel_name'),
+                'published_at': metadata.get('published_at')
+            }
+        logger.warning("YouTube Data API failed, trying yt-dlp fallback")
+    else:
+        logger.info("No YouTube API key configured, using yt-dlp directly")
+    
+    # Fallback to yt-dlp (more robust, works without API key)
+    logger.info("Attempting yt-dlp for preview metadata")
+    metadata = get_video_metadata_from_ytdlp(video_id)
+    if metadata:
+        logger.info("✓ Successfully fetched preview metadata from yt-dlp")
+        # Normalize field names for preview response
+        return {
+            'title': metadata.get('title'),
+            'description': metadata.get('description'),
+            'thumbnail': metadata.get('thumbnail_url'),
+            'channel_name': metadata.get('channel_name'),
+            'published_at': metadata.get('published_at')
+        }
+    
+    logger.error(f"✗ All methods failed to fetch preview metadata for {url}")
+    return None

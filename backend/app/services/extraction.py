@@ -7,7 +7,7 @@ from readability import Document
 from typing import Optional, Dict
 import logging
 from markdownify import markdownify as md
-from .youtube import is_youtube_url, extract_video_id, get_video_transcript, get_video_metadata_from_api
+from .youtube import is_youtube_url, extract_video_id, get_video_transcript, get_video_metadata_from_api, get_video_metadata_from_ytdlp
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import asyncio
 from ..config import settings
@@ -335,7 +335,23 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
                     logger.info(f"Using YouTube API metadata as content ({len(content)} characters)")
                     return content
                 else:
-                    logger.error(f"✗ Both transcript and YouTube API failed for {url}, falling back to web scraping")
+                    logger.warning(f"✗ YouTube API failed, trying yt-dlp fallback for {url}")
+                    
+                    # Try yt-dlp as final fallback (most robust)
+                    ytdlp_metadata = get_video_metadata_from_ytdlp(video_id)
+                    
+                    if ytdlp_metadata:
+                        logger.info(f"✓ Successfully fetched metadata from yt-dlp for {url}")
+                        # Create content from yt-dlp metadata
+                        content = f"# {ytdlp_metadata.get('title', 'YouTube Video')}\n\n"
+                        content += f"**Channel:** {ytdlp_metadata.get('channel_name', 'Unknown')}\n\n"
+                        if ytdlp_metadata.get('description'):
+                            content += f"{ytdlp_metadata['description']}"
+                        
+                        logger.info(f"Using yt-dlp metadata as content ({len(content)} characters)")
+                        return content
+                    else:
+                        logger.error(f"✗ All YouTube extraction methods failed for {url}, falling back to web scraping")
         else:
             logger.error(f"✗ Failed to extract video ID from YouTube URL: {url}, falling back to standard extraction")
     
@@ -430,9 +446,16 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
             # Try to get metadata from YouTube Data API
             youtube_metadata = get_video_metadata_from_api(video_id, settings.youtube_api_key)
             
+            # If API failed, try yt-dlp as fallback
+            if not youtube_metadata:
+                logger.info(f"YouTube API unavailable, trying yt-dlp for metadata")
+                youtube_metadata = get_video_metadata_from_ytdlp(video_id)
+                if youtube_metadata:
+                    logger.info(f"✓ Successfully fetched metadata from yt-dlp")
+            
             if transcript:
                 logger.info(f"Successfully extracted YouTube transcript and metadata for {url}")
-                # If we have both transcript and API metadata, use them
+                # If we have both transcript and metadata, use them
                 if youtube_metadata:
                     return {
                         'text': transcript,
@@ -444,8 +467,8 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                         'url': url
                     }
                 else:
-                    # Transcript succeeded but API failed - still return transcript with basic metadata
-                    logger.warning(f"YouTube API metadata unavailable for {url}, using transcript only")
+                    # Transcript succeeded but metadata failed - still return transcript
+                    logger.warning(f"YouTube metadata unavailable for {url}, using transcript only")
                     return {
                         'text': transcript,
                         'title': None,
@@ -456,8 +479,8 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                         'url': url
                     }
             elif youtube_metadata:
-                # Transcript failed but we have API metadata
-                logger.warning(f"YouTube transcript unavailable for {url}, using API metadata with description as content")
+                # Transcript failed but we have metadata
+                logger.warning(f"YouTube transcript unavailable for {url}, using metadata with description as content")
                 # Use description as content if transcript is unavailable
                 content = f"# {youtube_metadata.get('title', 'YouTube Video')}\n\n"
                 content += f"**Channel:** {youtube_metadata.get('channel_name', 'Unknown')}\n\n"
@@ -474,7 +497,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                     'url': url
                 }
             else:
-                # Both transcript and API failed
+                # Both transcript and metadata failed
                 logger.error(f"Failed to extract both transcript and metadata from YouTube for {url}")
                 return {
                     'text': None,

@@ -10,6 +10,8 @@ from ..dependencies import get_current_user
 from ..services.background import process_item_background
 from ..services.metadata import fetch_metadata
 from ..services.ai import generate_metadata_from_content
+from ..services.youtube import is_youtube_url, get_youtube_preview_metadata
+from ..config import settings
 
 router = APIRouter()
 
@@ -47,7 +49,8 @@ async def preview_url(
     """
     Preview metadata for a URL without saving it.
     
-    - Fetches title, description, image, and favicon
+    - For YouTube URLs: Uses YouTube service for reliable metadata extraction
+    - For other URLs: Fetches title, description, image, and favicon via web scraping
     - Does not save to database
     - Returns metadata for frontend to display
     """
@@ -55,7 +58,34 @@ async def preview_url(
         # Convert HttpUrl to string for the metadata service
         url_str = str(request.url)
         
-        # Fetch metadata using the metadata service
+        # Check if this is a YouTube URL and handle it specially
+        if is_youtube_url(url_str):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Preview endpoint detected YouTube URL: {url_str}")
+            
+            # Use YouTube service for preview metadata
+            youtube_metadata = get_youtube_preview_metadata(url_str, settings.youtube_api_key)
+            
+            if youtube_metadata:
+                logger.info(f"✓ Successfully fetched YouTube preview metadata")
+                return PreviewResponse(
+                    title=youtube_metadata.get('title'),
+                    description=youtube_metadata.get('description'),
+                    image_url=youtube_metadata.get('thumbnail'),
+                    favicon_url='https://www.youtube.com/favicon.ico'
+                )
+            else:
+                logger.warning(f"✗ YouTube preview metadata extraction failed, returning minimal data")
+                # Return minimal data if YouTube extraction fails
+                return PreviewResponse(
+                    title="YouTube Video",
+                    description="Unable to fetch video details",
+                    image_url=None,
+                    favicon_url='https://www.youtube.com/favicon.ico'
+                )
+        
+        # For non-YouTube URLs, use generic metadata fetching
         metadata = fetch_metadata(url_str)
         
         return PreviewResponse(
