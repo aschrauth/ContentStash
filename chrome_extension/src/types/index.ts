@@ -31,6 +31,7 @@ export interface ExtensionSettings {
   serverUrl: string;
   pollingEnabled: boolean;
   pollingIntervalMinutes: number;
+  closeDelayMs: number;
 }
 
 export interface CreateItemRequest {

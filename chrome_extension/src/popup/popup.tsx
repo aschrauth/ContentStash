@@ -19,6 +19,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [pollingEnabled, setPollingEnabled] = useState(true);
   const [pollingInterval, setPollingInterval] = useState(15);
+  const [closeDelay, setCloseDelay] = useState(1000);
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
@@ -55,6 +56,7 @@ function App() {
       const settings = await Storage.getSettings();
       setPollingEnabled(settings.pollingEnabled);
       setPollingInterval(settings.pollingIntervalMinutes);
+      setCloseDelay(settings.closeDelayMs);
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -68,6 +70,7 @@ function App() {
       await Storage.updateSettings({
         pollingEnabled,
         pollingIntervalMinutes: pollingInterval,
+        closeDelayMs: closeDelay,
       });
       
       // Notify service worker to update polling alarm
@@ -82,7 +85,7 @@ function App() {
       setMessage('✓ Settings saved');
       setTimeout(() => {
         window.close();
-      }, 500);
+      }, closeDelay);
     } catch (error) {
       setMessage('✗ Failed to save settings: ' + (error as Error).message);
       setIsProcessing(false);
@@ -203,7 +206,7 @@ function App() {
       
       setTimeout(() => {
         window.close();
-      }, 500);
+      }, closeDelay);
     } catch (error) {
       setMessage('✗ Failed to save: ' + (error as Error).message);
       setIsProcessing(false);
@@ -219,7 +222,7 @@ function App() {
       setMessage('✓ Processing started');
       setTimeout(() => {
         window.close();
-      }, 500);
+      }, closeDelay);
     } catch (error) {
       setMessage('✗ Failed: ' + (error as Error).message);
       setIsProcessing(false);
@@ -263,8 +266,19 @@ function App() {
     );
   }
 
+  // Apply dynamic sizing when processing
+  useEffect(() => {
+    if (isProcessing) {
+      document.body.style.width = 'fit-content';
+      document.body.style.height = 'fit-content';
+    } else {
+      document.body.style.width = '';
+      document.body.style.height = '';
+    }
+  }, [isProcessing]);
+
   return (
-    <div className="container">
+    <div className={isProcessing ? 'container processing-container' : 'container'}>
       {isProcessing ? (
         <div className="processing-view">
           {message && <p className="message">{message}</p>}
@@ -311,6 +325,23 @@ function App() {
                 </label>
                 <p className="setting-hint">
                   How often to check for items that need local extraction (1-1440 minutes)
+                </p>
+              </div>
+
+              <div className="setting-group">
+                <label className="setting-label">
+                  Close delay (milliseconds):
+                  <input
+                    type="number"
+                    min="100"
+                    max="5000"
+                    value={closeDelay}
+                    onChange={(e) => setCloseDelay(parseInt(e.target.value) || 1000)}
+                    className="interval-input"
+                  />
+                </label>
+                <p className="setting-hint">
+                  How long to show success messages before auto-closing (100-5000ms)
                 </p>
               </div>
 

@@ -2,30 +2,41 @@
   box-sizing: border-box;
 }
 
+body {
+  margin: 0;
+  padding: 0;
+}
+
 .container {
   padding: 20px;
   min-height: 200px;
+}
+
+.container.processing-container {
+  padding: 0;
+  min-height: auto;
 }
 
 .processing-view {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 200px;
-  padding: 40px 20px;
+  padding: 0;
+  margin: 0;
 }
 
 .processing-view .message {
   margin: 0;
-  padding: 20px 30px;
-  font-size: 16px;
+  padding: 16px 24px;
+  font-size: 15px;
   font-weight: 600;
   text-align: center;
   background: #d4edda;
   border: 2px solid #28a745;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #155724;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
 }
 
 h1 {
