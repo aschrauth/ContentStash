@@ -23,6 +23,7 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
+    console.log('[Popup] Component mounted, initializing...');
     checkAuth();
     loadPendingCount();
     loadSettings();
@@ -230,8 +231,11 @@ function App() {
   }
 
   if (isLoading) {
+    console.log('[Popup] Rendering loading state');
     return <div className="container"><p>Loading...</p></div>;
   }
+
+  console.log('[Popup] Rendering main UI, isAuthenticated:', isAuthenticated, 'isProcessing:', isProcessing);
 
   if (!isAuthenticated) {
     return (

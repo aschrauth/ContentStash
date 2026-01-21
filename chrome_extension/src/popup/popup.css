@@ -56,6 +56,8 @@ h2 {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+}
+
 .header-buttons {
   display: flex;
   gap: 8px;
@@ -69,8 +71,6 @@ h2 {
 
 .settings-btn:hover {
   background: #5a6268;
-}
-
 }
 
 .login-form {
@@ -125,6 +125,9 @@ button:active {
   margin-bottom: 20px;
   padding: 16px;
   background: #f8f9fa;
+  border-radius: 8px;
+}
+
 .settings-section {
   margin-bottom: 20px;
   padding: 16px;
@@ -175,9 +178,6 @@ input[type="number"]:disabled {
 
 .save-settings-btn:hover {
   background: #138496;
-}
-
-  border-radius: 8px;
 }
 
 .extraction-type {
