@@ -281,7 +281,7 @@ Respond with JSON only:
     # Call Gemini with Flash-Lite model
     response = gemini_service.generate_content(
         prompt=prompt,
-        model="gemini-2.0-flash-lite-preview-02-05"
+        model="gemini-2.5-flash-lite"
     )
     
     if not response:

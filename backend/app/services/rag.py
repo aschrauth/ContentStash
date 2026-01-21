@@ -43,7 +43,14 @@ async def vector_search(query: str, owner_id: str, k: int = 8, max_chunks_per_it
             return []
         
         # Step 1: Embed the query
-        logger.info(f"Embedding query for vector search: '{query[:50]}...'")
+        # [DIAGNOSTIC] Log vector search request
+        logger.info(
+            f"[RATE_LIMIT_DEBUG] Vector search starting:\n"
+            f"  - Query: '{query[:50]}...'\n"
+            f"  - Query length: {len(query)} chars\n"
+            f"  - Estimated tokens: ~{len(query) // 4}\n"
+            f"  - Requested k: {k}"
+        )
         try:
             query_embedding = gemini_service.embed_content(query)
             if not query_embedding:
@@ -404,10 +411,17 @@ async def generate_answer(query: str, chunks: List[Dict]) -> Dict[str, any]:
         prompt = _build_citation_prompt(query, evidence, source_mapping)
         
         # Call Gemini API with Flash-Lite model for cost optimization
-        logger.info(f"Generating answer with Gemini for query: '{query[:50]}...'")
+        # [DIAGNOSTIC] Log answer generation request
+        logger.info(
+            f"[RATE_LIMIT_DEBUG] Answer generation starting:\n"
+            f"  - Query: '{query[:50]}...'\n"
+            f"  - Prompt length: {len(prompt)} chars\n"
+            f"  - Estimated tokens: ~{len(prompt) // 4}\n"
+            f"  - Number of chunks in context: {len(chunks)}"
+        )
         response_text = gemini_service.generate_content(
             prompt=prompt,
-            model="gemini-2.0-flash-lite-preview-02-05"
+            model="gemini-2.5-flash-lite"
         )
         
         if not response_text:
