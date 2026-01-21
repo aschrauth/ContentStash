@@ -36,36 +36,52 @@ class GeminiAPIError(GeminiServiceError):
     pass
 
 
-def retry_with_exponential_backoff(max_retries: int = 3, base_delay: float = 1.0):
+def retry_with_exponential_backoff(max_retries: int = 1, base_delay: float = 5.0):
     """
     Decorator to retry function calls with exponential backoff.
     
     Args:
-        max_retries: Maximum number of retry attempts (default: 3)
-        base_delay: Base delay in seconds for exponential backoff (default: 1.0)
+        max_retries: Maximum number of retry attempts (default: 1)
+        base_delay: Base delay in seconds for exponential backoff (default: 5.0)
     """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            for attempt in range(max_retries):
+            # Configuration for rate limit handling
+            rate_limit_delay = 15.0  # Wait 15 seconds for 429 errors
+            max_backoff = 30.0  # Cap exponential backoff at 30 seconds
+            
+            for attempt in range(max_retries + 1):  # +1 to include initial attempt
                 try:
                     return func(*args, **kwargs)
                 except google_exceptions.ResourceExhausted as e:
-                    if attempt == max_retries - 1:
-                        logger.error(f"Rate limit exceeded after {max_retries} attempts: {str(e)}")
-                        raise GeminiRateLimitError(f"Rate limit exceeded: {str(e)}")
+                    if attempt == max_retries:
+                        logger.error(
+                            f"Rate limit exceeded after {max_retries + 1} attempts. "
+                            f"Please wait at least 60 seconds before retrying. Error: {str(e)}"
+                        )
+                        raise GeminiRateLimitError(
+                            f"Rate limit exceeded. Please wait before retrying. Error: {str(e)}"
+                        )
                     
-                    delay = base_delay * (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
-                    logger.warning(f"Rate limit hit, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                    # Use longer delay for rate limit errors to allow window to reset
+                    delay = rate_limit_delay
+                    logger.warning(
+                        f"Rate limit hit (429 error). Waiting {delay}s to allow rate limit window to reset "
+                        f"(attempt {attempt + 1}/{max_retries + 1})"
+                    )
                     time.sleep(delay)
                     
                 except (google_exceptions.GoogleAPIError, google_exceptions.RetryError) as e:
-                    if attempt == max_retries - 1:
-                        logger.error(f"API error after {max_retries} attempts: {str(e)}")
+                    if attempt == max_retries:
+                        logger.error(f"API error after {max_retries + 1} attempts: {str(e)}")
                         raise GeminiAPIError(f"API error: {str(e)}")
                     
-                    delay = base_delay * (2 ** attempt)
-                    logger.warning(f"API error, retrying in {delay}s (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                    # Use exponential backoff with ceiling for other API errors
+                    delay = min(base_delay * (2 ** attempt), max_backoff)
+                    logger.warning(
+                        f"API error, retrying in {delay}s (attempt {attempt + 1}/{max_retries + 1}): {str(e)}"
+                    )
                     time.sleep(delay)
                     
                 except Exception as e:
@@ -121,7 +137,7 @@ class GeminiService:
                 "Gemini API key is not configured. Please set GEMINI_API_KEY in your environment."
             )
     
-    @retry_with_exponential_backoff(max_retries=3, base_delay=1.0)
+    @retry_with_exponential_backoff(max_retries=1, base_delay=5.0)
     def generate_content(
         self,
         prompt: str,
@@ -168,7 +184,7 @@ class GeminiService:
             logger.error(f"Unexpected error during content generation: {str(e)}")
             raise GeminiAPIError(f"Content generation failed: {str(e)}")
     
-    @retry_with_exponential_backoff(max_retries=3, base_delay=1.0)
+    @retry_with_exponential_backoff(max_retries=1, base_delay=5.0)
     def embed_content(
         self,
         text: str,
@@ -218,7 +234,7 @@ class GeminiService:
             logger.error(f"Unexpected error during embedding generation: {str(e)}")
             raise GeminiAPIError(f"Embedding generation failed: {str(e)}")
     
-    @retry_with_exponential_backoff(max_retries=3, base_delay=1.0)
+    @retry_with_exponential_backoff(max_retries=1, base_delay=5.0)
     def embed_batch(
         self,
         texts: List[str],
