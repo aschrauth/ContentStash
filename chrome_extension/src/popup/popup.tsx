@@ -16,10 +16,14 @@ function App() {
   const [extractionType, setExtractionType] = useState<ExtractionType>('fast');
   const [pendingCount, setPendingCount] = useState(0);
   const [message, setMessage] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [pollingEnabled, setPollingEnabled] = useState(true);
+  const [pollingInterval, setPollingInterval] = useState(15);
 
   useEffect(() => {
     checkAuth();
     loadPendingCount();
+    loadSettings();
   }, []);
 
   async function checkAuth() {
@@ -42,6 +46,41 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to load pending count:', error);
+    }
+  }
+
+  async function loadSettings() {
+    try {
+      const settings = await Storage.getSettings();
+      setPollingEnabled(settings.pollingEnabled);
+      setPollingInterval(settings.pollingIntervalMinutes);
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+  }
+
+  async function handleSaveSettings() {
+    setMessage('');
+    
+    try {
+      await Storage.updateSettings({
+        pollingEnabled,
+        pollingIntervalMinutes: pollingInterval,
+      });
+      
+      // Notify service worker to update polling alarm
+      await chrome.runtime.sendMessage({
+        type: 'UPDATE_POLLING_SETTINGS',
+        payload: {
+          enabled: pollingEnabled,
+          intervalMinutes: pollingInterval,
+        },
+      });
+      
+      setMessage('✓ Settings saved');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      setMessage('✗ Failed to save settings: ' + (error as Error).message);
     }
   }
 
@@ -215,52 +254,98 @@ function App() {
     <div className="container">
       <div className="header">
         <h1>ContentStash</h1>
-        <button onClick={handleLogout} className="logout-btn">Logout</button>
-      </div>
-
-      <div className="save-section">
-        <h2>Save Current Page</h2>
-        <div className="extraction-type">
-          <label>
-            <input
-              type="radio"
-              value="fast"
-              checked={extractionType === 'fast'}
-              onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
-            />
-            Fast (Server)
-          </label>
-          <label>
-            <input
-              type="radio"
-              value="complete"
-              checked={extractionType === 'complete'}
-              onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
-            />
-            Complete (Server)
-          </label>
-          <label>
-            <input
-              type="radio"
-              value="local"
-              checked={extractionType === 'local'}
-              onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
-            />
-            Local (Browser)
-          </label>
+        <div className="header-buttons">
+          <button onClick={() => setShowSettings(!showSettings)} className="settings-btn">
+            {showSettings ? 'Hide Settings' : 'Settings'}
+          </button>
+          <button onClick={handleLogout} className="logout-btn">Logout</button>
         </div>
-        <button onClick={handleSaveCurrentTab} className="save-btn">
-          Save Page
-        </button>
       </div>
 
-      <div className="pending-section">
-        <h2>Local Extraction Queue</h2>
-        <p>{pendingCount} item(s) pending</p>
-        <button onClick={handleProcessPending} className="process-btn">
-          Process Now
-        </button>
-      </div>
+      {showSettings ? (
+        <div className="settings-section">
+          <h2>Settings</h2>
+          
+          <div className="setting-group">
+            <label className="setting-label">
+              <input
+                type="checkbox"
+                checked={pollingEnabled}
+                onChange={(e) => setPollingEnabled(e.target.checked)}
+              />
+              Enable automatic polling for pending items
+            </label>
+          </div>
+
+          <div className="setting-group">
+            <label className="setting-label">
+              Polling interval (minutes):
+              <input
+                type="number"
+                min="1"
+                max="1440"
+                value={pollingInterval}
+                onChange={(e) => setPollingInterval(parseInt(e.target.value) || 15)}
+                disabled={!pollingEnabled}
+                className="interval-input"
+              />
+            </label>
+            <p className="setting-hint">
+              How often to check for items that need local extraction (1-1440 minutes)
+            </p>
+          </div>
+
+          <button onClick={handleSaveSettings} className="save-settings-btn">
+            Save Settings
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="save-section">
+            <h2>Save Current Page</h2>
+            <div className="extraction-type">
+              <label>
+                <input
+                  type="radio"
+                  value="fast"
+                  checked={extractionType === 'fast'}
+                  onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
+                />
+                Fast (Server)
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  value="complete"
+                  checked={extractionType === 'complete'}
+                  onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
+                />
+                Complete (Server)
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  value="local"
+                  checked={extractionType === 'local'}
+                  onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
+                />
+                Local (Browser)
+              </label>
+            </div>
+            <button onClick={handleSaveCurrentTab} className="save-btn">
+              Save Page
+            </button>
+          </div>
+
+          <div className="pending-section">
+            <h2>Local Extraction Queue</h2>
+            <p>{pendingCount} item(s) pending</p>
+            <button onClick={handleProcessPending} className="process-btn">
+              Process Now
+            </button>
+          </div>
+        </>
+      )}
 
       {message && <p className="message">{message}</p>}
     </div>
