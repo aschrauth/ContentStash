@@ -263,6 +263,141 @@ def get_video_metadata_from_ytdlp(video_id: str) -> Optional[Dict]:
         logger.error(f"Unexpected error fetching metadata from yt-dlp for video ID {video_id}: {str(e)}")
         return None
 
+def get_transcript_from_ytdlp(video_id: str) -> Optional[str]:
+    """
+    Fetch video transcript using yt-dlp as a robust fallback.
+    This is more resilient to IP blocking and rate limiting than youtube_transcript_api.
+    
+    Args:
+        video_id: YouTube video ID
+        
+    Returns:
+        Formatted transcript as markdown or None if unavailable
+    """
+    try:
+        import yt_dlp
+        import re
+        
+        logger.info(f"Attempting to fetch transcript from yt-dlp for video ID: {video_id}")
+        
+        # Configure yt-dlp to extract subtitles
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'skip_download': True,
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitleslangs': ['en'],
+            'subtitlesformat': 'vtt',
+        }
+        
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            if not info:
+                logger.warning(f"No video info found for video ID: {video_id}")
+                return None
+            
+            # Check if subtitles are available
+            subtitles = info.get('subtitles', {})
+            automatic_captions = info.get('automatic_captions', {})
+            
+            # Prefer manual subtitles over automatic captions
+            subtitle_data = None
+            if 'en' in subtitles:
+                subtitle_data = subtitles['en']
+                logger.info(f"Found manual English subtitles for video ID: {video_id}")
+            elif 'en' in automatic_captions:
+                subtitle_data = automatic_captions['en']
+                logger.info(f"Found automatic English captions for video ID: {video_id}")
+            else:
+                logger.warning(f"No English subtitles or captions found for video ID: {video_id}")
+                return None
+            
+            # Find the VTT format subtitle
+            vtt_subtitle = None
+            for sub in subtitle_data:
+                if sub.get('ext') == 'vtt':
+                    vtt_subtitle = sub
+                    break
+            
+            if not vtt_subtitle:
+                logger.warning(f"No VTT format subtitle found for video ID: {video_id}")
+                return None
+            
+            # Download the subtitle content
+            import urllib.request
+            subtitle_url = vtt_subtitle.get('url')
+            if not subtitle_url:
+                logger.warning(f"No subtitle URL found for video ID: {video_id}")
+                return None
+            
+            logger.info(f"Downloading subtitle from: {subtitle_url}")
+            with urllib.request.urlopen(subtitle_url) as response:
+                vtt_content = response.read().decode('utf-8')
+            
+            # Parse VTT content to extract text
+            # VTT format has timestamps and text, we only want the text
+            lines = vtt_content.split('\n')
+            transcript_lines = []
+            
+            for line in lines:
+                line = line.strip()
+                # Skip VTT headers, timestamps, and empty lines
+                if (line.startswith('WEBVTT') or 
+                    line.startswith('Kind:') or
+                    line.startswith('Language:') or
+                    '-->' in line or
+                    not line or
+                    re.match(r'^\d+$', line)):
+                    continue
+                
+                # Remove VTT formatting tags like <c> </c>
+                line = re.sub(r'<[^>]+>', '', line)
+                
+                # Skip duplicate lines (VTT often repeats lines)
+                if transcript_lines and line == transcript_lines[-1]:
+                    continue
+                
+                transcript_lines.append(line)
+            
+            if not transcript_lines:
+                logger.warning(f"No transcript text extracted from VTT for video ID: {video_id}")
+                return None
+            
+            # Format transcript as readable paragraphs
+            # Group sentences into paragraphs (every 5-10 lines or at natural breaks)
+            paragraphs = []
+            current_paragraph = []
+            
+            for line in transcript_lines:
+                current_paragraph.append(line)
+                
+                # Start new paragraph if we have enough lines or if line ends with punctuation
+                if len(current_paragraph) >= 8 or (line.endswith(('.', '!', '?')) and len(current_paragraph) >= 3):
+                    paragraphs.append(' '.join(current_paragraph))
+                    current_paragraph = []
+            
+            # Add final paragraph
+            if current_paragraph:
+                paragraphs.append(' '.join(current_paragraph))
+            
+            # Join paragraphs with double newlines for markdown formatting
+            formatted_transcript = '\n\n'.join(paragraphs)
+            
+            logger.info(f"Successfully extracted transcript from yt-dlp for video ID: {video_id} ({len(formatted_transcript)} characters)")
+            return formatted_transcript
+            
+    except ImportError:
+        logger.error("yt-dlp not installed. Install with: pip install yt-dlp")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error fetching transcript from yt-dlp for video ID {video_id}: {str(e)}")
+        return None
+
+
 
 def get_youtube_preview_metadata(url: str, api_key: Optional[str] = None) -> Optional[Dict]:
     """

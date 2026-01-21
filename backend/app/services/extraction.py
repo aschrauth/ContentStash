@@ -7,7 +7,7 @@ from readability import Document
 from typing import Optional, Dict
 import logging
 from markdownify import markdownify as md
-from .youtube import is_youtube_url, extract_video_id, get_video_transcript, get_video_metadata_from_api, get_video_metadata_from_ytdlp
+from .youtube import is_youtube_url, extract_video_id, get_video_transcript, get_transcript_from_ytdlp, get_video_metadata_from_api, get_video_metadata_from_ytdlp
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import asyncio
 from ..config import settings
@@ -367,46 +367,58 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
         
         if video_id:
             logger.info(f"Attempting to extract transcript for video ID: {video_id}")
+            
+            # Step 1: Try youtube_transcript_api (fastest)
             transcript = get_video_transcript(video_id)
             
             if transcript:
                 logger.info(f"✓ Successfully extracted YouTube transcript for {url} ({len(transcript)} characters)")
                 return transcript
             else:
-                logger.warning(f"✗ YouTube transcript extraction failed for {url}")
-                logger.info(f"Attempting YouTube Data API fallback for video ID: {video_id}")
+                logger.warning(f"✗ YouTube transcript API failed for {url}")
+                logger.info(f"Attempting yt-dlp transcript fallback for video ID: {video_id}")
                 
-                # Try YouTube Data API as fallback
-                youtube_metadata = get_video_metadata_from_api(video_id, settings.youtube_api_key)
+                # Step 2: Try yt-dlp transcript extraction (most reliable)
+                ytdlp_transcript = get_transcript_from_ytdlp(video_id)
                 
-                if youtube_metadata:
-                    logger.info(f"✓ Successfully fetched metadata from YouTube API for {url}")
-                    # Create content from metadata
-                    content = f"# {youtube_metadata.get('title', 'YouTube Video')}\n\n"
-                    content += f"**Channel:** {youtube_metadata.get('channel_name', 'Unknown')}\n\n"
-                    if youtube_metadata.get('description'):
-                        content += f"{youtube_metadata['description']}"
-                    
-                    logger.info(f"Using YouTube API metadata as content ({len(content)} characters)")
-                    return content
+                if ytdlp_transcript:
+                    logger.info(f"✓ Successfully extracted transcript from yt-dlp for {url} ({len(ytdlp_transcript)} characters)")
+                    return ytdlp_transcript
                 else:
-                    logger.warning(f"✗ YouTube API failed, trying yt-dlp fallback for {url}")
+                    logger.warning(f"✗ yt-dlp transcript extraction failed for {url}")
+                    logger.info(f"Attempting YouTube Data API metadata fallback for video ID: {video_id}")
                     
-                    # Try yt-dlp as final fallback (most robust)
-                    ytdlp_metadata = get_video_metadata_from_ytdlp(video_id)
+                    # Step 3: Try YouTube Data API for metadata only
+                    youtube_metadata = get_video_metadata_from_api(video_id, settings.youtube_api_key)
                     
-                    if ytdlp_metadata:
-                        logger.info(f"✓ Successfully fetched metadata from yt-dlp for {url}")
-                        # Create content from yt-dlp metadata
-                        content = f"# {ytdlp_metadata.get('title', 'YouTube Video')}\n\n"
-                        content += f"**Channel:** {ytdlp_metadata.get('channel_name', 'Unknown')}\n\n"
-                        if ytdlp_metadata.get('description'):
-                            content += f"{ytdlp_metadata['description']}"
+                    if youtube_metadata:
+                        logger.info(f"✓ Successfully fetched metadata from YouTube API for {url}")
+                        # Create content from metadata
+                        content = f"# {youtube_metadata.get('title', 'YouTube Video')}\n\n"
+                        content += f"**Channel:** {youtube_metadata.get('channel_name', 'Unknown')}\n\n"
+                        if youtube_metadata.get('description'):
+                            content += f"{youtube_metadata['description']}"
                         
-                        logger.info(f"Using yt-dlp metadata as content ({len(content)} characters)")
+                        logger.info(f"Using YouTube API metadata as content ({len(content)} characters)")
                         return content
                     else:
-                        logger.error(f"✗ All YouTube extraction methods failed for {url}, falling back to web scraping")
+                        logger.warning(f"✗ YouTube API failed, trying yt-dlp metadata fallback for {url}")
+                        
+                        # Step 4: Try yt-dlp for metadata only (final fallback)
+                        ytdlp_metadata = get_video_metadata_from_ytdlp(video_id)
+                        
+                        if ytdlp_metadata:
+                            logger.info(f"✓ Successfully fetched metadata from yt-dlp for {url}")
+                            # Create content from yt-dlp metadata
+                            content = f"# {ytdlp_metadata.get('title', 'YouTube Video')}\n\n"
+                            content += f"**Channel:** {ytdlp_metadata.get('channel_name', 'Unknown')}\n\n"
+                            if ytdlp_metadata.get('description'):
+                                content += f"{ytdlp_metadata['description']}"
+                            
+                            logger.info(f"Using yt-dlp metadata as content ({len(content)} characters)")
+                            return content
+                        else:
+                            logger.error(f"✗ All YouTube extraction methods failed for {url}, falling back to web scraping")
         else:
             logger.error(f"✗ Failed to extract video ID from YouTube URL: {url}, falling back to standard extraction")
     
@@ -495,13 +507,20 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
         video_id = extract_video_id(url)
         
         if video_id:
-            # Try to get transcript first
+            # Step 1: Try youtube_transcript_api (fastest)
             transcript = get_video_transcript(video_id)
+            
+            # Step 2: If transcript API failed, try yt-dlp transcript
+            if not transcript:
+                logger.info(f"YouTube transcript API failed, trying yt-dlp transcript for {url}")
+                transcript = get_transcript_from_ytdlp(video_id)
+                if transcript:
+                    logger.info(f"✓ Successfully extracted transcript from yt-dlp for {url}")
             
             # Try to get metadata from YouTube Data API
             youtube_metadata = get_video_metadata_from_api(video_id, settings.youtube_api_key)
             
-            # If API failed, try yt-dlp as fallback
+            # If API failed, try yt-dlp as fallback for metadata
             if not youtube_metadata:
                 logger.info(f"YouTube API unavailable, trying yt-dlp for metadata")
                 youtube_metadata = get_video_metadata_from_ytdlp(video_id)
