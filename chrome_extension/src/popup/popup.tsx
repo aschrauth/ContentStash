@@ -19,11 +19,10 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [pollingEnabled, setPollingEnabled] = useState(true);
   const [pollingInterval, setPollingInterval] = useState(15);
-  const [closeDelay, setCloseDelay] = useState(1000);
+  const [popupCloseDelay, setPopupCloseDelay] = useState(1000);
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
-    console.log('[Popup] Component mounted, initializing...');
     checkAuth();
     loadPendingCount();
     loadSettings();
@@ -57,7 +56,7 @@ function App() {
       const settings = await Storage.getSettings();
       setPollingEnabled(settings.pollingEnabled);
       setPollingInterval(settings.pollingIntervalMinutes);
-      setCloseDelay(settings.closeDelayMs);
+      setPopupCloseDelay(settings.popupCloseDelayMs);
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -71,7 +70,7 @@ function App() {
       await Storage.updateSettings({
         pollingEnabled,
         pollingIntervalMinutes: pollingInterval,
-        closeDelayMs: closeDelay,
+        popupCloseDelayMs: popupCloseDelay,
       });
       
       // Notify service worker to update polling alarm
@@ -86,7 +85,7 @@ function App() {
       setMessage('✓ Settings saved');
       setTimeout(() => {
         window.close();
-      }, closeDelay);
+      }, popupCloseDelay);
     } catch (error) {
       setMessage('✗ Failed to save settings: ' + (error as Error).message);
       setIsProcessing(false);
@@ -207,7 +206,7 @@ function App() {
       
       setTimeout(() => {
         window.close();
-      }, closeDelay);
+      }, popupCloseDelay);
     } catch (error) {
       setMessage('✗ Failed to save: ' + (error as Error).message);
       setIsProcessing(false);
@@ -223,7 +222,7 @@ function App() {
       setMessage('✓ Processing started');
       setTimeout(() => {
         window.close();
-      }, closeDelay);
+      }, popupCloseDelay);
     } catch (error) {
       setMessage('✗ Failed: ' + (error as Error).message);
       setIsProcessing(false);
@@ -231,11 +230,8 @@ function App() {
   }
 
   if (isLoading) {
-    console.log('[Popup] Rendering loading state');
     return <div className="container"><p>Loading...</p></div>;
   }
-
-  console.log('[Popup] Rendering main UI, isAuthenticated:', isAuthenticated, 'isProcessing:', isProcessing);
 
   if (!isAuthenticated) {
     return (
@@ -270,19 +266,8 @@ function App() {
     );
   }
 
-  // Apply dynamic sizing when processing
-  useEffect(() => {
-    if (isProcessing) {
-      document.body.style.width = 'fit-content';
-      document.body.style.height = 'fit-content';
-    } else {
-      document.body.style.width = '';
-      document.body.style.height = '';
-    }
-  }, [isProcessing]);
-
   return (
-    <div className={isProcessing ? 'container processing-container' : 'container'}>
+    <div className="container">
       {isProcessing ? (
         <div className="processing-view">
           {message && <p className="message">{message}</p>}
@@ -334,18 +319,19 @@ function App() {
 
               <div className="setting-group">
                 <label className="setting-label">
-                  Close delay (milliseconds):
+                  Popup auto-close delay (milliseconds):
                   <input
                     type="number"
-                    min="100"
+                    min="0"
                     max="5000"
-                    value={closeDelay}
-                    onChange={(e) => setCloseDelay(parseInt(e.target.value) || 1000)}
+                    step="100"
+                    value={popupCloseDelay}
+                    onChange={(e) => setPopupCloseDelay(parseInt(e.target.value) || 1000)}
                     className="interval-input"
                   />
                 </label>
                 <p className="setting-hint">
-                  How long to show success messages before auto-closing (100-5000ms)
+                  How long to wait before closing the popup after a successful save (0-5000ms)
                 </p>
               </div>
 

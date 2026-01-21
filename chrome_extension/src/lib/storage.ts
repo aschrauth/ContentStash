@@ -4,7 +4,7 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   serverUrl: 'http://localhost:8000',
   pollingEnabled: true,
   pollingIntervalMinutes: 15,
-  closeDelayMs: 1000,
+  popupCloseDelayMs: 1000,
 };
 
 export class Storage {
@@ -30,14 +30,14 @@ export class Storage {
       'serverUrl',
       'pollingEnabled',
       'pollingIntervalMinutes',
-      'closeDelayMs',
+      'popupCloseDelayMs',
     ]);
     
     return {
       serverUrl: result.serverUrl || DEFAULT_SETTINGS.serverUrl,
       pollingEnabled: result.pollingEnabled ?? DEFAULT_SETTINGS.pollingEnabled,
       pollingIntervalMinutes: result.pollingIntervalMinutes || DEFAULT_SETTINGS.pollingIntervalMinutes,
-      closeDelayMs: result.closeDelayMs || DEFAULT_SETTINGS.closeDelayMs,
+      popupCloseDelayMs: result.popupCloseDelayMs ?? DEFAULT_SETTINGS.popupCloseDelayMs,
     };
   }
 
