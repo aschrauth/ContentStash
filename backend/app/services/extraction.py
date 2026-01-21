@@ -8,6 +8,7 @@ from typing import Optional, Dict
 import logging
 from markdownify import markdownify as md
 from .youtube import is_youtube_url, extract_video_id, get_video_transcript, get_transcript_from_ytdlp, get_video_metadata_from_api, get_video_metadata_from_ytdlp
+from .exceptions import ExtractionBlockError
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import asyncio
 from ..config import settings
@@ -418,7 +419,8 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
                             logger.info(f"Using yt-dlp metadata as content ({len(content)} characters)")
                             return content
                         else:
-                            logger.error(f"✗ All YouTube extraction methods failed for {url}, falling back to web scraping")
+                            logger.error(f"✗ All YouTube extraction methods failed for {url}")
+                            raise ExtractionBlockError(f"YouTube blocked all extraction methods for {url}")
         else:
             logger.error(f"✗ Failed to extract video ID from YouTube URL: {url}, falling back to standard extraction")
     
@@ -474,7 +476,13 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
             return None
             
     except requests.RequestException as e:
-        logger.error(f"Error fetching content from {url}: {str(e)}")
+        error_msg = str(e)
+        # Check if this is a block (403, 401, or connection refused)
+        if "403" in error_msg or "401" in error_msg or "Forbidden" in error_msg:
+            logger.error(f"Access blocked for {url}: {error_msg}")
+            raise ExtractionBlockError(f"Server blocked access to {url}: {error_msg}")
+        
+        logger.error(f"Error fetching content from {url}: {error_msg}")
         # Try Playwright as a last resort
         logger.info(f"Attempting Playwright extraction after request error")
         markdown_content = await _extract_with_playwright(url)

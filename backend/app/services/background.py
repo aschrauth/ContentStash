@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any
 from app.database import get_database, get_item_chunks_collection
 from app.services.metadata import fetch_metadata
 from app.services.extraction import extract_content
+from app.services.exceptions import ExtractionBlockError
 from app.services.ai import generate_tags_and_topic
 from app.services.chunking import chunk_text
 from app.services.gemini import gemini_service, GeminiServiceError
@@ -198,11 +199,40 @@ async def process_item_background(item_id: str, user_id: str):
             metadata = fetch_metadata(url)
         
         # Step 2: Extract content
+        # - If extraction_type is "local", skip server extraction and mark for local processing
         # - If URL exists, always extract (to support reprocessing with different extraction_type)
         # - If no URL but archived_text exists, use existing text (pasted content)
-        if url:
+        if url and extraction_type == "local":
+            logger.info(f"Extraction type is 'local' for {url}, marking for local extraction")
+            await db.saved_items.update_one(
+                {"_id": ObjectId(item_id)},
+                {
+                    "$set": {
+                        "processing_status": "pending_local_extraction",
+                        "processing_error": "Waiting for local extraction by browser extension",
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+            return
+        elif url:
             logger.info(f"Extracting content from {url} using extraction_type={extraction_type}")
-            archived_text = await extract_content(url, extraction_type=extraction_type)
+            try:
+                archived_text = await extract_content(url, extraction_type=extraction_type)
+            except ExtractionBlockError as e:
+                # Server-side extraction was blocked - mark for local extraction
+                logger.warning(f"Extraction blocked for {url}: {str(e)}")
+                await db.saved_items.update_one(
+                    {"_id": ObjectId(item_id)},
+                    {
+                        "$set": {
+                            "processing_status": "pending_local_extraction",
+                            "processing_error": f"Server blocked: {str(e)}",
+                            "updated_at": datetime.utcnow()
+                        }
+                    }
+                )
+                return
         elif archived_text:
             logger.info(f"Using existing archived_text for item {item_id} (pasted content)")
         else:

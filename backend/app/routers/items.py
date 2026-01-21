@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query, Background
 from typing import List, Optional
 from datetime import datetime
 from bson import ObjectId
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 from ..database import get_database
 from ..models.saved_item import SavedItem, SavedItemCreate, SavedItemUpdate
 from ..models.user import User
@@ -335,6 +335,59 @@ async def list_items(
     return items
 
 
+@router.get("/pending-local", response_model=List[SavedItem])
+async def get_pending_local_extraction(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get items that are pending local extraction.
+    
+    - Returns items with extraction_type='local' and status='pending'
+    - Used by Chrome Extension to poll for items needing local processing
+    - Filters by owner_id (from JWT)
+    - Returns empty list if no pending items (not an error)
+    """
+    db = get_database()
+    
+    # Build query for pending local extraction items
+    query = {
+        "owner_id": ObjectId(current_user.id),
+        "extraction_type": "local",
+        "processing_status": "pending",
+        "archived_at": None  # Exclude soft-deleted items
+    }
+    
+    # Fetch items
+    cursor = db.saved_items.find(query).sort("created_at", -1)
+    items_docs = await cursor.to_list(length=None)
+    
+    # Convert to SavedItem models
+    items = []
+    for doc in items_docs:
+        items.append(SavedItem(
+            id=str(doc["_id"]),
+            owner_id=str(doc["owner_id"]),
+            url=doc.get("url"),
+            title=doc["title"],
+            description=doc.get("description"),
+            image_url=doc.get("image_url"),
+            favicon_url=doc.get("favicon_url"),
+            notes_markdown=doc.get("notes_markdown"),
+            tags=doc.get("tags", []),
+            archived_text=doc.get("archived_text"),
+            extraction_type=doc.get("extraction_type", "fast"),
+            suggested_tags=doc.get("suggested_tags"),
+            suggested_topic=doc.get("suggested_topic"),
+            processing_status=doc.get("processing_status", "pending"),
+            processing_error=doc.get("processing_error"),
+            created_at=doc["created_at"],
+            updated_at=doc["updated_at"],
+            archived_at=doc.get("archived_at")
+        ))
+    
+    return items
+
+
 @router.get("/{item_id}", response_model=SavedItem)
 async def get_item(
     item_id: str,
@@ -630,6 +683,106 @@ async def reprocess_item(
     )
     
     # Schedule background processing
+    background_tasks.add_task(
+        process_item_background,
+        item_id,
+        current_user.id
+    )
+    
+    # Fetch and return updated item
+    updated_item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+    
+    return SavedItem(
+        id=str(updated_item_doc["_id"]),
+        owner_id=str(updated_item_doc["owner_id"]),
+        url=updated_item_doc.get("url"),
+        title=updated_item_doc["title"],
+        description=updated_item_doc.get("description"),
+        image_url=updated_item_doc.get("image_url"),
+        favicon_url=updated_item_doc.get("favicon_url"),
+        notes_markdown=updated_item_doc.get("notes_markdown"),
+        tags=updated_item_doc.get("tags", []),
+        archived_text=updated_item_doc.get("archived_text"),
+        extraction_type=updated_item_doc.get("extraction_type", "fast"),
+        suggested_tags=updated_item_doc.get("suggested_tags"),
+        suggested_topic=updated_item_doc.get("suggested_topic"),
+        processing_status=updated_item_doc.get("processing_status", "pending"),
+        processing_error=updated_item_doc.get("processing_error"),
+        created_at=updated_item_doc["created_at"],
+        updated_at=updated_item_doc["updated_at"],
+        archived_at=updated_item_doc.get("archived_at")
+    )
+
+
+class UploadContentRequest(BaseModel):
+    """Request model for uploading extracted content from local agent."""
+    content: str = Field(..., min_length=1, max_length=10000000)
+    extraction_source: str = Field(default="local_extension", max_length=50)
+
+
+@router.patch("/{item_id}/content", response_model=SavedItem)
+async def upload_extracted_content(
+    item_id: str,
+    request: UploadContentRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload extracted content from a local agent (Chrome Extension).
+    
+    - Accepts extracted content from browser extension
+    - Updates archived_text
+    - Triggers post-processing (embeddings, AI tags)
+    - Verifies ownership
+    - Returns updated item
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    db = get_database()
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(item_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid item ID"
+        )
+    
+    # Fetch item to verify ownership
+    item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+    
+    if not item_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found"
+        )
+    
+    # Verify ownership
+    if str(item_doc["owner_id"]) != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this item"
+        )
+    
+    logger.info(
+        f"Received local extraction content for item {item_id} "
+        f"from {request.extraction_source} ({len(request.content)} chars)"
+    )
+    
+    # Update item with extracted content and reset to pending for processing
+    await db.saved_items.update_one(
+        {"_id": ObjectId(item_id)},
+        {
+            "$set": {
+                "archived_text": request.content,
+                "processing_status": "pending",
+                "processing_error": None,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Trigger background processing for embeddings and AI categorization
     background_tasks.add_task(
         process_item_background,
         item_id,

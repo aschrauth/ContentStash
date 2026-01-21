@@ -14,7 +14,7 @@ class SavedItemBase(BaseModel):
     notes_markdown: Optional[str] = Field(None, max_length=50000)
     tags: List[str] = Field(default_factory=list, max_length=20)
     archived_text: Optional[str] = None
-    extraction_type: Optional[str] = Field(default="fast", pattern="^(fast|complete)$")
+    extraction_type: Optional[str] = Field(default="fast", pattern="^(fast|complete|local)$")
     
     @field_validator('tags')
     @classmethod
@@ -43,7 +43,7 @@ class SavedItemUpdate(BaseModel):
     notes_markdown: Optional[str] = Field(None, max_length=50000)
     tags: Optional[List[str]] = Field(None, max_length=20)
     archived_text: Optional[str] = None
-    extraction_type: Optional[str] = Field(None, pattern="^(fast|complete)$")
+    extraction_type: Optional[str] = Field(None, pattern="^(fast|complete|local)$")
     
     @field_validator('tags')
     @classmethod
@@ -64,7 +64,7 @@ class SavedItem(SavedItemBase):
     suggested_tags: Optional[List[str]] = None
     suggested_topic: Optional[str] = None
     ai_summary: Optional[str] = None
-    processing_status: str = Field(default="pending", pattern="^(pending|processed|failed)$")
+    processing_status: str = Field(default="pending", pattern="^(pending|processed|failed|pending_local_extraction)$")
     processing_error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
