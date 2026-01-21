@@ -7,13 +7,16 @@ import TurndownService from 'turndown';
 // Listen for extraction requests from background script
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'EXTRACT_CONTENT') {
-    try {
-      const content = extractPageContent();
-      sendResponse({ success: true, content });
-    } catch (error) {
-      sendResponse({ success: false, error: (error as Error).message });
-    }
-    return true;
+    // Handle async extraction
+    (async () => {
+      try {
+        const content = await extractPageContent();
+        sendResponse({ success: true, content });
+      } catch (error) {
+        sendResponse({ success: false, error: (error as Error).message });
+      }
+    })();
+    return true; // Keep channel open for async response
   }
 });
 
@@ -244,10 +247,10 @@ function selectiveCleanup(doc: Document): void {
   });
 }
 
-function extractPageContent(): string {
+async function extractPageContent(): Promise<string> {
   // Check if this is a YouTube page
   if (window.location.hostname.includes('youtube.com')) {
-    return extractYouTubeContent();
+    return await extractYouTubeContent();
   }
 
   // Use Readability for general pages with hybrid References extraction
@@ -318,7 +321,7 @@ function extractPageContent(): string {
   return extractSimpleContent();
 }
 
-function extractYouTubeContent(): string {
+async function extractYouTubeContent(): Promise<string> {
   try {
     // Get video title
     const titleElement = document.querySelector('h1.ytd-video-primary-info-renderer, h1.title');
@@ -332,23 +335,18 @@ function extractYouTubeContent(): string {
     const descriptionElement = document.querySelector('#description, #description-text');
     const description = descriptionElement?.textContent?.trim() || '';
 
-    // Try to get transcript if available
-    let transcript = '';
-    const transcriptButton = document.querySelector('[aria-label*="transcript" i], [aria-label*="Show transcript" i]');
-    if (transcriptButton) {
-      // Note: Actually clicking and extracting transcript requires more complex logic
-      // For now, we'll just note that a transcript might be available
-      transcript = '\n\n[Transcript available but not extracted in this version]';
-    }
-
+    // Build content with metadata only
+    // The backend will handle transcript extraction using youtube_transcript_api and yt-dlp
     let content = `# ${title}\n\n`;
     if (channel) {
       content += `**Channel:** ${channel}\n\n`;
     }
     if (description) {
-      content += `## Description\n\n${description}`;
+      content += `## Description\n\n${description}\n\n`;
     }
-    content += transcript;
+    
+    // Add note that transcript will be extracted by backend
+    content += `## Transcript\n\n[Transcript will be extracted by the backend]`;
 
     return content;
   } catch (error) {

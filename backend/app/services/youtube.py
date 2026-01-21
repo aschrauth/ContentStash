@@ -12,6 +12,8 @@ from youtube_transcript_api._errors import (
     YouTubeRequestFailed
 )
 
+from app.services.exceptions import ExtractionBlockError
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +60,9 @@ def get_video_transcript(video_id: str) -> Optional[str]:
         
     Returns:
         Formatted transcript as markdown or None if unavailable
+        
+    Raises:
+        ExtractionBlockError: When YouTube blocks the request (bot detection, sign-in required)
     """
     try:
         # Fetch transcript (prefer English, accept auto-generated)
@@ -101,19 +106,39 @@ def get_video_transcript(video_id: str) -> Optional[str]:
         logger.info(f"Successfully extracted transcript for video ID: {video_id} ({len(formatted_transcript)} characters)")
         return formatted_transcript
         
-    except TranscriptsDisabled:
+    except TranscriptsDisabled as e:
+        error_msg = str(e).lower()
+        # Check if this is a blocking error (bot detection, sign-in required)
+        if any(keyword in error_msg for keyword in ['sign in', 'bot', 'confirm', 'cookies', 'blocked']):
+            logger.warning(f"YouTube blocking detected for video ID {video_id}: {str(e)}")
+            raise ExtractionBlockError(f"YouTube blocked transcript access: {str(e)}")
         logger.warning(f"Transcripts are disabled for video ID: {video_id}")
         return None
     except NoTranscriptFound:
         logger.warning(f"No transcript found for video ID: {video_id}")
         return None
-    except VideoUnavailable:
+    except VideoUnavailable as e:
+        error_msg = str(e).lower()
+        # Check if this is a blocking error
+        if any(keyword in error_msg for keyword in ['sign in', 'bot', 'confirm', 'cookies', 'blocked']):
+            logger.warning(f"YouTube blocking detected for video ID {video_id}: {str(e)}")
+            raise ExtractionBlockError(f"YouTube blocked video access: {str(e)}")
         logger.warning(f"Video unavailable for video ID: {video_id}")
         return None
     except YouTubeRequestFailed as e:
+        error_msg = str(e).lower()
+        # Check if this is a blocking error (403, 429, or blocking messages)
+        if any(keyword in error_msg for keyword in ['sign in', 'bot', 'confirm', 'cookies', 'blocked', '403', '429']):
+            logger.warning(f"YouTube blocking detected for video ID {video_id}: {str(e)}")
+            raise ExtractionBlockError(f"YouTube request blocked: {str(e)}")
         logger.error(f"YouTube request failed for video ID {video_id}: {str(e)}")
         return None
     except Exception as e:
+        error_msg = str(e).lower()
+        # Check if this is a blocking error in any unexpected exception
+        if any(keyword in error_msg for keyword in ['sign in', 'bot', 'confirm', 'cookies', 'blocked', '403', '429']):
+            logger.warning(f"YouTube blocking detected for video ID {video_id}: {str(e)}")
+            raise ExtractionBlockError(f"YouTube blocked request: {str(e)}")
         logger.error(f"Unexpected error fetching transcript for video ID {video_id}: {str(e)}")
         return None
 
@@ -273,6 +298,9 @@ def get_transcript_from_ytdlp(video_id: str) -> Optional[str]:
         
     Returns:
         Formatted transcript as markdown or None if unavailable
+        
+    Raises:
+        ExtractionBlockError: When YouTube blocks the request (bot detection, sign-in required)
     """
     try:
         import yt_dlp
@@ -346,7 +374,7 @@ def get_transcript_from_ytdlp(video_id: str) -> Optional[str]:
             for line in lines:
                 line = line.strip()
                 # Skip VTT headers, timestamps, and empty lines
-                if (line.startswith('WEBVTT') or 
+                if (line.startswith('WEBVTT') or
                     line.startswith('Kind:') or
                     line.startswith('Language:') or
                     '-->' in line or
@@ -394,6 +422,11 @@ def get_transcript_from_ytdlp(video_id: str) -> Optional[str]:
         logger.error("yt-dlp not installed. Install with: pip install yt-dlp")
         return None
     except Exception as e:
+        error_msg = str(e).lower()
+        # Check if this is a blocking error
+        if any(keyword in error_msg for keyword in ['sign in', 'bot', 'confirm', 'cookies', 'blocked', '403', '429']):
+            logger.warning(f"YouTube blocking detected in yt-dlp for video ID {video_id}: {str(e)}")
+            raise ExtractionBlockError(f"YouTube blocked yt-dlp request: {str(e)}")
         logger.error(f"Unexpected error fetching transcript from yt-dlp for video ID {video_id}: {str(e)}")
         return None
 

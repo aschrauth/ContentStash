@@ -14,6 +14,7 @@ from app.services.exceptions import ExtractionBlockError
 from app.services.ai import generate_tags_and_topic
 from app.services.chunking import chunk_text
 from app.services.gemini import gemini_service, GeminiServiceError
+from app.services.youtube import is_youtube_url
 
 logger = logging.getLogger(__name__)
 
@@ -199,10 +200,18 @@ async def process_item_background(item_id: str, user_id: str):
             metadata = fetch_metadata(url)
         
         # Step 2: Extract content
-        # - If extraction_type is "local", skip server extraction and mark for local processing
+        # - For YouTube URLs: Always try backend extraction first
+        #   - If blocked (ExtractionBlockError), mark as pending_local_extraction
+        #   - If successful, process normally
+        # - For non-YouTube URLs with extraction_type="local": Skip server extraction, mark for local processing
         # - If URL exists, always extract (to support reprocessing with different extraction_type)
         # - If no URL but archived_text exists, use existing text (pasted content)
-        if url and extraction_type == "local":
+        
+        # Check if it's a YouTube URL
+        is_youtube = is_youtube_url(url) if url else False
+        
+        # Handle non-YouTube URLs with local extraction type
+        if url and extraction_type == "local" and not is_youtube:
             logger.info(f"Extraction type is 'local' for {url}, marking for local extraction")
             await db.saved_items.update_one(
                 {"_id": ObjectId(item_id)},
@@ -215,7 +224,9 @@ async def process_item_background(item_id: str, user_id: str):
                 }
             )
             return
-        elif url:
+        
+        # Extract content from URL
+        if url:
             logger.info(f"Extracting content from {url} using extraction_type={extraction_type}")
             try:
                 archived_text = await extract_content(url, extraction_type=extraction_type)

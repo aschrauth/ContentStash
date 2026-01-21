@@ -1,5 +1,6 @@
 import { ContentStashAPI } from '../lib/api';
 import { Storage } from '../lib/storage';
+import { extractYouTubeTranscript, extractVideoId, isYouTubeUrl } from '../lib/youtube-extractor';
 import type { SavedItem } from '../types';
 
 const api = new ContentStashAPI();
@@ -64,8 +65,62 @@ async function processItem(item: SavedItem) {
   try {
     console.log(`Processing item ${item.id}: ${item.url}`);
     
+    // Check if this is a YouTube URL
+    if (isYouTubeUrl(item.url)) {
+      await processYouTubeItem(item);
+    } else {
+      await processGenericItem(item);
+    }
+  } catch (error) {
+    console.error(`Error processing item ${item.id}:`, error);
+  }
+}
+
+// Process a YouTube video item
+async function processYouTubeItem(item: SavedItem) {
+  try {
+    console.log(`[YouTube] Processing video: ${item.url}`);
+    
+    // Extract video ID from URL
+    const videoId = extractVideoId(item.url!);
+    if (!videoId) {
+      console.error(`[YouTube] Could not extract video ID from URL: ${item.url}`);
+      return;
+    }
+    
+    console.log(`[YouTube] Extracted video ID: ${videoId}`);
+    
+    // Extract transcript using the YouTube extractor
+    const transcript = await extractYouTubeTranscript(videoId);
+    
+    if (!transcript || transcript.length < 100) {
+      console.warn(`[YouTube] Insufficient transcript content for item ${item.id}`);
+      return;
+    }
+    
+    console.log(`[YouTube] Successfully extracted transcript (${transcript.length} chars)`);
+    
+    // Upload to server
+    await api.uploadContent(item.id, {
+      content: transcript,
+      extraction_source: 'chrome_extension_youtube',
+    });
+    
+    console.log(`✓ [YouTube] Successfully uploaded transcript for item ${item.id}`);
+  } catch (error) {
+    console.error(`[YouTube] Error processing item ${item.id}:`, error);
+  }
+}
+
+// Process a generic web page item
+async function processGenericItem(item: SavedItem) {
+  let tab: chrome.tabs.Tab | undefined;
+  
+  try {
+    console.log(`[Generic] Processing page: ${item.url}`);
+    
     // Create a new tab in the background
-    const tab = await chrome.tabs.create({
+    tab = await chrome.tabs.create({
       url: item.url,
       active: false,
       pinned: true,
@@ -74,7 +129,7 @@ async function processItem(item: SavedItem) {
     // Wait for the tab to load
     await new Promise<void>((resolve) => {
       const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-        if (tabId === tab.id && changeInfo.status === 'complete') {
+        if (tabId === tab!.id && changeInfo.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
           resolve();
         }
@@ -105,15 +160,25 @@ async function processItem(item: SavedItem) {
         content,
         extraction_source: 'chrome_extension',
       });
-      console.log(`✓ Successfully extracted and uploaded content for item ${item.id}`);
+      console.log(`✓ [Generic] Successfully extracted and uploaded content for item ${item.id}`);
     } else {
-      console.warn(`✗ Insufficient content extracted for item ${item.id}`);
+      console.warn(`✗ [Generic] Insufficient content extracted for item ${item.id}`);
     }
 
     // Close the tab
-    await chrome.tabs.remove(tab.id!);
+    if (tab?.id) {
+      await chrome.tabs.remove(tab.id);
+    }
   } catch (error) {
-    console.error(`Error processing item ${item.id}:`, error);
+    console.error(`[Generic] Error processing item ${item.id}:`, error);
+    // Ensure tab is closed even on error
+    if (tab?.id) {
+      try {
+        await chrome.tabs.remove(tab.id);
+      } catch (e) {
+        console.error('[Generic] Error closing tab:', e);
+      }
+    }
   }
 }
 
@@ -166,4 +231,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 // Export for testing
-export { processPendingItems, processItem };
+export { processPendingItems, processItem, processYouTubeItem, processGenericItem };
