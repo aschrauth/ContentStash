@@ -1,0 +1,27 @@
+{
+  "name": "contentstash-extension",
+  "version": "1.0.0",
+  "description": "ContentStash Chrome Extension - Quick Capture & Local Extraction",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.5.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "turndown": "^7.2.2"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.23",
+    "@types/chrome": "^0.0.268",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/turndown": "^5.0.6",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.0"
+  }
+}

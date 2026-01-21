@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "ContentStash",
+  "version": "1.0.0",
+  "description": "Quick capture and local extraction for ContentStash",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "https://*.contentstash.app/*"
+  ],
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "assets/content-script.ts-ucafMXWO.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "src/content/*",
+        "assets/content-script.ts-ucafMXWO.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ]
+}
