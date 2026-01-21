@@ -25,7 +25,7 @@
     "isEntry": true
   },
   "src/popup/popup.html": {
-    "file": "assets/popup-DXdO5LFf.js",
+    "file": "assets/popup-CG035eYW.js",
     "name": "popup",
     "src": "src/popup/popup.html",
     "isEntry": true,
@@ -33,7 +33,7 @@
       "_storage-DRdTAA_r.js"
     ],
     "css": [
-      "assets/popup-Dt7b2kIy.css"
+      "assets/popup-BQOUyjeV.css"
     ]
   }
 }

@@ -19,6 +19,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [pollingEnabled, setPollingEnabled] = useState(true);
   const [pollingInterval, setPollingInterval] = useState(15);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -61,6 +62,7 @@ function App() {
 
   async function handleSaveSettings() {
     setMessage('');
+    setIsProcessing(true);
     
     try {
       await Storage.updateSettings({
@@ -78,9 +80,12 @@ function App() {
       });
       
       setMessage('✓ Settings saved');
-      setTimeout(() => setMessage(''), 3000);
+      setTimeout(() => {
+        window.close();
+      }, 500);
     } catch (error) {
       setMessage('✗ Failed to save settings: ' + (error as Error).message);
+      setIsProcessing(false);
     }
   }
 
@@ -111,12 +116,14 @@ function App() {
 
   async function handleSaveCurrentTab() {
     setMessage('');
+    setIsProcessing(true);
     
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       
       if (!tab.url || !tab.title || !tab.id) {
         setMessage('✗ Cannot save this page');
+        setIsProcessing(false);
         return;
       }
 
@@ -155,11 +162,13 @@ function App() {
           contentResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
         } catch (error) {
           setMessage('✗ Failed to communicate with content script. Please refresh the page and try again.');
+          setIsProcessing(false);
           return;
         }
 
         if (!contentResponse?.success || !contentResponse?.content) {
           setMessage('✗ Failed to extract content: ' + (contentResponse?.error || 'Unknown error'));
+          setIsProcessing(false);
           return;
         }
 
@@ -192,24 +201,28 @@ function App() {
         setMessage('✓ Saved successfully!');
       }
       
-      setTimeout(() => setMessage(''), 3000);
+      setTimeout(() => {
+        window.close();
+      }, 500);
     } catch (error) {
       setMessage('✗ Failed to save: ' + (error as Error).message);
+      setIsProcessing(false);
     }
   }
 
   async function handleProcessPending() {
     setMessage('Processing pending items...');
+    setIsProcessing(true);
     
     try {
       await chrome.runtime.sendMessage({ type: 'PROCESS_PENDING_NOW' });
       setMessage('✓ Processing started');
       setTimeout(() => {
-        loadPendingCount();
-        setMessage('');
-      }, 2000);
+        window.close();
+      }, 500);
     } catch (error) {
       setMessage('✗ Failed: ' + (error as Error).message);
+      setIsProcessing(false);
     }
   }
 
@@ -252,102 +265,110 @@ function App() {
 
   return (
     <div className="container">
-      <div className="header">
-        <h1>ContentStash</h1>
-        <div className="header-buttons">
-          <button onClick={() => setShowSettings(!showSettings)} className="settings-btn">
-            {showSettings ? 'Hide Settings' : 'Settings'}
-          </button>
-          <button onClick={handleLogout} className="logout-btn">Logout</button>
-        </div>
-      </div>
-
-      {showSettings ? (
-        <div className="settings-section">
-          <h2>Settings</h2>
-          
-          <div className="setting-group">
-            <label className="setting-label">
-              <input
-                type="checkbox"
-                checked={pollingEnabled}
-                onChange={(e) => setPollingEnabled(e.target.checked)}
-              />
-              Enable automatic polling for pending items
-            </label>
-          </div>
-
-          <div className="setting-group">
-            <label className="setting-label">
-              Polling interval (minutes):
-              <input
-                type="number"
-                min="1"
-                max="1440"
-                value={pollingInterval}
-                onChange={(e) => setPollingInterval(parseInt(e.target.value) || 15)}
-                disabled={!pollingEnabled}
-                className="interval-input"
-              />
-            </label>
-            <p className="setting-hint">
-              How often to check for items that need local extraction (1-1440 minutes)
-            </p>
-          </div>
-
-          <button onClick={handleSaveSettings} className="save-settings-btn">
-            Save Settings
-          </button>
+      {isProcessing ? (
+        <div className="processing-view">
+          {message && <p className="message">{message}</p>}
         </div>
       ) : (
         <>
-          <div className="save-section">
-            <h2>Save Current Page</h2>
-            <div className="extraction-type">
-              <label>
-                <input
-                  type="radio"
-                  value="fast"
-                  checked={extractionType === 'fast'}
-                  onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
-                />
-                Fast (Server)
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  value="complete"
-                  checked={extractionType === 'complete'}
-                  onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
-                />
-                Complete (Server)
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  value="local"
-                  checked={extractionType === 'local'}
-                  onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
-                />
-                Local (Browser)
-              </label>
+          <div className="header">
+            <h1>ContentStash</h1>
+            <div className="header-buttons">
+              <button onClick={() => setShowSettings(!showSettings)} className="settings-btn">
+                {showSettings ? 'Hide Settings' : 'Settings'}
+              </button>
+              <button onClick={handleLogout} className="logout-btn">Logout</button>
             </div>
-            <button onClick={handleSaveCurrentTab} className="save-btn">
-              Save Page
-            </button>
           </div>
 
-          <div className="pending-section">
-            <h2>Local Extraction Queue</h2>
-            <p>{pendingCount} item(s) pending</p>
-            <button onClick={handleProcessPending} className="process-btn">
-              Process Now
-            </button>
-          </div>
+          {showSettings ? (
+            <div className="settings-section">
+              <h2>Settings</h2>
+              
+              <div className="setting-group">
+                <label className="setting-label">
+                  <input
+                    type="checkbox"
+                    checked={pollingEnabled}
+                    onChange={(e) => setPollingEnabled(e.target.checked)}
+                  />
+                  Enable automatic polling for pending items
+                </label>
+              </div>
+
+              <div className="setting-group">
+                <label className="setting-label">
+                  Polling interval (minutes):
+                  <input
+                    type="number"
+                    min="1"
+                    max="1440"
+                    value={pollingInterval}
+                    onChange={(e) => setPollingInterval(parseInt(e.target.value) || 15)}
+                    disabled={!pollingEnabled}
+                    className="interval-input"
+                  />
+                </label>
+                <p className="setting-hint">
+                  How often to check for items that need local extraction (1-1440 minutes)
+                </p>
+              </div>
+
+              <button onClick={handleSaveSettings} className="save-settings-btn">
+                Save Settings
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="save-section">
+                <h2>Save Current Page</h2>
+                <div className="extraction-type">
+                  <label>
+                    <input
+                      type="radio"
+                      value="fast"
+                      checked={extractionType === 'fast'}
+                      onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
+                    />
+                    Fast (Server)
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      value="complete"
+                      checked={extractionType === 'complete'}
+                      onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
+                    />
+                    Complete (Server)
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      value="local"
+                      checked={extractionType === 'local'}
+                      onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
+                    />
+                    Local (Browser)
+                  </label>
+                </div>
+                <button onClick={handleSaveCurrentTab} className="save-btn">
+                  Save Page
+                </button>
+              </div>
+
+              <div className="pending-section">
+                <h2>Local Extraction Queue</h2>
+                <p>{pendingCount} item(s) pending</p>
+                <button onClick={handleProcessPending} className="process-btn">
+                  Process Now
+                </button>
+              </div>
+            </>
+          )}
+
+          {message && <p className="message">{message}</p>}
         </>
       )}
-
-      {message && <p className="message">{message}</p>}
     </div>
   );
 }

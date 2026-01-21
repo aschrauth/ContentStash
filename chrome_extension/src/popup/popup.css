@@ -4,6 +4,28 @@
 
 .container {
   padding: 20px;
+  min-height: 200px;
+}
+
+.processing-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 40px 20px;
+}
+
+.processing-view .message {
+  margin: 0;
+  padding: 20px 30px;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  background: #d4edda;
+  border: 2px solid #28a745;
+  border-radius: 8px;
+  color: #155724;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 h1 {
