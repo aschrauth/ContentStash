@@ -160,9 +160,22 @@ async function processGenericItem(item: SavedItem) {
         content,
         extraction_source: 'chrome_extension',
       });
-      console.log(`✓ [Generic] Successfully extracted and uploaded content for item ${item.id}`);
+      console.log(`✓ [Generic] Successfully extracted and uploaded content for item ${item.id} (${content.length} chars)`);
     } else {
-      console.warn(`✗ [Generic] Insufficient content extracted for item ${item.id}`);
+      const errorMsg = `Insufficient content extracted (${content?.length || 0} chars, minimum 100 required)`;
+      console.warn(`✗ [Generic] ${errorMsg} for item ${item.id}`);
+      
+      // Report failure to server by uploading minimal content with error indicator
+      // This allows the backend to mark the item as failed or retry with different method
+      try {
+        await api.uploadContent(item.id, {
+          content: content || `[Extraction Failed] ${errorMsg}\n\nURL: ${item.url}`,
+          extraction_source: 'chrome_extension_failed',
+        });
+        console.log(`✓ [Generic] Reported extraction failure to server for item ${item.id}`);
+      } catch (uploadError) {
+        console.error(`✗ [Generic] Failed to report extraction failure for item ${item.id}:`, uploadError);
+      }
     }
 
     // Close the tab
@@ -171,6 +184,18 @@ async function processGenericItem(item: SavedItem) {
     }
   } catch (error) {
     console.error(`[Generic] Error processing item ${item.id}:`, error);
+    
+    // Report the error to the server
+    try {
+      await api.uploadContent(item.id, {
+        content: `[Extraction Error] ${error instanceof Error ? error.message : String(error)}\n\nURL: ${item.url}`,
+        extraction_source: 'chrome_extension_error',
+      });
+      console.log(`✓ [Generic] Reported extraction error to server for item ${item.id}`);
+    } catch (uploadError) {
+      console.error(`✗ [Generic] Failed to report extraction error for item ${item.id}:`, uploadError);
+    }
+    
     // Ensure tab is closed even on error
     if (tab?.id) {
       try {

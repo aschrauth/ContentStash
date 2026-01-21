@@ -342,7 +342,8 @@ async def get_pending_local_extraction(
     """
     Get items that are pending local extraction.
     
-    - Returns items with extraction_type='local' and status='pending'
+    - Returns items with extraction_type='local' and status='pending' or 'pending_local_extraction'
+    - Allows re-extraction even if archived_text already exists (user can manually change extraction_type)
     - Used by Chrome Extension to poll for items needing local processing
     - Filters by owner_id (from JWT)
     - Returns empty list if no pending items (not an error)
@@ -350,10 +351,15 @@ async def get_pending_local_extraction(
     db = get_database()
     
     # Build query for pending local extraction items
+    # Items appear in queue when:
+    # 1. extraction_type="local" (explicitly marked for local extraction)
+    # 2. processing_status in ["pending", "pending_local_extraction"]
+    # 3. Not soft-deleted
+    # Note: archived_text filter removed to allow re-extraction when user changes extraction_type
     query = {
         "owner_id": ObjectId(current_user.id),
         "extraction_type": "local",
-        "processing_status": "pending",
+        "processing_status": {"$in": ["pending", "pending_local_extraction"]},
         "archived_at": None  # Exclude soft-deleted items
     }
     
@@ -522,9 +528,15 @@ async def update_item(
         if item_doc.get("extraction_type", "fast") != updates.extraction_type:
             extraction_type_changed = True
             update_doc["extraction_type"] = updates.extraction_type
-            # Reset processing status to trigger reprocessing
-            update_doc["processing_status"] = "pending"
-            update_doc["processing_error"] = None
+            
+            # If changing to "local", mark for local extraction instead of triggering backend processing
+            if updates.extraction_type == "local":
+                update_doc["processing_status"] = "pending"
+                update_doc["processing_error"] = "Waiting for local extraction by browser extension"
+            else:
+                # For other extraction types, reset to pending for backend reprocessing
+                update_doc["processing_status"] = "pending"
+                update_doc["processing_error"] = None
     
     # Update item in database
     await db.saved_items.update_one(
@@ -532,8 +544,9 @@ async def update_item(
         {"$set": update_doc}
     )
     
-    # If extraction_type changed and item has a URL, trigger reprocessing
-    if extraction_type_changed and item_doc.get("url"):
+    # If extraction_type changed to something other than "local" and item has a URL, trigger reprocessing
+    # For "local" extraction type, don't trigger backend processing - let Chrome extension handle it
+    if extraction_type_changed and item_doc.get("url") and updates.extraction_type != "local":
         background_tasks.add_task(
             process_item_background,
             item_id,
@@ -769,25 +782,92 @@ async def upload_extracted_content(
         f"from {request.extraction_source} ({len(request.content)} chars)"
     )
     
-    # Update item with extracted content and reset to pending for processing
-    await db.saved_items.update_one(
-        {"_id": ObjectId(item_id)},
-        {
-            "$set": {
-                "archived_text": request.content,
-                "processing_status": "pending",
-                "processing_error": None,
-                "updated_at": datetime.utcnow()
-            }
-        }
-    )
+    # Check if this is an error report from the extension
+    is_error_report = request.extraction_source in ['chrome_extension_failed', 'chrome_extension_error']
+    is_extraction_failure = request.content.startswith('[Extraction Failed]') or request.content.startswith('[Extraction Error]')
     
-    # Trigger background processing for embeddings and AI categorization
-    background_tasks.add_task(
-        process_item_background,
-        item_id,
-        current_user.id
-    )
+    if is_error_report or is_extraction_failure:
+        logger.warning(
+            f"Local extraction failed for item {item_id}: {request.content[:200]}"
+        )
+        
+        # Try to fall back to server-side extraction
+        current_extraction_type = item_doc.get("extraction_type", "local")
+        
+        if current_extraction_type == "local":
+            logger.info(f"Falling back to server 'complete' extraction for item {item_id}")
+            await db.saved_items.update_one(
+                {"_id": ObjectId(item_id)},
+                {
+                    "$set": {
+                        "extraction_type": "complete",
+                        "processing_status": "pending",
+                        "processing_error": f"Local extraction failed, retrying with server: {request.content[:200]}",
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+            
+            # Trigger background processing with server extraction
+            background_tasks.add_task(
+                process_item_background,
+                item_id,
+                current_user.id
+            )
+        else:
+            # Already tried server extraction, mark as failed
+            logger.error(f"All extraction methods failed for item {item_id}")
+            await db.saved_items.update_one(
+                {"_id": ObjectId(item_id)},
+                {
+                    "$set": {
+                        "processing_status": "failed",
+                        "processing_error": f"All extraction methods failed: {request.content[:500]}",
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+    else:
+        # Normal successful extraction
+        # Check if content is actually different from what we already have
+        existing_content = item_doc.get("archived_text", "")
+        content_changed = existing_content != request.content
+        
+        if not content_changed and existing_content:
+            logger.info(
+                f"Content for item {item_id} unchanged, skipping reprocessing"
+            )
+            # Just update the timestamp and clear any error
+            await db.saved_items.update_one(
+                {"_id": ObjectId(item_id)},
+                {
+                    "$set": {
+                        "processing_error": None,
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+        else:
+            # Update item with extracted content and mark as processing
+            # Use "processing" instead of "pending" to avoid infinite loop in local extraction queue
+            await db.saved_items.update_one(
+                {"_id": ObjectId(item_id)},
+                {
+                    "$set": {
+                        "archived_text": request.content,
+                        "processing_status": "processing",
+                        "processing_error": None,
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+            
+            # Trigger background processing for embeddings and AI categorization
+            background_tasks.add_task(
+                process_item_background,
+                item_id,
+                current_user.id
+            )
     
     # Fetch and return updated item
     updated_item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})

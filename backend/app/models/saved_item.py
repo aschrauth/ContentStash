@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 
 
@@ -64,7 +64,7 @@ class SavedItem(SavedItemBase):
     suggested_tags: Optional[List[str]] = None
     suggested_topic: Optional[str] = None
     ai_summary: Optional[str] = None
-    processing_status: str = Field(default="pending", pattern="^(pending|processed|failed|pending_local_extraction)$")
+    processing_status: str = Field(default="pending", pattern="^(pending|processing|processed|failed|pending_local_extraction)$")
     processing_error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -73,7 +73,10 @@ class SavedItem(SavedItemBase):
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True,
-        json_encoders={ObjectId: str}
+        json_encoders={
+            ObjectId: str,
+            datetime: lambda v: v.replace(tzinfo=timezone.utc).isoformat() if v else None
+        }
     )
 
 

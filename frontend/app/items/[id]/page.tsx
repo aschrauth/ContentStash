@@ -315,6 +315,11 @@ export default function ItemDetailPage() {
                         <RefreshCw className="w-3 h-3 animate-spin" /> Processing
                       </span>
                     )}
+                    {item.processingStatus === 'pending_local_extraction' && (
+                      <span className="px-2 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-500/30 flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> Pending Local Extraction
+                      </span>
+                    )}
                     {item.processingStatus === 'failed' && (
                       <span className="px-2 py-1 rounded-full bg-red-500/20 text-red-300 text-xs font-medium border border-red-500/30 flex items-center gap-1">
                         <X className="w-3 h-3" /> Failed
@@ -539,12 +544,14 @@ export default function ItemDetailPage() {
                 </h3>
                 <div className="space-y-2">
                   <p className="text-xs text-slate-400 mb-3">
-                    Current: <span className="text-violet-300 font-medium">{item.extractionType === 'complete' ? 'Complete' : 'Fast'}</span>
+                    Current: <span className="text-violet-300 font-medium">
+                      {item.extractionType === 'complete' ? 'Complete' : item.extractionType === 'local' ? 'Local' : 'Fast'}
+                    </span>
                   </p>
                   <select
                     value={item.extractionType || 'fast'}
                     onChange={async (e) => {
-                      const newType = e.target.value as 'fast' | 'complete';
+                      const newType = e.target.value as 'fast' | 'complete' | 'local';
                       try {
                         await updateItem(item.id, { extractionType: newType });
                         toast.success(`Extraction type changed to ${newType}. Reprocessing...`);
@@ -556,9 +563,12 @@ export default function ItemDetailPage() {
                   >
                     <option value="fast">Fast - Quick extraction</option>
                     <option value="complete">Complete - Full extraction with images</option>
+                    <option value="local">Local - Browser extension extraction</option>
                   </select>
                   <p className="text-xs text-slate-500 mt-2">
-                    Changing this will automatically reprocess the content
+                    {item.extractionType === 'local'
+                      ? 'Local extraction requires the Chrome extension to process content'
+                      : 'Changing this will automatically reprocess the content'}
                   </p>
                 </div>
               </div>

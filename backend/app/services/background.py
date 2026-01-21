@@ -181,17 +181,20 @@ async def process_item_background(item_id: str, user_id: str):
         archived_text = item_doc.get("archived_text")
         extraction_type = item_doc.get("extraction_type", "fast")
         
-        # Update status to pending
-        await db.saved_items.update_one(
-            {"_id": ObjectId(item_id)},
-            {
-                "$set": {
-                    "processing_status": "pending",
-                    "processing_error": None,
-                    "updated_at": datetime.utcnow()
+        # Update status to processing (not pending, to avoid infinite loop in local extraction)
+        # Only update if not already processing to avoid race conditions
+        current_status = item_doc.get("processing_status")
+        if current_status != "processing":
+            await db.saved_items.update_one(
+                {"_id": ObjectId(item_id)},
+                {
+                    "$set": {
+                        "processing_status": "processing",
+                        "processing_error": None,
+                        "updated_at": datetime.utcnow()
+                    }
                 }
-            }
-        )
+            )
         
         # Step 1: Fetch metadata (if missing and URL exists)
         metadata = {}
@@ -211,7 +214,9 @@ async def process_item_background(item_id: str, user_id: str):
         is_youtube = is_youtube_url(url) if url else False
         
         # Handle non-YouTube URLs with local extraction type
-        if url and extraction_type == "local" and not is_youtube:
+        # IMPORTANT: Only skip server extraction if archived_text is NOT already present
+        # If archived_text exists, it means local extraction already happened, so process it
+        if url and extraction_type == "local" and not is_youtube and not archived_text:
             logger.info(f"Extraction type is 'local' for {url}, marking for local extraction")
             await db.saved_items.update_one(
                 {"_id": ObjectId(item_id)},
@@ -225,25 +230,67 @@ async def process_item_background(item_id: str, user_id: str):
             )
             return
         
-        # Extract content from URL
+        # Extract content from URL with cascade fallback
         if url:
             logger.info(f"Extracting content from {url} using extraction_type={extraction_type}")
             try:
                 archived_text = await extract_content(url, extraction_type=extraction_type)
             except ExtractionBlockError as e:
-                # Server-side extraction was blocked - mark for local extraction
+                # Server-side extraction was blocked - fall back to local extraction
                 logger.warning(f"Extraction blocked for {url}: {str(e)}")
                 await db.saved_items.update_one(
                     {"_id": ObjectId(item_id)},
                     {
                         "$set": {
-                            "processing_status": "pending_local_extraction",
-                            "processing_error": f"Server blocked: {str(e)}",
+                            "extraction_type": "local",
+                            "processing_status": "pending",
+                            "processing_error": f"Server blocked, falling back to local extraction: {str(e)}",
                             "updated_at": datetime.utcnow()
                         }
                     }
                 )
                 return
+            except Exception as e:
+                # Generic extraction error - implement cascade fallback
+                logger.error(f"Extraction failed for {url} with extraction_type={extraction_type}: {str(e)}")
+                
+                # Cascade: fast → complete → local
+                if extraction_type == "fast":
+                    # Try "complete" next
+                    logger.info(f"Falling back from 'fast' to 'complete' extraction for {url}")
+                    await db.saved_items.update_one(
+                        {"_id": ObjectId(item_id)},
+                        {
+                            "$set": {
+                                "extraction_type": "complete",
+                                "processing_status": "pending",
+                                "processing_error": f"Fast extraction failed, retrying with complete mode: {str(e)}",
+                                "updated_at": datetime.utcnow()
+                            }
+                        }
+                    )
+                    # Re-trigger background processing with new extraction_type
+                    from app.services.background import process_item_background
+                    await process_item_background(item_id, user_id)
+                    return
+                elif extraction_type == "complete":
+                    # Fall back to "local"
+                    logger.info(f"Falling back from 'complete' to 'local' extraction for {url}")
+                    await db.saved_items.update_one(
+                        {"_id": ObjectId(item_id)},
+                        {
+                            "$set": {
+                                "extraction_type": "local",
+                                "processing_status": "pending",
+                                "processing_error": f"Server extraction failed, falling back to local extraction: {str(e)}",
+                                "updated_at": datetime.utcnow()
+                            }
+                        }
+                    )
+                    return
+                else:
+                    # Already on "local" or unknown type - mark as failed
+                    raise
         elif archived_text:
             logger.info(f"Using existing archived_text for item {item_id} (pasted content)")
         else:

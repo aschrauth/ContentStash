@@ -10,10 +10,16 @@ export function generateId() {
 }
 
 export function formatDate(date: string | Date) {
-  return new Date(date).toLocaleDateString("en-US", {
+  const dateObj = new Date(date);
+  
+  // Use toLocaleString to automatically convert to user's browser timezone
+  return dateObj.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
   });
 }
 
