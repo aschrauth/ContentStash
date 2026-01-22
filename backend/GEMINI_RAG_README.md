@@ -1,4 +1,3 @@
-
 # Gemini RAG System Documentation
 
 ## Table of Contents
@@ -708,58 +707,13 @@ The system is designed to minimize API costs while maintaining quality.
 3. Check chunk quality in database
 4. Verify embedding dimensions (should be 768)
 
-### Gemini API Errors
-
-#### Authentication Errors
-
-**Error**: "API key not valid"
-- **Solution**: Get new API key from Google AI Studio
-
-**Error**: "Permission denied"
-- **Solution**: Ensure API key has correct permissions
-
-#### Quota Errors
-
-**Error**: "Quota exceeded"
-- **Solution**: Wait for quota reset or upgrade plan
-
-**Error**: "Resource exhausted"
-- **Solution**: Automatic retry with backoff (handled by system)
-
-### Vector Search Index Issues
-
-#### Index Not Building
-
-**Symptoms:**
-- Index stuck in "Building" status
-- Takes very long to build
-
-**Solutions:**
-1. Wait longer (can take 10-30 minutes for large collections)
-2. Check cluster tier (M0 doesn't support vector search)
-3. Verify collection has documents
-4. Contact MongoDB support if stuck > 1 hour
-
-#### Wrong Index Configuration
-
-**Symptoms:**
-- Index exists but search fails
-- Dimension mismatch errors
-
-**Solutions:**
-1. Delete and recreate index with correct config
-2. Verify 768 dimensions
-3. Confirm cosine similarity
-4. Check field path is "embedding"
-
 ### Getting Help
 
 If you encounter issues not covered here:
 
 1. **Check Logs**: Backend logs provide detailed error messages
    ```bash
-   # View logs
-   tail -f backend/logs/app.log
+   # View logs in terminal where server is running
    ```
 
 2. **Test Components**: Use test scripts to isolate issues
@@ -1091,6 +1045,52 @@ asyncio.run(test_search())
 ## Future Enhancements
 
 ### Planned Features
+
+1. **Multi-Modal Support**
+   - Image embeddings for visual content
+   - PDF text extraction improvements
+   - Video transcript search
+
+2. **Advanced Search Features**
+   - Filters by date, tags, topics
+   - Hybrid search (keyword + semantic)
+   - Search within specific collections
+
+3. **Improved Citations**
+   - Direct links to specific chunks
+   - Highlight relevant passages
+   - Show context around citations
+
+4. **Performance Optimizations**
+   - Caching for frequent queries
+   - Incremental embedding updates
+   - Parallel processing for large batches
+
+5. **User Experience**
+   - Search suggestions/autocomplete
+   - Related content recommendations
+   - Search history and saved queries
+
+### Known Limitations
+
+1. **Language Support**
+   - Currently optimized for English
+   - Other languages may have reduced quality
+
+2. **Content Types**
+   - Best for text-heavy content
+   - Limited support for code, tables, formulas
+
+3. **Context Window**
+   - Limited to top 8 chunks per query
+   - Very long documents may lose context
+
+4. **Real-time Updates**
+   - Background processing has slight delay
+   - Chunks not immediately searchable
+
+5. **Cost Considerations**
+   - Embedding costs scale with content volume
 
 1. **Multi-Modal Support**
    - Image embeddings

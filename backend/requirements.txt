@@ -16,5 +16,5 @@ markdownify
 youtube-transcript-api
 yt-dlp
 google-api-python-client>=2.100.0
-google-generativeai
+google-genai
 playwright

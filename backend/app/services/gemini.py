@@ -8,8 +8,8 @@ import time
 from typing import List, Optional
 from functools import wraps
 
-import google.generativeai as genai
-from google.api_core import exceptions as google_exceptions
+from google import genai
+from google.genai import types
 
 from ..config import settings
 
@@ -55,40 +55,44 @@ def retry_with_exponential_backoff(max_retries: int = 1, base_delay: float = 5.0
                 try:
                     result = func(*args, **kwargs)
                     return result
-                except google_exceptions.ResourceExhausted as e:
-                    
-                    if attempt == max_retries:
-                        logger.error(
-                            f"Rate limit exceeded after {max_retries + 1} attempts. "
-                            f"Please wait at least 60 seconds before retrying. Error: {str(e)}"
-                        )
-                        raise GeminiRateLimitError(
-                            f"Rate limit exceeded. Please wait before retrying. Error: {str(e)}"
-                        )
-                    
-                    # Use longer delay for rate limit errors to allow window to reset
-                    delay = rate_limit_delay
-                    logger.warning(
-                        f"Rate limit hit (429 error). Waiting {delay}s to allow rate limit window to reset "
-                        f"(attempt {attempt + 1}/{max_retries + 1})"
-                    )
-                    time.sleep(delay)
-                    
-                except (google_exceptions.GoogleAPIError, google_exceptions.RetryError) as e:
-                    if attempt == max_retries:
-                        logger.error(f"API error after {max_retries + 1} attempts: {str(e)}")
-                        raise GeminiAPIError(f"API error: {str(e)}")
-                    
-                    # Use exponential backoff with ceiling for other API errors
-                    delay = min(base_delay * (2 ** attempt), max_backoff)
-                    logger.warning(
-                        f"API error, retrying in {delay}s (attempt {attempt + 1}/{max_retries + 1}): {str(e)}"
-                    )
-                    time.sleep(delay)
-                    
                 except Exception as e:
-                    logger.error(f"Unexpected error in {func.__name__}: {str(e)}")
-                    raise GeminiAPIError(f"Unexpected error: {str(e)}")
+                    error_str = str(e).lower()
+                    
+                    # Check if it's a rate limit error (429 or resource exhausted)
+                    is_rate_limit = ('429' in error_str or
+                                   ('resource' in error_str and 'exhaust' in error_str) or
+                                   'quota' in error_str)
+                    
+                    if is_rate_limit:
+                        if attempt == max_retries:
+                            logger.error(
+                                f"Rate limit exceeded after {max_retries + 1} attempts. "
+                                f"Please wait at least 60 seconds before retrying. Error: {str(e)}"
+                            )
+                            raise GeminiRateLimitError(
+                                f"Rate limit exceeded. Please wait before retrying. Error: {str(e)}"
+                            )
+                        
+                        # Use longer delay for rate limit errors to allow window to reset
+                        delay = rate_limit_delay
+                        logger.warning(
+                            f"Rate limit hit (429 error). Waiting {delay}s to allow rate limit window to reset "
+                            f"(attempt {attempt + 1}/{max_retries + 1})"
+                        )
+                        time.sleep(delay)
+                    else:
+                        # Other API errors
+                        if attempt == max_retries:
+                            logger.error(f"API error after {max_retries + 1} attempts: {str(e)}")
+                            raise GeminiAPIError(f"API error: {str(e)}")
+                        
+                        # Use exponential backoff with ceiling for other API errors
+                        delay = min(base_delay * (2 ** attempt), max_backoff)
+                        logger.warning(
+                            f"API error, retrying in {delay}s (attempt {attempt + 1}/{max_retries + 1}): {str(e)}"
+                        )
+                        time.sleep(delay)
+                    
             
             return None
         return wrapper
@@ -103,6 +107,7 @@ class GeminiService:
     
     _instance: Optional['GeminiService'] = None
     _initialized: bool = False
+    _client: Optional[genai.Client] = None
     
     def __new__(cls):
         """Ensure only one instance of GeminiService exists (singleton pattern)"""
@@ -124,7 +129,7 @@ class GeminiService:
             return
         
         try:
-            genai.configure(api_key=settings.gemini_api_key)
+            self._client = genai.Client(api_key=settings.gemini_api_key)
             self._is_configured = True
             logger.info("Gemini API client configured successfully")
         except Exception as e:
@@ -163,8 +168,10 @@ class GeminiService:
         self._check_configured()
         
         try:
-            model_instance = genai.GenerativeModel(model)
-            response = model_instance.generate_content(prompt)
+            response = self._client.models.generate_content(
+                model=model,
+                contents=prompt
+            )
             
             if not response or not response.text:
                 logger.warning("Empty response received from Gemini API")
@@ -173,15 +180,9 @@ class GeminiService:
             logger.info(f"Successfully generated content (length: {len(response.text)} characters)")
             return response.text
             
-        except google_exceptions.ResourceExhausted as e:
-            # Let the retry decorator handle this
-            raise
-        except google_exceptions.GoogleAPIError as e:
-            # Let the retry decorator handle this
-            raise
         except Exception as e:
-            logger.error(f"Unexpected error during content generation: {str(e)}")
-            raise GeminiAPIError(f"Content generation failed: {str(e)}")
+            # Let the retry decorator handle this
+            raise
     
     @retry_with_exponential_backoff(max_retries=1, base_delay=5.0)
     def embed_content(
@@ -207,28 +208,25 @@ class GeminiService:
         self._check_configured()
         
         try:
-            result = genai.embed_content(
-                model=f"models/{model}",
-                content=text
+            result = self._client.models.embed_content(
+                model=model,
+                contents=text
             )
             
-            if not result or 'embedding' not in result:
+            # Extract embedding from response object
+            # Response structure: EmbedContentResponse.embeddings[0].values
+            if not result or not hasattr(result, 'embeddings') or not result.embeddings:
                 logger.warning("No embedding returned from Gemini API")
                 return []
             
-            embedding = result['embedding']
+            # Get the first embedding's values
+            embedding = result.embeddings[0].values
             logger.info(f"Successfully generated embedding (dimension: {len(embedding)})")
             return embedding
             
-        except google_exceptions.ResourceExhausted as e:
-            # Let the retry decorator handle this
-            raise
-        except google_exceptions.GoogleAPIError as e:
-            # Let the retry decorator handle this
-            raise
         except Exception as e:
-            logger.error(f"Unexpected error during embedding generation: {str(e)}")
-            raise GeminiAPIError(f"Embedding generation failed: {str(e)}")
+            # Let the retry decorator handle this
+            raise
     
     @retry_with_exponential_backoff(max_retries=1, base_delay=5.0)
     def embed_batch(
@@ -258,34 +256,26 @@ class GeminiService:
             return []
         
         try:
-            result = genai.embed_content(
-                model=f"models/{model}",
-                content=texts
+            result = self._client.models.embed_content(
+                model=model,
+                contents=texts
             )
             
-            if not result or 'embedding' not in result:
+            # Extract embeddings from response object
+            # Response structure: EmbedContentResponse.embeddings[].values
+            if not result or not hasattr(result, 'embeddings') or not result.embeddings:
                 logger.warning("No embeddings returned from Gemini API")
                 return []
             
-            # Handle both single and batch responses
-            embeddings = result['embedding']
-            
-            # If single embedding returned, wrap in list
-            if isinstance(embeddings[0], (int, float)):
-                embeddings = [embeddings]
+            # Extract values from each ContentEmbedding object
+            embeddings = [emb.values for emb in result.embeddings]
             
             logger.info(f"Successfully generated {len(embeddings)} embeddings")
             return embeddings
             
-        except google_exceptions.ResourceExhausted as e:
-            # Let the retry decorator handle this
-            raise
-        except google_exceptions.GoogleAPIError as e:
-            # Let the retry decorator handle this
-            raise
         except Exception as e:
-            logger.error(f"Unexpected error during batch embedding generation: {str(e)}")
-            raise GeminiAPIError(f"Batch embedding generation failed: {str(e)}")
+            # Let the retry decorator handle this
+            raise
     
     def is_available(self) -> bool:
         """
