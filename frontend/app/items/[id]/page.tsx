@@ -57,56 +57,71 @@ export default function ItemDetailPage() {
     
     if (!itemId) return;
     
-    const foundItem = items.find(i => i.id === itemId);
-    
-    if (foundItem) {
-      // Item found in store
-      setItem(foundItem);
-      setEditTitle(foundItem.title);
-      setEditDescription(foundItem.description || '');
-      setNoteContent(foundItem.notesMarkdown || '');
-      setIsLoading(false);
-    } else {
-      // Item not in store - fetch from API (handles refresh case)
-      const fetchItem = async () => {
-        // Use stored token if Zustand token not yet available
-        const authToken = token || localStorage.getItem('token');
-        if (!authToken) {
-          router.push('/login');
-          return;
-        }
+    // ALWAYS fetch from API to get full item including archived_text
+    // The list endpoint excludes archived_text for performance, so we need a fresh fetch
+    const fetchItem = async () => {
+      // Use stored token if Zustand token not yet available
+      const authToken = token || localStorage.getItem('token');
+      if (!authToken) {
+        router.push('/login');
+        return;
+      }
 
-        try {
-          const response = await fetch(API_ENDPOINTS.itemById(itemId), {
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-            },
-          });
+      try {
+        const response = await fetch(API_ENDPOINTS.itemById(itemId), {
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
           
-          if (response.ok) {
-            const fetchedItem = await response.json();
-            setItem(fetchedItem);
-            setEditTitle(fetchedItem.title);
-            setEditDescription(fetchedItem.description || '');
-            setNoteContent(fetchedItem.notesMarkdown || '');
-            setIsLoading(false);
-          } else if (response.status === 404) {
-            toast.error("Item not found");
-            router.push('/library');
-          } else {
-            toast.error("Failed to load item");
-            setIsLoading(false);
-          }
-        } catch (error) {
-          console.error('Error fetching item:', error);
+          // Convert snake_case to camelCase
+          const formattedItem = {
+            id: data.id,
+            ownerId: data.owner_id,
+            url: data.url,
+            title: data.title,
+            description: data.description,
+            imageUrl: data.image_url,
+            faviconUrl: data.favicon_url,
+            notesMarkdown: data.notes_markdown,
+            tags: data.tags,
+            suggestedTags: data.suggested_tags,
+            suggestedTopic: data.suggested_topic,
+            archivedText: data.archived_text,  // THIS IS THE KEY LINE
+            extractionType: data.extraction_type,
+            processingStatus: data.processing_status,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+            archivedAt: data.archived_at
+          };
+          
+          setItem(formattedItem);
+          setEditTitle(formattedItem.title);
+          setEditDescription(formattedItem.description || '');
+          setNoteContent(formattedItem.notesMarkdown || '');
+          setIsLoading(false);
+          
+        } else if (response.status === 404) {
+          console.error('[Detail View] Item not found (404)');
+          toast.error("Item not found");
+          router.push('/library');
+        } else {
+          console.error('[Detail View] Failed to load item, status:', response.status);
           toast.error("Failed to load item");
           setIsLoading(false);
         }
-      };
-      
-      fetchItem();
-    }
-  }, [items, itemId, token, router, _hasHydrated]);
+      } catch (error) {
+        console.error('[Detail View] Error fetching item:', error);
+        toast.error("Failed to load item");
+        setIsLoading(false);
+      }
+    };
+    
+    fetchItem();
+  }, [itemId, token, router, _hasHydrated]);
 
   // Polling effect for pending items
   useEffect(() => {

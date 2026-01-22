@@ -51,28 +51,11 @@ def retry_with_exponential_backoff(max_retries: int = 1, base_delay: float = 5.0
             rate_limit_delay = 15.0  # Wait 15 seconds for 429 errors
             max_backoff = 30.0  # Cap exponential backoff at 30 seconds
             
-            # [DIAGNOSTIC] Log API call attempt
-            import time as time_module
-            call_start = time_module.time()
-            logger.info(f"[RATE_LIMIT_DEBUG] Starting {func.__name__} call at {call_start}")
-            
             for attempt in range(max_retries + 1):  # +1 to include initial attempt
                 try:
                     result = func(*args, **kwargs)
-                    call_end = time_module.time()
-                    logger.info(f"[RATE_LIMIT_DEBUG] {func.__name__} succeeded in {call_end - call_start:.2f}s")
                     return result
                 except google_exceptions.ResourceExhausted as e:
-                    # [DIAGNOSTIC] Log detailed rate limit info
-                    error_details = str(e)
-                    logger.error(
-                        f"[RATE_LIMIT_DEBUG] 429 ERROR in {func.__name__}:\n"
-                        f"  - Attempt: {attempt + 1}/{max_retries + 1}\n"
-                        f"  - Time since call start: {time_module.time() - call_start:.2f}s\n"
-                        f"  - Error details: {error_details}\n"
-                        f"  - Function args count: {len(args)}\n"
-                        f"  - Function kwargs: {list(kwargs.keys())}"
-                    )
                     
                     if attempt == max_retries:
                         logger.error(
@@ -179,14 +162,6 @@ class GeminiService:
         """
         self._check_configured()
         
-        # [DIAGNOSTIC] Log detailed request info
-        logger.info(
-            f"[RATE_LIMIT_DEBUG] generate_content called:\n"
-            f"  - Model: {model}\n"
-            f"  - Prompt length: {len(prompt)} characters\n"
-            f"  - Estimated tokens: ~{len(prompt) // 4}"
-        )
-        
         try:
             model_instance = genai.GenerativeModel(model)
             response = model_instance.generate_content(prompt)
@@ -230,14 +205,6 @@ class GeminiService:
             GeminiAPIError: For other API errors
         """
         self._check_configured()
-        
-        # [DIAGNOSTIC] Log detailed request info
-        logger.info(
-            f"[RATE_LIMIT_DEBUG] embed_content called:\n"
-            f"  - Model: {model}\n"
-            f"  - Text length: {len(text)} characters\n"
-            f"  - Estimated tokens: ~{len(text) // 4}"
-        )
         
         try:
             result = genai.embed_content(
@@ -289,17 +256,6 @@ class GeminiService:
         if not texts:
             logger.warning("Empty text list provided for batch embedding")
             return []
-        
-        # [DIAGNOSTIC] Log detailed batch request info
-        total_chars = sum(len(t) for t in texts)
-        logger.info(
-            f"[RATE_LIMIT_DEBUG] embed_batch called:\n"
-            f"  - Model: {model}\n"
-            f"  - Number of texts: {len(texts)}\n"
-            f"  - Total characters: {total_chars}\n"
-            f"  - Estimated total tokens: ~{total_chars // 4}\n"
-            f"  - Average chars per text: {total_chars // len(texts) if texts else 0}"
-        )
         
         try:
             result = genai.embed_content(

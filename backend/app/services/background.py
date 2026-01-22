@@ -57,15 +57,8 @@ Respond with JSON only:
   "topic": "main topic",
   "summary": "2-3 sentence summary"
 }}"""
-        
-        # [DIAGNOSTIC] Log auto-categorization request
-        logger.info(
-            f"[RATE_LIMIT_DEBUG] Auto-categorization starting:\n"
-            f"  - Content sample length: {len(content_sample)} chars\n"
-            f"  - Estimated tokens: ~{len(content_sample) // 4}"
-        )
-        
-        # Call Gemini with Flash-Lite model
+
+# Call Gemini with Flash-Lite model
         response = gemini_service.generate_content(
             prompt=prompt,
             model="gemini-2.5-flash-lite"
@@ -343,19 +336,8 @@ async def process_item_background(item_id: str, user_id: str):
                 # Chunk the archived text
                 chunks = chunk_text(archived_text, chunk_size=500, overlap=75)
                 
-                # [DIAGNOSTIC] Log chunking details
-                total_chunk_chars = sum(len(c) for c in chunks)
-                logger.info(
-                    f"[RATE_LIMIT_DEBUG] Chunking complete for item {item_id}:\n"
-                    f"  - Number of chunks: {len(chunks)}\n"
-                    f"  - Total characters in chunks: {total_chunk_chars}\n"
-                    f"  - Estimated total tokens: ~{total_chunk_chars // 4}\n"
-                    f"  - Average chunk size: {total_chunk_chars // len(chunks) if chunks else 0} chars"
-                )
-                
                 if chunks:
                     # Embed all chunks in batch for efficiency
-                    logger.info(f"[RATE_LIMIT_DEBUG] About to call embed_batch for {len(chunks)} chunks")
                     try:
                         embeddings = gemini_service.embed_batch(chunks)
                         

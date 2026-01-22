@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Query, BackgroundTasks
-from typing import List, Optional
+from fastapi.responses import StreamingResponse
+from typing import List, Optional, AsyncGenerator
 from datetime import datetime
 from bson import ObjectId
 from pydantic import BaseModel, HttpUrl, Field
+import asyncio
+import json
 from ..database import get_database
 from ..models.saved_item import SavedItem, SavedItemCreate, SavedItemUpdate
 from ..models.user import User
@@ -12,8 +15,48 @@ from ..services.metadata import fetch_metadata
 from ..services.ai import generate_metadata_from_content
 from ..services.youtube import is_youtube_url, get_youtube_preview_metadata
 from ..config import settings
+from ..utils.auth import verify_token
 
 router = APIRouter()
+
+
+async def get_current_user_from_query(
+    token: str = Query(...),
+) -> User:
+    """
+    Get current user from query parameter token (for SSE).
+    EventSource doesn't support custom headers, so we pass token as query param.
+    """
+    # Verify token and extract user ID
+    user_id = verify_token(token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token"
+        )
+    
+    # Get user from database
+    db = get_database()
+    user_doc = await db.users.find_one({"_id": ObjectId(user_id)})
+    
+    if user_doc is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+    
+    # Convert MongoDB document to User model
+    from ..models.user import UserPreferences
+    user = User(
+        id=str(user_doc["_id"]),
+        email=user_doc["email"],
+        name=user_doc["name"],
+        preferences=UserPreferences(**user_doc.get("preferences", {})),
+        created_at=user_doc["created_at"],
+        updated_at=user_doc["updated_at"]
+    )
+    
+    return user
 
 
 class PreviewRequest(BaseModel):
@@ -39,6 +82,46 @@ class GenerateMetadataResponse(BaseModel):
     title: str
     description: str
     tags: List[str]
+
+
+@router.get("/status-stream")
+async def stream_item_status(
+    current_user: User = Depends(get_current_user_from_query),
+    db = Depends(get_database)
+):
+    """
+    Server-Sent Events endpoint for real-time item status updates.
+    Streams updates when items change from pending to completed/failed.
+    """
+    async def event_generator() -> AsyncGenerator[str, None]:
+        try:
+            while True:
+                # Check for pending items
+                pending_count = await db.saved_items.count_documents({
+                    "owner_id": ObjectId(current_user.id),
+                    "processing_status": {"$in": ["pending", "processing"]}
+                })
+                
+                # Send update
+                data = json.dumps({"pending_count": pending_count})
+                yield f"data: {data}\n\n"
+                
+                # Wait before next check (every 5 seconds)
+                await asyncio.sleep(5)
+                
+        except asyncio.CancelledError:
+            # Client disconnected
+            pass
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
 
 
 @router.post("/preview", response_model=PreviewResponse)
@@ -156,22 +239,6 @@ async def create_item(
     - For pasted content: archived_text is saved directly
     - Returns created item
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    # Log the incoming request data for debugging
-    logger.info(f"=== CREATE ITEM REQUEST ===")
-    logger.info(f"URL: {item_data.url}")
-    logger.info(f"Title: {item_data.title}")
-    logger.info(f"Description: {item_data.description}")
-    logger.info(f"Image URL: {item_data.image_url}")
-    logger.info(f"Favicon URL: {item_data.favicon_url}")
-    logger.info(f"Tags: {item_data.tags}")
-    logger.info(f"Extraction Type: {item_data.extraction_type}")
-    logger.info(f"Has archived_text: {bool(item_data.archived_text)}")
-    logger.info(f"Has notes_markdown: {bool(item_data.notes_markdown)}")
-    logger.info(f"=========================")
-    
     db = get_database()
     
     # Validate that either URL or content (title) is provided
@@ -247,20 +314,23 @@ async def create_item(
     )
 
 
-@router.get("", response_model=List[SavedItem])
+@router.get("", response_model=dict)
 async def list_items(
     current_user: User = Depends(get_current_user),
     tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by"),
     search: Optional[str] = Query(None, description="Search query for full-text search"),
-    sort: Optional[str] = Query("newest", description="Sort order: newest, oldest, title")
+    sort: Optional[str] = Query("newest", description="Sort order: newest, oldest, title"),
+    limit: int = Query(default=50, ge=1, le=100, description="Number of items to return"),
+    cursor: Optional[str] = Query(None, description="Cursor for pagination (item _id)")
 ):
     """
-    List user's saved items.
+    List user's saved items with cursor-based pagination.
     
     - Filters by owner_id (from JWT)
     - Excludes soft-deleted items
     - Supports full-text search using MongoDB text index
     - Supports tag filtering with AND logic
+    - Returns paginated results with next_cursor for loading more
     """
     db = get_database()
     
@@ -279,6 +349,16 @@ async def list_items(
     if search:
         query["$text"] = {"$search": search}
     
+    # Add cursor-based pagination
+    if cursor:
+        try:
+            query["_id"] = {"$lt": ObjectId(cursor)}
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid cursor"
+            )
+    
     # Determine sort order
     sort_criteria = []
     
@@ -286,29 +366,45 @@ async def list_items(
         # When searching, sort by text relevance score first
         sort_criteria.append(("score", {"$meta": "textScore"}))
     
-    # Add secondary sort
+    # Add secondary sort - always include _id for consistent pagination
     if sort == "oldest":
         sort_criteria.append(("created_at", 1))
+        sort_criteria.append(("_id", 1))
     elif sort == "title":
         sort_criteria.append(("title", 1))
+        sort_criteria.append(("_id", -1))
     else:  # newest (default)
         sort_criteria.append(("created_at", -1))
+        sort_criteria.append(("_id", -1))
     
-    # Build projection to include text score when searching
-    projection = None
+    # Build projection - only exclude archived_text to reduce payload size
+    # MongoDB doesn't allow mixing inclusion and exclusion, so we only exclude
+    projection = {"archived_text": 0}
+    
     if search:
-        projection = {"score": {"$meta": "textScore"}}
+        projection["score"] = {"$meta": "textScore"}
     
-    # Fetch items
-    cursor = db.saved_items.find(query, projection)
+    # Fetch limit + 1 items to determine if there are more
+    find_cursor = db.saved_items.find(query, projection)
     
     # Apply sorting
     for field, direction in sort_criteria:
-        cursor = cursor.sort(field, direction)
+        find_cursor = find_cursor.sort(field, direction)
     
-    items_docs = await cursor.to_list(length=None)
+    # Limit to one more than requested to check for more items
+    items_docs = await find_cursor.limit(limit + 1).to_list(length=limit + 1)
     
-    # Convert to SavedItem models
+    # Check if there are more items
+    has_more = len(items_docs) > limit
+    if has_more:
+        items_docs = items_docs[:limit]  # Remove the extra item
+    
+    # Get next cursor from last item
+    next_cursor = None
+    if has_more and items_docs:
+        next_cursor = str(items_docs[-1]["_id"])
+    
+    # Convert to SavedItem models (without archived_text)
     items = []
     for doc in items_docs:
         items.append(SavedItem(
@@ -321,7 +417,7 @@ async def list_items(
             favicon_url=doc.get("favicon_url"),
             notes_markdown=doc.get("notes_markdown"),
             tags=doc.get("tags", []),
-            archived_text=doc.get("archived_text"),
+            archived_text=None,  # Excluded from list endpoint
             extraction_type=doc.get("extraction_type", "fast"),
             suggested_tags=doc.get("suggested_tags"),
             suggested_topic=doc.get("suggested_topic"),
@@ -332,7 +428,15 @@ async def list_items(
             archived_at=doc.get("archived_at")
         ))
     
-    return items
+    # Return paginated response
+    return {
+        "items": items,
+        "pagination": {
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "limit": limit
+        }
+    }
 
 
 @router.get("/pending-local", response_model=List[SavedItem])
@@ -405,6 +509,9 @@ async def get_item(
     - Verifies ownership
     - Returns full item details
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     db = get_database()
     
     # Validate ObjectId
@@ -431,7 +538,7 @@ async def get_item(
         )
     
     # Return item
-    return SavedItem(
+    saved_item = SavedItem(
         id=str(item_doc["_id"]),
         owner_id=str(item_doc["owner_id"]),
         url=item_doc.get("url"),
@@ -451,6 +558,8 @@ async def get_item(
         updated_at=item_doc["updated_at"],
         archived_at=item_doc.get("archived_at")
     )
+    
+    return saved_item
 
 
 @router.patch("/{item_id}", response_model=SavedItem)

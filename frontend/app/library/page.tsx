@@ -1,27 +1,70 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Filter, Grid, List, Search } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Filter, Grid, List, Search, Loader2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import ItemCard from '@/components/ItemCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useItemStatusStream } from '@/hooks/useItemStatusStream';
+import { useItems, useInvalidateItems } from '@/hooks/useItems';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 // Separate component that uses useSearchParams
 function LibraryContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
   
-  const { items, currentUser, updatePreferences, fetchItems, fetchTags, tags } = useStore();
+  const {
+    currentUser,
+    updatePreferences,
+    fetchTags,
+    tags,
+  } = useStore();
   
   // Initialize viewMode from user preferences or default to 'list'
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialQuery);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [hasPendingItems, setHasPendingItems] = useState(false);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const isInitialMount = useRef(true);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  // Debounce search query
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      // Reset pagination when search changes
+      setCursor(undefined);
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  // Reset pagination when tags change
+  useEffect(() => {
+    setCursor(undefined);
+  }, [selectedTags]);
+
+  // Fetch items with React Query
+  const { data, isLoading, error, refetch } = useItems({
+    search: debouncedSearch,
+    tags: selectedTags,
+    cursor,
+  });
+
+  // Invalidate items cache for SSE updates
+  const invalidateItems = useInvalidateItems();
+
+  // Use SSE for real-time updates
+  useItemStatusStream({
+    onItemsUpdated: invalidateItems,
+  });
 
   // Sync local state with store preference on mount and when currentUser changes
   useEffect(() => {
@@ -30,91 +73,83 @@ function LibraryContent() {
     }
   }, [currentUser]);
 
-  // Fetch tags on mount
+  // Initial fetch of tags on mount
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && isInitialMount.current) {
+      isInitialMount.current = false;
       fetchTags();
     }
   }, [currentUser, fetchTags]);
-
-  // Debounced fetch function
-  const debouncedFetchItems = useCallback((search: string, tags: string[]) => {
-    const timeoutId = setTimeout(() => {
-      fetchItems(search, tags);
-    }, 300); // 300ms debounce
-    return () => clearTimeout(timeoutId);
-  }, [fetchItems]);
-
-  // Fetch items when search or tags change
-  useEffect(() => {
-    if (currentUser) {
-      debouncedFetchItems(searchQuery, selectedTags);
-    }
-  }, [searchQuery, selectedTags, currentUser, debouncedFetchItems]);
-
-  // Initial fetch on mount
-  useEffect(() => {
-    if (currentUser) {
-      fetchItems();
-    }
-  }, [currentUser, fetchItems]);
-
-  // Check if there are any pending items
-  useEffect(() => {
-    const pending = items.some(item => item.processingStatus === 'pending');
-    setHasPendingItems(pending);
-  }, [items]);
-
-  // Poll for updates when there are pending items
-  useEffect(() => {
-    if (!currentUser || !hasPendingItems) return;
-
-    const pollInterval = setInterval(() => {
-      // Verify currentUser still exists before polling
-      const { currentUser: user } = useStore.getState();
-      if (!user) {
-        clearInterval(pollInterval);
-        return;
-      }
-      fetchItems(searchQuery, selectedTags);
-    }, 3000); // Poll every 3 seconds
-
-    return () => clearInterval(pollInterval);
-  }, [currentUser, hasPendingItems, searchQuery, selectedTags, fetchItems]);
 
   const handleViewModeChange = (mode: 'grid' | 'list') => {
     setViewMode(mode);
     updatePreferences({ viewMode: mode });
   };
 
-  // Filter items to show only user's non-archived items
+  // Filter items to show only non-archived items
+  // Note: Backend already filters by owner_id, so we only need to filter out archived items
   const displayItems = useMemo(() => {
-    if (!currentUser) return [];
-    return items.filter(item => item.ownerId === currentUser.id && !item.archivedAt);
-  }, [items, currentUser]);
+    const items = data?.items || [];
+    return items.filter(item => !item.archivedAt);
+  }, [data?.items]);
 
   // Get all unique tags for filter - use tags from store (with counts) or fallback to local computation
   const allTags = useMemo(() => {
-    if (!currentUser) return [];
-    
     // If we have tags from the backend, use those (they're already sorted by frequency)
     if (tags && tags.length > 0) {
       return tags.map(t => t.name);
     }
     
     // Fallback to computing from items (for backwards compatibility)
+    // Backend already filters by owner_id, so no need to filter again
+    const items = data?.items || [];
     const tagSet = new Set<string>();
-    items.filter(i => i.ownerId === currentUser.id).forEach(item => {
-      item.tags.forEach(tag => tagSet.add(tag));
+    items.forEach(item => {
+      item.tags.forEach((tag: string) => tagSet.add(tag));
     });
     return Array.from(tagSet).sort();
-  }, [items, currentUser, tags]);
+  }, [data?.items, tags]);
 
   const toggleTag = (tag: string) => {
-    setSelectedTags(prev => 
+    setSelectedTags(prev =>
       prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
     );
   };
+
+  // Calculate items per row based on view mode
+  const itemsPerRow = viewMode === 'grid' ? 3 : 1;
+  const rowCount = Math.ceil(displayItems.length / itemsPerRow);
+
+  // Set up virtualizer for rows
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => (viewMode === 'grid' ? 350 : 200), // Estimated height per row
+    overscan: 2, // Render 2 extra rows above and below viewport
+  });
+
+  // Load more items when scrolling near the end
+  useEffect(() => {
+    const [lastItem] = [...rowVirtualizer.getVirtualItems()].reverse();
+    
+    if (!lastItem) return;
+    
+    // If we're at the last row and there's more data, load it
+    if (
+      lastItem.index >= rowCount - 1 &&
+      data?.pagination.has_more &&
+      !isLoading &&
+      data.pagination.next_cursor
+    ) {
+      setCursor(data.pagination.next_cursor);
+    }
+  }, [
+    rowVirtualizer.getVirtualItems(),
+    rowCount,
+    data?.pagination.has_more,
+    data?.pagination.next_cursor,
+    isLoading,
+  ]);
 
   return (
     <AppLayout>
@@ -190,17 +225,54 @@ function LibraryContent() {
           </div>
         )}
 
-        {/* Grid/List View */}
+        {/* Grid/List View with Virtual Scrolling */}
         {displayItems.length > 0 ? (
-          <div className={cn(
-            "grid gap-6",
-            viewMode === 'grid'
-              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-              : "grid-cols-1"
-          )}>
-            {displayItems.map(item => (
-              <ItemCard key={item.id} item={item} viewMode={viewMode} />
-            ))}
+          <div
+            ref={parentRef}
+            className="h-[calc(100vh-280px)] overflow-auto"
+            style={{ contain: 'strict' }}
+          >
+            <div
+              style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const startIndex = virtualRow.index * itemsPerRow;
+                const rowItems = displayItems.slice(startIndex, startIndex + itemsPerRow);
+                
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                    className={cn(
+                      "absolute top-0 left-0 w-full grid gap-6",
+                      viewMode === 'grid'
+                        ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+                        : "grid-cols-1"
+                    )}
+                    style={{
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    {rowItems.map((item) => (
+                      <ItemCard key={item.id} item={item} viewMode={viewMode} />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Loading indicator for infinite scroll */}
+            {isLoading && cursor && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-violet-500 animate-spin mr-2" />
+                <span className="text-slate-400">Loading more items...</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-center">
