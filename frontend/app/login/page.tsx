@@ -54,10 +54,14 @@ export default function LoginPage() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyan-500/10 rounded-full blur-[100px]" />
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{
+          type: "tween",
+          duration: 0.3,
+          ease: "easeOut"
+        }}
         className="w-full max-w-md"
       >
         <div className="glass-panel p-8 rounded-2xl shadow-2xl shadow-black/50 border border-white/10">

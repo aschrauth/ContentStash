@@ -4,6 +4,7 @@ import "./globals.css";
 import Script from "next/script";
 import NextTopLoader from "nextjs-toploader";
 import { Toaster } from "@/components/ui/sonner";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,9 +34,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-950 text-slate-200`}
       >
-        <NextTopLoader color="#8b5cf6" />
-        <Toaster />
-        {children}
+        <QueryProvider>
+          <NextTopLoader color="#8b5cf6" />
+          {/* <Toaster /> */}
+          {children}
+        </QueryProvider>
       </body>
     </html>
   );

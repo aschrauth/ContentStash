@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { API_ENDPOINTS } from './api';
+import { API_ENDPOINTS, getItems } from './api';
 
 // --- Types ---
 
@@ -29,7 +29,7 @@ export type SavedItem = {
   suggestedTags?: string[];
   suggestedTopic?: string;
   archivedText?: string;
-  extractionType?: 'fast' | 'complete';
+  extractionType?: 'fast' | 'complete' | 'local';
   processingStatus: 'pending' | 'processed' | 'failed';
   createdAt: string;
   updatedAt: string;
@@ -72,6 +72,11 @@ interface AppState {
   _hasHydrated: boolean;
   setHasHydrated: (state: boolean) => void;
   
+  // Pagination state
+  itemsCursor: string | null;
+  hasMoreItems: boolean;
+  isLoadingMore: boolean;
+  
   // Actions
   register: (email: string, password: string, name: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -79,7 +84,8 @@ interface AppState {
   updateProfile: (name: string, email: string) => void;
   updatePreferences: (preferences: Partial<User['preferences']>) => void;
   
-  fetchItems: (searchQuery?: string, tags?: string[]) => Promise<void>;
+  fetchItems: (searchQuery?: string, tags?: string[], loadMore?: boolean) => Promise<void>;
+  loadMoreItems: () => Promise<void>;
   fetchTags: () => Promise<void>;
   addItem: (item: Omit<SavedItem, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>) => Promise<string>;
   updateItem: (id: string, updates: Partial<SavedItem>) => Promise<void>;
@@ -106,6 +112,11 @@ export const useStore = create<AppState>()(
       setHasHydrated: (state) => {
         set({ _hasHydrated: state });
       },
+      
+      // Pagination state
+      itemsCursor: null,
+      hasMoreItems: false,
+      isLoadingMore: false,
 
       register: async (email, password, name) => {
         try {
@@ -132,8 +143,7 @@ export const useStore = create<AppState>()(
             token: data.token
           });
           
-          // Fetch items after successful registration
-          await get().fetchItems();
+          // Let useAuth hook handle initial data fetch
         } catch (error) {
           console.error('Registration error:', error);
           throw error;
@@ -165,8 +175,7 @@ export const useStore = create<AppState>()(
             token: data.token
           });
           
-          // Fetch items after successful login
-          await get().fetchItems();
+          // Let useAuth hook handle initial data fetch
         } catch (error) {
           console.error('Login error:', error);
           throw error;
@@ -211,40 +220,33 @@ export const useStore = create<AppState>()(
         set({ currentUser: updatedUser });
       },
 
-      fetchItems: async (searchQuery?: string, tags?: string[]) => {
-        const { token } = get();
+      fetchItems: async (searchQuery?: string, tags?: string[], loadMore: boolean = false) => {
+        const { token, itemsCursor, items: currentItems } = get();
         if (!token) return;
 
         try {
-          // Build query parameters
-          const params = new URLSearchParams();
-          if (searchQuery && searchQuery.trim()) {
-            params.append('search', searchQuery.trim());
-          }
-          if (tags && tags.length > 0) {
-            params.append('tags', tags.join(','));
-          }
-
-          const url = `${API_ENDPOINTS.items}${params.toString() ? `?${params.toString()}` : ''}`;
+          // Use cursor if loading more, otherwise start fresh
+          const cursor = loadMore ? itemsCursor : undefined;
           
-          const response = await fetch(url, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-
-          if (!response.ok) {
-            if (response.status === 401) {
-              // Clear token and redirect to login
-              localStorage.removeItem('token');
-              set({ currentUser: null, token: null });
-              window.location.href = '/login';
-              return;
-            }
-            throw new Error('Failed to fetch items');
+          // If not loading more, reset pagination state
+          if (!loadMore) {
+            set({ itemsCursor: null, hasMoreItems: false });
           }
-
-          const itemsData = await response.json();
+          
+          const response = await getItems(token, searchQuery, tags, 50, cursor);
+          
+          // Handle both old format (array) and new format (object with pagination)
+          let itemsData: any[];
+          let pagination: { next_cursor: string | null; has_more: boolean } | null = null;
+          
+          if (Array.isArray(response)) {
+            // Old format - backward compatibility
+            itemsData = response;
+          } else {
+            // New format with pagination
+            itemsData = response.items;
+            pagination = response.pagination;
+          }
           
           // Convert snake_case to camelCase for all items
           const formattedItems: SavedItem[] = itemsData.map((item: Record<string, unknown>) => ({
@@ -260,17 +262,37 @@ export const useStore = create<AppState>()(
             suggestedTags: item.suggested_tags,
             suggestedTopic: item.suggested_topic,
             archivedText: item.archived_text,
-            extractionType: item.extraction_type as 'fast' | 'complete' | undefined,
+            extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: item.processing_status,
             createdAt: item.created_at,
             updatedAt: item.updated_at,
             archivedAt: item.archived_at,
           }));
 
-          set({ items: formattedItems });
+          // If loading more, append to existing items; otherwise replace
+          const newItems = loadMore ? [...currentItems, ...formattedItems] : formattedItems;
+          
+          set({
+            items: newItems,
+            itemsCursor: pagination?.next_cursor || null,
+            hasMoreItems: pagination?.has_more || false
+          });
         } catch (error) {
           console.error('Failed to fetch items:', error);
+          // On error, ensure we're not stuck in loading state
+          if (loadMore) {
+            set({ isLoadingMore: false });
+          }
         }
+      },
+      
+      loadMoreItems: async () => {
+        const { itemsCursor, isLoadingMore, hasMoreItems } = get();
+        if (isLoadingMore || !hasMoreItems || !itemsCursor) return;
+        
+        set({ isLoadingMore: true });
+        await get().fetchItems('', [], true); // loadMore = true
+        set({ isLoadingMore: false });
       },
 
       fetchTags: async () => {
@@ -340,7 +362,7 @@ export const useStore = create<AppState>()(
             suggestedTags: newItem.suggested_tags,
             suggestedTopic: newItem.suggested_topic,
             archivedText: newItem.archived_text,
-            extractionType: newItem.extraction_type as 'fast' | 'complete' | undefined,
+            extractionType: newItem.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: newItem.processing_status,
             createdAt: newItem.created_at,
             updatedAt: newItem.updated_at,
@@ -403,7 +425,7 @@ export const useStore = create<AppState>()(
             suggestedTags: updatedItem.suggested_tags,
             suggestedTopic: updatedItem.suggested_topic,
             archivedText: updatedItem.archived_text,
-            extractionType: updatedItem.extraction_type as 'fast' | 'complete' | undefined,
+            extractionType: updatedItem.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: updatedItem.processing_status,
             createdAt: updatedItem.created_at,
             updatedAt: updatedItem.updated_at,

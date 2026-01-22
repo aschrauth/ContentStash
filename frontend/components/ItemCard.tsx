@@ -6,6 +6,16 @@ import { motion } from 'framer-motion';
 import { ExternalLink, FileText, Youtube, Image as ImageIcon } from 'lucide-react';
 import { SavedItem } from '@/lib/store';
 import { formatDate } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
+
+/**
+ * Performance optimizations:
+ * - Removed `layout` prop to prevent expensive layout recalculations
+ * - Added `will-change: transform` for GPU acceleration
+ * - Disabled animations on mobile devices to improve performance
+ * - Uses staggered children animation from parent for smoother rendering
+ * - Uses tween transitions instead of spring for better performance
+ */
 
 interface ItemCardProps {
   item: SavedItem;
@@ -13,6 +23,7 @@ interface ItemCardProps {
 }
 
 export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
+  const isMobile = useIsMobile();
   const getIcon = () => {
     if (item.url?.includes('youtube') || item.url?.includes('youtu.be')) return <Youtube className="w-4 h-4" />;
     if (item.imageUrl && !item.url) return <ImageIcon className="w-4 h-4" />;
@@ -24,10 +35,29 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
     return (
       <Link href={`/items/${item.id}`}>
         <motion.div
-          layout
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          whileHover={{ x: 4, transition: { duration: 0.2 } }}
+          variants={isMobile ? undefined : {
+            hidden: { opacity: 0, y: 10 },
+            visible: {
+              opacity: 1,
+              y: 0,
+              transition: {
+                type: "tween",
+                duration: 0.3,
+                ease: "easeOut"
+              }
+            }
+          }}
+          initial={isMobile ? undefined : "hidden"}
+          animate={isMobile ? undefined : "visible"}
+          whileHover={isMobile ? undefined : {
+            x: 4,
+            transition: {
+              type: "tween",
+              duration: 0.2,
+              ease: "easeOut"
+            }
+          }}
+          style={isMobile ? undefined : { willChange: 'transform' }}
           className="group relative flex bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md h-32"
         >
           {/* Image Preview - Left Side Fixed Width */}
@@ -93,10 +123,29 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
   return (
     <Link href={`/items/${item.id}`}>
       <motion.div
-        layout
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        whileHover={{ y: -4, transition: { duration: 0.2 } }}
+        variants={isMobile ? undefined : {
+          hidden: { opacity: 0, scale: 0.95 },
+          visible: {
+            opacity: 1,
+            scale: 1,
+            transition: {
+              type: "tween",
+              duration: 0.3,
+              ease: "easeOut"
+            }
+          }
+        }}
+        initial={isMobile ? undefined : "hidden"}
+        animate={isMobile ? undefined : "visible"}
+        whileHover={isMobile ? undefined : {
+          y: -4,
+          transition: {
+            type: "tween",
+            duration: 0.2,
+            ease: "easeOut"
+          }
+        }}
+        style={isMobile ? undefined : { willChange: 'transform' }}
         className="group relative h-full flex flex-col bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-violet-500/10"
       >
         {/* Image Preview */}

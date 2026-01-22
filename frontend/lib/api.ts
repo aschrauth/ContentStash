@@ -41,3 +41,59 @@ export const API_ENDPOINTS = {
   // Health
   health: 'http://localhost:8000/healthz',
 } as const;
+
+/**
+ * API helper functions
+ */
+
+export interface PaginationMetadata {
+  next_cursor: string | null;
+  has_more: boolean;
+  limit: number;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: PaginationMetadata;
+}
+
+/**
+ * Get items with pagination support
+ */
+export const getItems = async (
+  token: string,
+  search?: string,
+  tags?: string[],
+  limit: number = 50,
+  cursor?: string
+): Promise<PaginatedResponse<any>> => {
+  const params = new URLSearchParams();
+  
+  if (search && search.trim()) {
+    params.append('search', search.trim());
+  }
+  
+  if (tags && tags.length > 0) {
+    params.append('tags', tags.join(','));
+  }
+  
+  params.append('limit', limit.toString());
+  
+  if (cursor) {
+    params.append('cursor', cursor);
+  }
+  
+  const url = `${API_ENDPOINTS.items}${params.toString() ? `?${params.toString()}` : ''}`;
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch items');
+  }
+  
+  return response.json();
+};
