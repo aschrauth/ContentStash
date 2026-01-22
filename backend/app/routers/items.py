@@ -330,7 +330,7 @@ async def list_items(
     - Excludes soft-deleted items
     - Supports full-text search using MongoDB text index
     - Supports tag filtering with AND logic
-    - Returns paginated results with next_cursor for loading more
+    - Returns paginated results with next_cursor, has_more, and total count
     """
     db = get_database()
     
@@ -428,13 +428,17 @@ async def list_items(
             archived_at=doc.get("archived_at")
         ))
     
-    # Return paginated response
+    # Get total count for the query (without cursor pagination)
+    total_count = await db.saved_items.count_documents(query)
+    
+    # Return paginated response with total count
     return {
         "items": items,
         "pagination": {
             "next_cursor": next_cursor,
             "has_more": has_more,
-            "limit": limit
+            "limit": limit,
+            "total": total_count
         }
     }
 

@@ -50,6 +50,7 @@ export interface PaginationMetadata {
   next_cursor: string | null;
   has_more: boolean;
   limit: number;
+  total: number;
 }
 
 export interface PaginatedResponse<T> {

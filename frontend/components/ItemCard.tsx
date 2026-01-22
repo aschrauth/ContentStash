@@ -50,7 +50,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
           initial={isMobile ? undefined : "hidden"}
           animate={isMobile ? undefined : "visible"}
           whileHover={isMobile ? undefined : {
-            x: 4,
+            scale: 1.01,
             transition: {
               type: "tween",
               duration: 0.2,
@@ -88,7 +88,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
                 </span>
               </div>
               
-              <p className="text-sm text-slate-400 line-clamp-2 mb-2">
+              <p className="text-sm text-slate-400 line-clamp-2 mb-2 opacity-100">
                 {item.description || "No description available."}
               </p>
             </div>
@@ -96,9 +96,9 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
             <div className="flex items-center justify-between mt-auto">
               <div className="flex flex-wrap gap-1.5 overflow-hidden h-6">
                 {item.tags.slice(0, 4).map(tag => (
-                  <span 
-                    key={tag} 
-                    className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px] border border-white/5 group-hover:border-white/10 transition-colors whitespace-nowrap"
+                  <span
+                    key={tag}
+                    className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px] border border-white/5 group-hover:border-white/10 transition-colors whitespace-nowrap opacity-100"
                   >
                     #{tag}
                   </span>
@@ -123,7 +123,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
   return (
     <Link href={`/items/${item.id}`}>
       <motion.div
-        variants={isMobile ? undefined : {
+        variants={{
           hidden: { opacity: 0, scale: 0.95 },
           visible: {
             opacity: 1,
@@ -135,8 +135,8 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
             }
           }
         }}
-        initial={isMobile ? undefined : "hidden"}
-        animate={isMobile ? undefined : "visible"}
+        initial="hidden"
+        animate="visible"
         whileHover={isMobile ? undefined : {
           y: -4,
           transition: {
@@ -184,13 +184,13 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
           </div>
 
           {/* Title */}
-          <h3 className="font-semibold text-lg leading-tight text-slate-100 mb-2 line-clamp-2 group-hover:text-violet-300 transition-colors">
+          <h3 className="font-semibold text-lg leading-tight text-slate-100 mb-2 line-clamp-2 group-hover:text-violet-300 transition-colors opacity-100">
             {item.title}
           </h3>
 
           {/* Description */}
           {item.description && (
-            <p className="text-sm text-slate-400 line-clamp-3 mb-4 flex-1">
+            <p className="text-sm text-slate-400 line-clamp-3 mb-4 flex-1 opacity-100">
               {item.description}
             </p>
           )}
@@ -198,9 +198,9 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
           {/* Tags */}
           <div className="flex flex-wrap gap-1.5 mt-auto pt-4">
             {item.tags.slice(0, 3).map(tag => (
-              <span 
-                key={tag} 
-                className="px-2 py-0.5 rounded-md bg-white/5 text-slate-300 text-xs border border-white/5 group-hover:border-white/10 transition-colors"
+              <span
+                key={tag}
+                className="px-2 py-0.5 rounded-md bg-white/5 text-slate-300 text-xs border border-white/5 group-hover:border-white/10 transition-colors opacity-100"
               >
                 #{tag}
               </span>

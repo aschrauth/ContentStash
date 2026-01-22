@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useItemStatusStream } from '@/hooks/useItemStatusStream';
 import { useItems, useInvalidateItems } from '@/hooks/useItems';
-import { useVirtualizer } from '@tanstack/react-virtual';
 
 // Separate component that uses useSearchParams
 function LibraryContent() {
@@ -31,31 +30,29 @@ function LibraryContent() {
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [debouncedSearch, setDebouncedSearch] = useState(initialQuery);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
   const isInitialMount = useRef(true);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const parentRef = useRef<HTMLDivElement>(null);
 
   // Debounce search query
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       setDebouncedSearch(searchQuery);
-      // Reset pagination when search changes
-      setCursor(undefined);
     }, 300);
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
-  // Reset pagination when tags change
-  useEffect(() => {
-    setCursor(undefined);
-  }, [selectedTags]);
-
-  // Fetch items with React Query
-  const { data, isLoading, error, refetch } = useItems({
+  // Fetch items with React Query's useInfiniteQuery
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    error,
+    refetch
+  } = useItems({
     search: debouncedSearch,
     tags: selectedTags,
-    cursor,
   });
 
   // Invalidate items cache for SSE updates
@@ -63,8 +60,23 @@ function LibraryContent() {
 
   // Use SSE for real-time updates
   useItemStatusStream({
-    onItemsUpdated: invalidateItems,
+    onItemsUpdated: () => {
+      invalidateItems();
+      // Refetch to get updated items
+      refetch();
+    },
   });
+
+  // Flatten all pages into a single array of items
+  const allItems = useMemo(() => {
+    if (!data?.pages) return [];
+    return data.pages.flatMap((page: any) => page.items);
+  }, [data?.pages]);
+
+  // Get total count from the first page (all pages have the same total)
+  const totalCount = useMemo(() => {
+    return data?.pages?.[0]?.pagination?.total ?? null;
+  }, [data?.pages]);
 
   // Sync local state with store preference on mount and when currentUser changes
   useEffect(() => {
@@ -87,11 +99,9 @@ function LibraryContent() {
   };
 
   // Filter items to show only non-archived items
-  // Note: Backend already filters by owner_id, so we only need to filter out archived items
   const displayItems = useMemo(() => {
-    const items = data?.items || [];
-    return items.filter(item => !item.archivedAt);
-  }, [data?.items]);
+    return allItems.filter((item: any) => !item.archivedAt);
+  }, [allItems]);
 
   // Get all unique tags for filter - use tags from store (with counts) or fallback to local computation
   const allTags = useMemo(() => {
@@ -101,14 +111,12 @@ function LibraryContent() {
     }
     
     // Fallback to computing from items (for backwards compatibility)
-    // Backend already filters by owner_id, so no need to filter again
-    const items = data?.items || [];
     const tagSet = new Set<string>();
-    items.forEach(item => {
+    allItems.forEach((item: any) => {
       item.tags.forEach((tag: string) => tagSet.add(tag));
     });
     return Array.from(tagSet).sort();
-  }, [data?.items, tags]);
+  }, [allItems, tags]);
 
   const toggleTag = (tag: string) => {
     setSelectedTags(prev =>
@@ -116,40 +124,30 @@ function LibraryContent() {
     );
   };
 
-  // Calculate items per row based on view mode
-  const itemsPerRow = viewMode === 'grid' ? 3 : 1;
-  const rowCount = Math.ceil(displayItems.length / itemsPerRow);
-
-  // Set up virtualizer for rows
-  const rowVirtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => (viewMode === 'grid' ? 350 : 200), // Estimated height per row
-    overscan: 2, // Render 2 extra rows above and below viewport
-  });
-
-  // Load more items when scrolling near the end
+  // Intersection Observer for infinite scroll
   useEffect(() => {
-    const [lastItem] = [...rowVirtualizer.getVirtualItems()].reverse();
-    
-    if (!lastItem) return;
-    
-    // If we're at the last row and there's more data, load it
-    if (
-      lastItem.index >= rowCount - 1 &&
-      data?.pagination.has_more &&
-      !isLoading &&
-      data.pagination.next_cursor
-    ) {
-      setCursor(data.pagination.next_cursor);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          console.log('Loading next page...');
+          fetchNextPage();
+        }
+      },
+      { threshold: 0.1, rootMargin: '100px' }
+    );
+
+    const currentSentinel = sentinelRef.current;
+    if (currentSentinel && hasNextPage) {
+      observer.observe(currentSentinel);
     }
-  }, [
-    rowVirtualizer.getVirtualItems(),
-    rowCount,
-    data?.pagination.has_more,
-    data?.pagination.next_cursor,
-    isLoading,
-  ]);
+
+    return () => {
+      if (currentSentinel) {
+        observer.unobserve(currentSentinel);
+      }
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
     <AppLayout>
@@ -159,7 +157,12 @@ function LibraryContent() {
           <div>
             <h1 className="text-3xl font-bold text-white mb-1">Library</h1>
             <p className="text-slate-400">
-              {displayItems.length} {displayItems.length === 1 ? 'item' : 'items'} saved
+              {totalCount !== null
+                ? `${totalCount} ${totalCount === 1 ? 'item' : 'items'} total`
+                : isLoading
+                ? 'Loading...'
+                : `${displayItems.length} ${displayItems.length === 1 ? 'item' : 'items'}`
+              }
             </p>
           </div>
 
@@ -225,55 +228,49 @@ function LibraryContent() {
           </div>
         )}
 
-        {/* Grid/List View with Virtual Scrolling */}
+        {/* Grid/List View */}
         {displayItems.length > 0 ? (
-          <div
-            ref={parentRef}
-            className="h-[calc(100vh-280px)] overflow-auto"
-            style={{ contain: 'strict' }}
-          >
+          <>
             <div
-              style={{
-                height: `${rowVirtualizer.getTotalSize()}px`,
-                width: '100%',
-                position: 'relative',
-              }}
+              className={cn(
+                "grid gap-6",
+                viewMode === 'grid'
+                  ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+                  : "grid-cols-1 gap-[15px]"
+              )}
             >
-              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                const startIndex = virtualRow.index * itemsPerRow;
-                const rowItems = displayItems.slice(startIndex, startIndex + itemsPerRow);
-                
-                return (
-                  <div
-                    key={virtualRow.key}
-                    data-index={virtualRow.index}
-                    ref={rowVirtualizer.measureElement}
-                    className={cn(
-                      "absolute top-0 left-0 w-full grid gap-6",
-                      viewMode === 'grid'
-                        ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-                        : "grid-cols-1"
-                    )}
-                    style={{
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                  >
-                    {rowItems.map((item) => (
-                      <ItemCard key={item.id} item={item} viewMode={viewMode} />
-                    ))}
-                  </div>
-                );
-              })}
+              {displayItems.map((item) => (
+                <ItemCard key={item.id} item={item} viewMode={viewMode} />
+              ))}
             </div>
             
             {/* Loading indicator for infinite scroll */}
-            {isLoading && cursor && (
+            {isFetchingNextPage && (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 text-violet-500 animate-spin mr-2" />
                 <span className="text-slate-400">Loading more items...</span>
               </div>
             )}
-          </div>
+            
+            {/* Sentinel for infinite scroll */}
+            {hasNextPage && !isFetchingNextPage && (
+              <div ref={sentinelRef} className="h-20 flex items-center justify-center">
+                <div className="text-slate-500 text-sm">Scroll for more...</div>
+              </div>
+            )}
+            
+            {/* End of list indicator */}
+            {!hasNextPage && displayItems.length > 0 && (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-slate-500 text-sm">
+                  {totalCount !== null 
+                    ? `All ${totalCount} items loaded`
+                    : 'No more items to load'
+                  }
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6">
@@ -314,4 +311,3 @@ export default function LibraryPage() {
     </Suspense>
   );
 }
-

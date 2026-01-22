@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient, UseQueryResult } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient, UseInfiniteQueryResult } from '@tanstack/react-query';
 import { getItems, PaginatedResponse } from '@/lib/api';
 import { SavedItem } from '@/lib/store';
 import { useStore } from '@/lib/store';
@@ -8,34 +8,34 @@ import { useStore } from '@/lib/store';
 interface UseItemsOptions {
   search?: string;
   tags?: string[];
-  cursor?: string;
   enabled?: boolean;
 }
 
 /**
- * Hook to fetch items with React Query for automatic request deduplication
+ * Hook to fetch items with React Query's useInfiniteQuery for proper infinite scroll
+ * This automatically handles pagination, caching, and state persistence across navigation
  */
-export function useItems(options: UseItemsOptions = {}): UseQueryResult<PaginatedResponse<SavedItem>, Error> {
+export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<PaginatedResponse<SavedItem>, Error> {
   const token = useStore((state) => state.token);
-  const { search, tags, cursor, enabled = true } = options;
+  const { search, tags, enabled = true } = options;
 
-  return useQuery({
-    queryKey: ['items', search, tags, cursor],
-    queryFn: async () => {
+  return useInfiniteQuery({
+    queryKey: ['items', search, tags],
+    queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
       if (!token) {
         throw new Error('Not authenticated');
       }
       
-      const response = await getItems(token, search, tags, 50, cursor);
+      const response = await getItems(token, search, tags, 50, pageParam as string | undefined);
       
       // Handle both old format (array) and new format (object with pagination)
       let itemsData: any[];
-      let pagination: { next_cursor: string | null; has_more: boolean; limit: number };
+      let pagination: { next_cursor: string | null; has_more: boolean; limit: number; total: number };
       
       if (Array.isArray(response)) {
         // Old format - backward compatibility
         itemsData = response;
-        pagination = { next_cursor: null, has_more: false, limit: 50 };
+        pagination = { next_cursor: null, has_more: false, limit: 50, total: response.length };
       } else {
         // New format with pagination
         itemsData = response.items;
@@ -68,9 +68,14 @@ export function useItems(options: UseItemsOptions = {}): UseQueryResult<Paginate
         pagination,
       };
     },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => {
+      // Return the next cursor if there are more pages, otherwise undefined
+      return lastPage.pagination.has_more ? (lastPage.pagination.next_cursor ?? undefined) : undefined;
+    },
     enabled: enabled && !!token,
-    staleTime: 30000, // 30 seconds
-    gcTime: 300000, // 5 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes - keep data fresh longer
+    gcTime: 10 * 60 * 1000, // 10 minutes - keep in cache longer for navigation
   });
 }
 
@@ -93,41 +98,69 @@ export function useUpdateItemsCache() {
   
   return {
     addItem: (newItem: SavedItem) => {
-      queryClient.setQueriesData<PaginatedResponse<SavedItem>>(
+      queryClient.setQueriesData<{ pages: PaginatedResponse<SavedItem>[]; pageParams: any[] }>(
         { queryKey: ['items'] },
         (oldData) => {
-          if (!oldData) return oldData;
+          if (!oldData || !oldData.pages || oldData.pages.length === 0) return oldData;
+          
+          // Add to the first page
+          const newPages = [...oldData.pages];
+          newPages[0] = {
+            ...newPages[0],
+            items: [newItem, ...newPages[0].items],
+            pagination: {
+              ...newPages[0].pagination,
+              total: newPages[0].pagination.total + 1,
+            },
+          };
+          
           return {
             ...oldData,
-            items: [newItem, ...oldData.items],
+            pages: newPages,
           };
         }
       );
     },
     
     updateItem: (itemId: string, updates: Partial<SavedItem>) => {
-      queryClient.setQueriesData<PaginatedResponse<SavedItem>>(
+      queryClient.setQueriesData<{ pages: PaginatedResponse<SavedItem>[]; pageParams: any[] }>(
         { queryKey: ['items'] },
         (oldData) => {
-          if (!oldData) return oldData;
-          return {
-            ...oldData,
-            items: oldData.items.map((item) =>
+          if (!oldData || !oldData.pages) return oldData;
+          
+          const newPages = oldData.pages.map((page) => ({
+            ...page,
+            items: page.items.map((item) =>
               item.id === itemId ? { ...item, ...updates } : item
             ),
+          }));
+          
+          return {
+            ...oldData,
+            pages: newPages,
           };
         }
       );
     },
     
     removeItem: (itemId: string) => {
-      queryClient.setQueriesData<PaginatedResponse<SavedItem>>(
+      queryClient.setQueriesData<{ pages: PaginatedResponse<SavedItem>[]; pageParams: any[] }>(
         { queryKey: ['items'] },
         (oldData) => {
-          if (!oldData) return oldData;
+          if (!oldData || !oldData.pages) return oldData;
+          
+          const newPages = oldData.pages.map((page) => ({
+            ...page,
+            items: page.items.filter((item) => item.id !== itemId),
+            pagination: {
+              ...page.pagination,
+              total: Math.max(0, page.pagination.total - 1),
+            },
+          }));
+          
           return {
             ...oldData,
-            items: oldData.items.filter((item) => item.id !== itemId),
+            pages: newPages,
           };
         }
       );
