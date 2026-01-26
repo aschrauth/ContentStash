@@ -642,10 +642,19 @@ async def update_item(
             extraction_type_changed = True
             update_doc["extraction_type"] = updates.extraction_type
             
-            # If changing to "local", mark for local extraction instead of triggering backend processing
+            # If changing to "local", clear existing content and mark for local extraction
+            # BUT only if we're not simultaneously uploading new content (archived_text update)
             if updates.extraction_type == "local":
-                update_doc["processing_status"] = "pending"
-                update_doc["processing_error"] = "Waiting for local extraction by browser extension"
+                # Only clear archived_text if we're not uploading new content in this same request
+                if updates.archived_text is None:
+                    # User is changing to local without providing content - clear and wait for extension
+                    update_doc["archived_text"] = None
+                    update_doc["processing_status"] = "pending"
+                    update_doc["processing_error"] = "Waiting for local extraction by browser extension"
+                else:
+                    # User is uploading content with local extraction type - keep the content
+                    update_doc["processing_status"] = "processing"
+                    update_doc["processing_error"] = None
             else:
                 # For other extraction types, reset to pending for backend reprocessing
                 update_doc["processing_status"] = "pending"
@@ -976,10 +985,12 @@ async def upload_extracted_content(
             )
             
             # Trigger background processing for embeddings and AI categorization
+            # Pass skip_extraction=True since content was already provided by local extraction
             background_tasks.add_task(
                 process_item_background,
                 item_id,
-                current_user.id
+                current_user.id,
+                skip_extraction=True
             )
     
     # Fetch and return updated item

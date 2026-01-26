@@ -30,7 +30,7 @@ export type SavedItem = {
   suggestedTopic?: string;
   archivedText?: string;
   extractionType?: 'fast' | 'complete' | 'local';
-  processingStatus: 'pending' | 'processed' | 'failed';
+  processingStatus: 'pending' | 'processing' | 'processed' | 'failed' | 'pending_local_extraction';
   createdAt: string;
   updatedAt: string;
   archivedAt?: string; // For soft delete

@@ -348,7 +348,7 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
         return None
 
 
-async def extract_content(url: str, extraction_type: str = "fast") -> Optional[str]:
+async def extract_content(url: str, extraction_type: str = "fast") -> tuple[Optional[str], str]:
     """
     Extract main content text from a URL using readability-lxml.
     For YouTube URLs, attempts to extract video transcript first.
@@ -359,7 +359,8 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
                         "complete" skips Readability and goes directly to Playwright
         
     Returns:
-        Extracted text content or None if extraction fails
+        Tuple of (extracted text content or None if extraction fails, actual extraction method used)
+        The extraction method will be one of: "fast", "complete", or the requested type if it failed
     """
     # Check if this is a YouTube URL and try to get transcript
     if is_youtube_url(url):
@@ -374,7 +375,7 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
             
             if transcript:
                 logger.info(f"✓ Successfully extracted YouTube transcript for {url} ({len(transcript)} characters)")
-                return transcript
+                return transcript, extraction_type
             else:
                 logger.warning(f"✗ YouTube transcript API failed for {url}")
                 logger.info(f"Attempting yt-dlp transcript fallback for video ID: {video_id}")
@@ -384,7 +385,7 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
                 
                 if ytdlp_transcript:
                     logger.info(f"✓ Successfully extracted transcript from yt-dlp for {url} ({len(ytdlp_transcript)} characters)")
-                    return ytdlp_transcript
+                    return ytdlp_transcript, extraction_type
                 else:
                     logger.warning(f"✗ yt-dlp transcript extraction failed for {url}")
                     logger.info(f"Attempting YouTube Data API metadata fallback for video ID: {video_id}")
@@ -401,7 +402,7 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
                             content += f"{youtube_metadata['description']}"
                         
                         logger.info(f"Using YouTube API metadata as content ({len(content)} characters)")
-                        return content
+                        return content, extraction_type
                     else:
                         logger.warning(f"✗ YouTube API failed, trying yt-dlp metadata fallback for {url}")
                         
@@ -417,7 +418,7 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
                                 content += f"{ytdlp_metadata['description']}"
                             
                             logger.info(f"Using yt-dlp metadata as content ({len(content)} characters)")
-                            return content
+                            return content, extraction_type
                         else:
                             logger.error(f"✗ All YouTube extraction methods failed for {url}")
                             raise ExtractionBlockError(f"YouTube blocked all extraction methods for {url}")
@@ -433,10 +434,10 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
             
             if markdown_content:
                 logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using Playwright (complete mode)")
-                return markdown_content
+                return markdown_content, "complete"
             else:
                 logger.warning(f"Playwright failed to extract content from {url}")
-                return None
+                return None, extraction_type
         
         # For "fast" extraction type, use the cascade logic (Readability → Playwright fallback)
         # First attempt: Try with requests + readability
@@ -457,8 +458,8 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
             )
             
             if markdown_content:
-                logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using readability")
-                return markdown_content
+                logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using readability (fast mode)")
+                return markdown_content, "fast"
         
         # If we got here, readability didn't extract enough content
         # This likely means the site uses JavaScript rendering
@@ -469,11 +470,11 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
         markdown_content = await _extract_with_playwright(url)
         
         if markdown_content:
-            logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using Playwright")
-            return markdown_content
+            logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using Playwright (fallback from fast)")
+            return markdown_content, "complete"
         else:
             logger.warning(f"Playwright also failed to extract content from {url}")
-            return None
+            return None, extraction_type
             
     except requests.RequestException as e:
         error_msg = str(e)
@@ -488,11 +489,11 @@ async def extract_content(url: str, extraction_type: str = "fast") -> Optional[s
         markdown_content = await _extract_with_playwright(url)
         if markdown_content:
             logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using Playwright fallback")
-            return markdown_content
-        return None
+            return markdown_content, "complete"
+        return None, extraction_type
     except Exception as e:
         logger.error(f"Error extracting content from {url}: {str(e)}")
-        return None
+        return None, extraction_type
 
 
 async def extract_content_with_metadata(url: str, extraction_type: str = "fast") -> dict:

@@ -133,12 +133,12 @@ Respond with JSON only:
         return None
 
 
-async def process_item_background(item_id: str, user_id: str):
+async def process_item_background(item_id: str, user_id: str, skip_extraction: bool = False):
     """
     Background task to process a saved item:
     1. Update status to 'pending'
     2. Fetch metadata (if missing)
-    3. Extract content -> save to archivedText
+    3. Extract content -> save to archivedText (unless skip_extraction=True)
     4. Generate AI suggestions -> save to suggestedTags, suggestedTopic
     5. Update item with results and set status to 'processed'
     6. Handle errors by setting status to 'failed' and saving processingError
@@ -146,6 +146,7 @@ async def process_item_background(item_id: str, user_id: str):
     Args:
         item_id: The ID of the item to process
         user_id: The ID of the user who owns the item (for verification)
+        skip_extraction: If True, skip content extraction (content already provided)
     """
     db = get_database()
     
@@ -174,6 +175,34 @@ async def process_item_background(item_id: str, user_id: str):
         archived_text = item_doc.get("archived_text")
         extraction_type = item_doc.get("extraction_type", "fast")
         
+        # Check if it's a YouTube URL
+        is_youtube = is_youtube_url(url) if url else False
+        
+        # CRITICAL: Honor explicit "local" extraction choice
+        # If user explicitly chose "local" extraction, handle based on whether content exists
+        if url and extraction_type == "local" and not is_youtube:
+            logger.info(f"Item {item_id} has extraction_type='local'")
+            
+            # If archived_text already exists, this is likely a direct save from extension
+            # Don't clear it - just process it for embeddings and categorization
+            if archived_text and len(archived_text.strip()) > 100:
+                logger.info(f"Item {item_id} already has content from local extraction, proceeding with processing")
+                # Continue to processing below (embeddings, categorization)
+            else:
+                # No content yet - mark as pending local extraction and wait for extension
+                logger.info(f"Item {item_id} has no content yet, waiting for local extraction by browser extension")
+                await db.saved_items.update_one(
+                    {"_id": ObjectId(item_id)},
+                    {
+                        "$set": {
+                            "processing_status": "pending_local_extraction",
+                            "processing_error": "Waiting for local extraction by browser extension",
+                            "updated_at": datetime.utcnow()
+                        }
+                    }
+                )
+                return
+        
         # Update status to processing (not pending, to avoid infinite loop in local extraction)
         # Only update if not already processing to avoid race conditions
         current_status = item_doc.get("processing_status")
@@ -196,38 +225,73 @@ async def process_item_background(item_id: str, user_id: str):
             metadata = fetch_metadata(url)
         
         # Step 2: Extract content
+        # - If skip_extraction=True: Content already provided, skip extraction entirely
         # - For YouTube URLs: Always try backend extraction first
         #   - If blocked (ExtractionBlockError), mark as pending_local_extraction
         #   - If successful, process normally
-        # - For non-YouTube URLs with extraction_type="local": Skip server extraction, mark for local processing
-        # - If URL exists, always extract (to support reprocessing with different extraction_type)
-        # - If no URL but archived_text exists, use existing text (pasted content)
-        
-        # Check if it's a YouTube URL
-        is_youtube = is_youtube_url(url) if url else False
-        
-        # Handle non-YouTube URLs with local extraction type
-        # IMPORTANT: Only skip server extraction if archived_text is NOT already present
-        # If archived_text exists, it means local extraction already happened, so process it
-        if url and extraction_type == "local" and not is_youtube and not archived_text:
-            logger.info(f"Extraction type is 'local' for {url}, marking for local extraction")
-            await db.saved_items.update_one(
-                {"_id": ObjectId(item_id)},
-                {
-                    "$set": {
-                        "processing_status": "pending_local_extraction",
-                        "processing_error": "Waiting for local extraction by browser extension",
-                        "updated_at": datetime.utcnow()
-                    }
-                }
-            )
-            return
+        # - For non-YouTube URLs with extraction_type="local": Already handled above (early return)
+        # - If URL exists, extract content (to support reprocessing with different extraction_type)
+        # - If no URL but archived_text exists, use existing text (pasted content or local extraction completed)
         
         # Extract content from URL with cascade fallback
-        if url:
+        # extract_content now returns (content, actual_extraction_method)
+        actual_extraction_method = extraction_type  # Default to requested type
+        
+        # Skip extraction if content was already provided (e.g., from local extraction upload)
+        if skip_extraction:
+            logger.info(f"Skipping extraction for item {item_id} - content already provided")
+            if not archived_text:
+                logger.error(f"skip_extraction=True but no archived_text for item {item_id}")
+                raise Exception("Content extraction skipped but no archived_text available")
+        elif url:
             logger.info(f"Extracting content from {url} using extraction_type={extraction_type}")
             try:
-                archived_text = await extract_content(url, extraction_type=extraction_type)
+                archived_text, actual_extraction_method = await extract_content(url, extraction_type=extraction_type)
+                
+                # Check if extraction returned None - implement cascade fallback
+                if archived_text is None:
+                    logger.warning(f"Extraction returned no content for {url} with extraction_type={extraction_type}")
+                    
+                    # Cascade: fast → complete → local
+                    if extraction_type == "fast":
+                        # Try "complete" next
+                        logger.info(f"Falling back from 'fast' to 'complete' extraction for {url}")
+                        await db.saved_items.update_one(
+                            {"_id": ObjectId(item_id)},
+                            {
+                                "$set": {
+                                    "extraction_type": "complete",
+                                    "processing_status": "pending",
+                                    "processing_error": "Fast extraction returned no content, retrying with complete mode",
+                                    "updated_at": datetime.utcnow()
+                                }
+                            }
+                        )
+                        # Re-trigger background processing with new extraction_type
+                        from app.services.background import process_item_background
+                        await process_item_background(item_id, user_id)
+                        return
+                    elif extraction_type == "complete":
+                        # Fall back to "local"
+                        logger.info(f"Falling back from 'complete' to 'local' extraction for {url}")
+                        await db.saved_items.update_one(
+                            {"_id": ObjectId(item_id)},
+                            {
+                                "$set": {
+                                    "extraction_type": "local",
+                                    "processing_status": "pending_local_extraction",
+                                    "processing_error": "Server extraction failed, waiting for local extraction by browser extension",
+                                    "updated_at": datetime.utcnow()
+                                }
+                            }
+                        )
+                        return
+                    else:
+                        # Already on "local" - this shouldn't happen as local extraction is client-side
+                        # Mark as failed
+                        logger.error(f"Local extraction type but no content for {url}")
+                        raise Exception("Local extraction type but no archived_text provided")
+                        
             except ExtractionBlockError as e:
                 # Server-side extraction was blocked - fall back to local extraction
                 logger.warning(f"Extraction blocked for {url}: {str(e)}")
@@ -236,7 +300,7 @@ async def process_item_background(item_id: str, user_id: str):
                     {
                         "$set": {
                             "extraction_type": "local",
-                            "processing_status": "pending",
+                            "processing_status": "pending_local_extraction",
                             "processing_error": f"Server blocked, falling back to local extraction: {str(e)}",
                             "updated_at": datetime.utcnow()
                         }
@@ -274,7 +338,7 @@ async def process_item_background(item_id: str, user_id: str):
                         {
                             "$set": {
                                 "extraction_type": "local",
-                                "processing_status": "pending",
+                                "processing_status": "pending_local_extraction",
                                 "processing_error": f"Server extraction failed, falling back to local extraction: {str(e)}",
                                 "updated_at": datetime.utcnow()
                             }
@@ -413,8 +477,16 @@ async def process_item_background(item_id: str, user_id: str):
             "updated_at": datetime.utcnow(),
             "archived_text": archived_text,
             "suggested_tags": ai_suggestions.get("tags"),
-            "suggested_topic": ai_suggestions.get("topic")
+            "suggested_topic": ai_suggestions.get("topic"),
+            "extraction_type": actual_extraction_method  # Update with actual method used
         }
+        
+        # Log if extraction method changed due to cascade
+        if actual_extraction_method != extraction_type:
+            logger.info(
+                f"Extraction method cascaded from '{extraction_type}' to '{actual_extraction_method}' "
+                f"for item {item_id}"
+            )
         
         # Add auto-categorization results if available
         if auto_categorization:

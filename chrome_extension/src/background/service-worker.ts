@@ -146,10 +146,13 @@ async function processGenericItem(item: SavedItem) {
     // Wait a bit more for dynamic content
     await new Promise(resolve => setTimeout(resolve, 3000));
 
-    // Extract content using content script
+    // Call the extraction function from the content script (already injected via manifest)
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id! },
-      func: extractContent,
+      func: () => {
+        // @ts-ignore - ContentStashExtractor is injected by content-script.js
+        return window.ContentStashExtractor?.extractPageContent();
+      },
     });
 
     const content = results[0]?.result;
@@ -205,28 +208,6 @@ async function processGenericItem(item: SavedItem) {
       }
     }
   }
-}
-
-// Content extraction function (runs in page context)
-function extractContent(): string {
-  // Use Readability if available, otherwise fallback to simple extraction
-  try {
-    // @ts-ignore - Readability will be injected
-    if (typeof Readability !== 'undefined') {
-      // @ts-ignore
-      const article = new Readability(document.cloneNode(true)).parse();
-      if (article && article.textContent) {
-        return `# ${article.title}\n\n${article.textContent}`;
-      }
-    }
-  } catch (e) {
-    console.error('Readability extraction failed:', e);
-  }
-
-  // Fallback: extract main content
-  const main = document.querySelector('main, article, [role="main"]');
-  const content = main ? main.textContent : document.body.textContent;
-  return content?.trim() || '';
 }
 
 // Handle messages from popup

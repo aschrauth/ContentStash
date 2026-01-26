@@ -10,7 +10,7 @@
     "name": "storage"
   },
   "src/background/service-worker.ts": {
-    "file": "assets/service-worker.ts-DHER-HS8.js",
+    "file": "assets/service-worker.ts-CiRnSQNd.js",
     "name": "service-worker.ts",
     "src": "src/background/service-worker.ts",
     "isEntry": true,

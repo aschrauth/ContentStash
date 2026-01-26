@@ -127,8 +127,12 @@ export default function ItemDetailPage() {
   useEffect(() => {
     if (!itemId || !token || !item) return;
     
-    // Only poll if status is pending
-    if (item.processingStatus !== 'pending') return;
+    // Only poll if status is pending, processing, or pending_local_extraction
+    const shouldPoll = item.processingStatus === 'pending' ||
+                       item.processingStatus === 'processing' ||
+                       item.processingStatus === 'pending_local_extraction';
+    
+    if (!shouldPoll) return;
     
     const pollInterval = setInterval(async () => {
       try {
@@ -139,19 +143,44 @@ export default function ItemDetailPage() {
         });
         
         if (response.ok) {
-          const updatedItem = await response.json();
+          const updatedData = await response.json();
           
-          // Update the item in the store
-          updateItem(itemId, updatedItem);
+          // Convert snake_case to camelCase
+          const formattedItem: SavedItem = {
+            id: updatedData.id,
+            ownerId: updatedData.owner_id,
+            url: updatedData.url,
+            title: updatedData.title,
+            description: updatedData.description,
+            imageUrl: updatedData.image_url,
+            faviconUrl: updatedData.favicon_url,
+            notesMarkdown: updatedData.notes_markdown,
+            tags: updatedData.tags,
+            suggestedTags: updatedData.suggested_tags,
+            suggestedTopic: updatedData.suggested_topic,
+            archivedText: updatedData.archived_text,
+            extractionType: updatedData.extraction_type,
+            processingStatus: updatedData.processing_status,
+            createdAt: updatedData.created_at,
+            updatedAt: updatedData.updated_at,
+            archivedAt: updatedData.archived_at
+          };
           
-          // If processing is complete, stop polling
-          if (updatedItem.processingStatus !== 'pending') {
+          // Update both the Zustand store AND local state
+          updateItem(itemId, updatedData);
+          setItem(formattedItem);
+          
+          // If processing is complete, stop polling and show notification
+          const isComplete = updatedData.processing_status === 'processed' ||
+                            updatedData.processing_status === 'failed';
+          
+          if (isComplete) {
             clearInterval(pollInterval);
             
-            if (updatedItem.processingStatus === 'processed') {
+            if (updatedData.processing_status === 'processed') {
               toast.success('Content processed successfully!');
-            } else if (updatedItem.processingStatus === 'failed') {
-              toast.error('Processing failed: ' + (updatedItem.processingError || 'Unknown error'));
+            } else if (updatedData.processing_status === 'failed') {
+              toast.error('Processing failed: ' + (updatedData.processing_error || 'Unknown error'));
             }
           }
         }
@@ -161,7 +190,7 @@ export default function ItemDetailPage() {
     }, 2000); // Poll every 2 seconds
     
     return () => clearInterval(pollInterval);
-  }, [itemId, token, item, updateItem]);
+  }, [itemId, token, item?.processingStatus, updateItem]);
 
   // Autocomplete for tags
   useEffect(() => {
@@ -325,7 +354,7 @@ export default function ItemDetailPage() {
               <div className="relative z-10">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-2">
-                    {item.processingStatus === 'pending' && (
+                    {(item.processingStatus === 'pending' || item.processingStatus === 'processing') && (
                       <span className="px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-medium border border-amber-500/30 flex items-center gap-1">
                         <RefreshCw className="w-3 h-3 animate-spin" /> Processing
                       </span>
@@ -453,7 +482,7 @@ export default function ItemDetailPage() {
                       a: (props) => <a {...props} />,
                       img: ({ src, alt, ...props }) => {
                         // Skip rendering images with empty src to avoid React warning
-                        if (!src || src.trim() === '') {
+                        if (!src || (typeof src === 'string' && src.trim() === '')) {
                           return null;
                         }
                         return <img src={src} alt={alt} {...props} />;
@@ -568,9 +597,48 @@ export default function ItemDetailPage() {
                     onChange={async (e) => {
                       const newType = e.target.value as 'fast' | 'complete' | 'local';
                       try {
+                        // Update via Zustand store
                         await updateItem(item.id, { extractionType: newType });
-                        toast.success(`Extraction type changed to ${newType}. Reprocessing...`);
+                        
+                        // Fetch the updated item from the API to get the new processing status
+                        const response = await fetch(API_ENDPOINTS.itemById(item.id), {
+                          headers: {
+                            'Authorization': `Bearer ${token}`,
+                          },
+                        });
+                        
+                        if (response.ok) {
+                          const updatedData = await response.json();
+                          
+                          // Update local state with the fresh data from API including new processing status
+                          const formattedItem: SavedItem = {
+                            id: updatedData.id,
+                            ownerId: updatedData.owner_id,
+                            url: updatedData.url,
+                            title: updatedData.title,
+                            description: updatedData.description,
+                            imageUrl: updatedData.image_url,
+                            faviconUrl: updatedData.favicon_url,
+                            notesMarkdown: updatedData.notes_markdown,
+                            tags: updatedData.tags,
+                            suggestedTags: updatedData.suggested_tags,
+                            suggestedTopic: updatedData.suggested_topic,
+                            archivedText: updatedData.archived_text,
+                            extractionType: updatedData.extraction_type,
+                            processingStatus: updatedData.processing_status,
+                            createdAt: updatedData.created_at,
+                            updatedAt: updatedData.updated_at,
+                            archivedAt: updatedData.archived_at
+                          };
+                          
+                          // This will trigger the polling effect to start monitoring
+                          setItem(formattedItem);
+                          toast.success(`Extraction type changed to ${newType}. Reprocessing...`);
+                        } else {
+                          toast.error('Failed to fetch updated item');
+                        }
                       } catch (error) {
+                        console.error('Error updating extraction type:', error);
                         toast.error('Failed to update extraction type');
                       }
                     }}
