@@ -21,6 +21,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 /**
+ * Detect if the current URL is a Substack article
+ */
+function isSubstackUrl(url: string = window.location.href): boolean {
+  return url.includes('substack.com') || /\.so\/p\//.test(url);
+}
+
+/**
  * Find and extract the References section from the document before Readability processes it
  * Returns the HTML content of the References section, or null if not found
  */
@@ -73,7 +80,7 @@ function findReferencesSection(doc: Document): string | null {
 /**
  * Clean markdown content by removing JSON blocks, featured sections, and excessive whitespace
  */
-function cleanMarkdownContent(content: string): string {
+function cleanMarkdownContent(content: string, isSubstack: boolean = false): string {
   const lines = content.split('\n');
   const cleanedLines: string[] = [];
   let inJsonBlock = false;
@@ -98,7 +105,8 @@ function cleanMarkdownContent(content: string): string {
 
     // PATTERN-BASED DETECTION: After main content ends, ANY image link starts promotional section
     // This catches all promotional items, not just specific titles
-    if (pastMainContent && !inPromotionalBlock && stripped.startsWith('![')) {
+    // BUT: Be more conservative for Substack - don't mark images as promotional
+    if (!isSubstack && pastMainContent && !inPromotionalBlock && stripped.startsWith('![')) {
       inPromotionalBlock = true;
       continue;
     }
@@ -191,9 +199,16 @@ function cleanMarkdownContent(content: string): string {
  * This function removes navigation, ads, and promotional content while preserving
  * the main document structure (documentElement, body) that Readability needs
  */
-function selectiveCleanup(doc: Document): void {
+function selectiveCleanup(doc: Document, isSubstack: boolean = false): void {
   // Remove unwanted structural elements
-  const structuralSelectors = [
+  // For Substack, be more conservative - don't remove headers that might contain article content
+  const structuralSelectors = isSubstack ? [
+    'nav:not(.post-header)',
+    'header:not(.post-header)',
+    'footer',
+    '[role="navigation"]',
+    '[role="banner"]',
+  ] : [
     'nav',
     'header',
     'footer',
@@ -209,7 +224,19 @@ function selectiveCleanup(doc: Document): void {
   });
 
   // Remove elements with unwanted class/id patterns
-  const unwantedPatterns = [
+  // For Substack, skip patterns that might match article content containers
+  const unwantedPatterns = isSubstack ? [
+    /^featured$/i,  // Only exact match
+    /^recommended$/i,
+    /^social$/i,
+    /^share$/i,
+    /^comment/i,
+    /^sidebar$/i,
+    /^advertisement$/i,
+    /\bad\b/i,
+    /^promo$/i,
+    /^follow$/i,
+  ] : [
     /featured/i,
     /related/i,
     /recommended/i,
@@ -253,6 +280,14 @@ async function extractPageContent(): Promise<string> {
     return await extractYouTubeContent();
   }
 
+  // Detect if this is a Substack article
+  const isSubstack = isSubstackUrl();
+
+  // For Substack, use a specialized extraction approach
+  if (isSubstack) {
+    return await extractSubstackContent();
+  }
+
   // Use Readability for general pages with hybrid References extraction
   try {
     // Create a proper Document object for Readability
@@ -266,7 +301,7 @@ async function extractPageContent(): Promise<string> {
     // Apply selective cleanup to remove unwanted elements
     // This removes navigation, ads, and promotional content while preserving
     // the document structure that Readability needs
-    selectiveCleanup(documentClone);
+    selectiveCleanup(documentClone, false);
     
     const article = new Readability(documentClone).parse();
     
@@ -284,7 +319,7 @@ async function extractPageContent(): Promise<string> {
       let markdown = turndownService.turndown(article.content);
 
       // Apply post-processing cleanup
-      markdown = cleanMarkdownContent(markdown);
+      markdown = cleanMarkdownContent(markdown, false);
       
       // HYBRID APPROACH: If References were saved but not in final markdown, append them
       let referencesMarkdown = '';
@@ -297,6 +332,137 @@ async function extractPageContent(): Promise<string> {
         turndownService.remove(['script', 'style']);
         
         referencesMarkdown = turndownService.turndown(savedReferencesHtml);
+      }
+
+      // Add title and byline header
+      let content = `# ${article.title}\n\n`;
+      if (article.byline) {
+        content += `**By:** ${article.byline}\n\n`;
+      }
+      content += markdown;
+      
+      // Append References if they were saved and excluded
+      if (referencesMarkdown) {
+        content += '\n\n' + referencesMarkdown;
+      }
+
+      return content;
+    }
+  } catch (error) {
+    console.error('Readability extraction failed:', error);
+  }
+
+  // Fallback to simple extraction
+  return extractSimpleContent();
+}
+
+async function extractSubstackContent(): Promise<string> {
+  try {
+    // Substack-specific selectors (in priority order)
+    const contentSelectors = [
+      '.body.markup',        // Main article body in Substack
+      'article .body',       // Article body
+      '.post-content',       // Post content wrapper
+      '.available-content',  // Available content section
+      'article',             // Generic article tag
+      'main',                // Main content area
+    ];
+
+    let contentElement: Element | null = null;
+    
+    // Try each selector until we find content
+    for (const selector of contentSelectors) {
+      const element = document.querySelector(selector);
+      if (element && element.innerHTML && element.innerHTML.length > 200) {
+        contentElement = element;
+        console.log(`Found Substack content using selector: ${selector}`);
+        break;
+      }
+    }
+
+    if (!contentElement) {
+      console.warn('No Substack content found with specific selectors, falling back to Readability');
+      return extractWithReadability(true);
+    }
+
+    // Get title from h1 or meta tags
+    const titleElement = document.querySelector('h1.post-title, h1');
+    const title = titleElement?.textContent?.trim() || document.title;
+
+    // Get author from meta or byline
+    const authorElement = document.querySelector('.author-name, [rel="author"]');
+    const author = authorElement?.textContent?.trim() || '';
+
+    // Initialize Turndown for Substack extraction
+    const turndownService = new TurndownService({
+      headingStyle: 'atx',
+      codeBlockStyle: 'fenced',
+    });
+
+    // Strip scripts and styles during conversion
+    turndownService.remove(['script', 'style']);
+
+    // Convert HTML to Markdown
+    let markdown = turndownService.turndown(contentElement.innerHTML);
+
+    // Apply conservative post-processing cleanup for Substack
+    markdown = cleanMarkdownContent(markdown, true);
+
+    // Build final content with title and author
+    let content = `# ${title}\n\n`;
+    if (author) {
+      content += `**By:** ${author}\n\n`;
+    }
+    content += markdown;
+
+    return content;
+  } catch (error) {
+    console.error('Substack extraction failed:', error);
+    // Fallback to Readability with Substack-aware cleanup
+    return extractWithReadability(true);
+  }
+}
+
+async function extractWithReadability(isSubstack: boolean = false): Promise<string> {
+  try {
+    // Create a proper Document object for Readability
+    const documentClone = document.cloneNode(true) as Document;
+    
+    // Extract References section BEFORE Readability processes the document
+    const savedReferencesHtml = findReferencesSection(documentClone);
+    
+    // Apply selective cleanup with Substack awareness
+    selectiveCleanup(documentClone, isSubstack);
+    
+    const article = new Readability(documentClone).parse();
+    
+    if (article && article.content) {
+      // Initialize Turndown with appropriate options
+      const turndownService = new TurndownService({
+        headingStyle: 'atx',
+        codeBlockStyle: 'fenced',
+      });
+
+      // Strip scripts and styles during conversion
+      turndownService.remove(['script', 'style']);
+
+      // Convert HTML to Markdown
+      let markdown = turndownService.turndown(article.content);
+
+      // Apply post-processing cleanup
+      markdown = cleanMarkdownContent(markdown, isSubstack);
+      
+      // HYBRID APPROACH: If References were saved but not in final markdown, append them
+      let referencesMarkdown = '';
+      if (savedReferencesHtml && !markdown.toLowerCase().includes('reference')) {
+        // Convert saved References HTML to markdown
+        const refTurndown = new TurndownService({
+          headingStyle: 'atx',
+          codeBlockStyle: 'fenced',
+        });
+        refTurndown.remove(['script', 'style']);
+        
+        referencesMarkdown = refTurndown.turndown(savedReferencesHtml);
       }
 
       // Add title and byline header

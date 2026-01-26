@@ -33,7 +33,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/content-script.ts-_hNVQNKH.js"
+        "assets/content-script.ts-BpBEZArj.js"
       ],
       "matches": [
         "<all_urls>"
@@ -48,7 +48,7 @@
       ],
       "resources": [
         "src/content/*",
-        "assets/content-script.ts-_hNVQNKH.js"
+        "assets/content-script.ts-BpBEZArj.js"
       ],
       "use_dynamic_url": false
     }
