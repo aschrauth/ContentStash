@@ -478,13 +478,25 @@ async def extract_content(url: str, extraction_type: str = "fast") -> tuple[Opti
             
     except requests.RequestException as e:
         error_msg = str(e)
-        # Check if this is a block (403, 401, or connection refused)
+        # For 403/401/Forbidden errors in fast mode, try Playwright before giving up
+        # This allows the cascade to work: requests.get() → Playwright → complete mode → local
         if "403" in error_msg or "401" in error_msg or "Forbidden" in error_msg:
-            logger.error(f"Access blocked for {url}: {error_msg}")
+            logger.warning(f"Access blocked for {url} with requests.get(): {error_msg}")
+            logger.info(f"Attempting Playwright extraction to bypass bot detection")
+            
+            # Try Playwright fallback
+            markdown_content = await _extract_with_playwright(url)
+            if markdown_content:
+                logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using Playwright fallback after 403")
+                return markdown_content, "complete"
+            
+            # Both requests.get() and Playwright failed with access errors
+            # Now raise ExtractionBlockError to trigger cascade to complete mode
+            logger.error(f"Both requests.get() and Playwright failed for {url} - access blocked")
             raise ExtractionBlockError(f"Server blocked access to {url}: {error_msg}")
         
         logger.error(f"Error fetching content from {url}: {error_msg}")
-        # Try Playwright as a last resort
+        # Try Playwright as a last resort for other request errors
         logger.info(f"Attempting Playwright extraction after request error")
         markdown_content = await _extract_with_playwright(url)
         if markdown_content:
