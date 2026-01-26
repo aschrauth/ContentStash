@@ -32,6 +32,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
   };
 
   if (viewMode === 'list') {
+    // List view with compact horizontal layout on mobile
     return (
       <Link href={`/items/${item.id}`}>
         <motion.div
@@ -58,60 +59,127 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
             }
           }}
           style={isMobile ? undefined : { willChange: 'transform' }}
-          className="group relative flex bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md h-32"
+          className="group relative bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md"
         >
-          {/* Image Preview - Left Side Fixed Width */}
-          {item.imageUrl ? (
-            <div className="relative w-48 h-full flex-shrink-0 overflow-hidden bg-slate-900">
-              <img
-                src={item.imageUrl}
-                alt={item.title}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/20" />
-            </div>
-          ) : (
-            <div className="w-48 h-full flex-shrink-0 bg-white/5 flex items-center justify-center border-r border-white/5">
-              {getIcon()}
-            </div>
-          )}
+          {/* Mobile: Compact horizontal layout */}
+          <div className="md:hidden">
+            {/* Top section: Small thumbnail + Title/Date */}
+            <div className="flex gap-3 p-3">
+              {/* Small thumbnail on left (116x64) */}
+              {item.imageUrl ? (
+                <div className="relative w-[116px] h-16 flex-shrink-0 overflow-hidden bg-slate-900 rounded-lg">
+                  <img
+                    src={item.imageUrl}
+                    alt={item.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-[116px] h-16 flex-shrink-0 bg-white/5 flex items-center justify-center rounded-lg border border-white/5">
+                  {getIcon()}
+                </div>
+              )}
 
-          {/* Content - Right Side */}
-          <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <h3 className="font-semibold text-base text-slate-100 truncate group-hover:text-violet-300 transition-colors">
+              {/* Title and date stacked vertically */}
+              <div className="flex-1 min-w-0 flex flex-col justify-center gap-1">
+                <h3 className="font-semibold text-sm leading-tight text-slate-100 line-clamp-2 group-hover:text-violet-300 transition-colors">
                   {item.title}
                 </h3>
-                <span className="text-xs text-slate-500 flex-shrink-0 flex items-center gap-1">
-                  {formatDate(item.createdAt)}
-                </span>
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <span>{formatDate(item.createdAt)}</span>
+                  {/* Status indicator */}
+                  {item.processingStatus === 'pending' && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  )}
+                  {item.processingStatus === 'failed' && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  )}
+                </div>
               </div>
-              
-              <p className="text-sm text-slate-400 line-clamp-2 mb-2 opacity-100">
-                {item.description || "No description available."}
-              </p>
             </div>
 
-            <div className="flex items-center justify-between mt-auto">
-              <div className="flex flex-wrap gap-1.5 overflow-hidden h-6">
-                {item.tags.slice(0, 4).map(tag => (
-                  <span
-                    key={tag}
-                    className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px] border border-white/5 group-hover:border-white/10 transition-colors whitespace-nowrap opacity-100"
-                  >
-                    #{tag}
-                  </span>
-                ))}
+            {/* Bottom section: Description spanning full width (2 lines) */}
+            {item.description && (
+              <div className="px-3 pb-2">
+                <p className="text-xs text-slate-400 line-clamp-2">
+                  {item.description}
+                </p>
               </div>
-              
-              {/* Status Badge (Mini) */}
-              {item.processingStatus === 'pending' && (
-                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Processing" />
+            )}
+
+            {/* Tags */}
+            <div className="flex flex-wrap gap-1.5 px-3 pb-3">
+              {item.tags.slice(0, 3).map(tag => (
+                <span
+                  key={tag}
+                  className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-300 text-[10px] border border-white/5 group-hover:border-white/10 transition-colors"
+                >
+                  #{tag}
+                </span>
+              ))}
+              {item.tags.length > 3 && (
+                <span className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px]">
+                  +{item.tags.length - 3}
+                </span>
               )}
-              {item.processingStatus === 'failed' && (
-                <div className="w-2 h-2 rounded-full bg-red-500" title="Failed" />
-              )}
+            </div>
+          </div>
+
+          {/* Desktop: Horizontal layout with larger image */}
+          <div className="hidden md:flex h-32">
+            {/* Image Preview - Left Side Fixed Width */}
+            {item.imageUrl ? (
+              <div className="relative w-[230px] h-full flex-shrink-0 overflow-hidden bg-slate-900">
+                <img
+                  src={item.imageUrl}
+                  alt={item.title}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/20" />
+              </div>
+            ) : (
+              <div className="w-[230px] h-full flex-shrink-0 bg-white/5 flex items-center justify-center border-r border-white/5">
+                {getIcon()}
+              </div>
+            )}
+
+            {/* Content - Right Side */}
+            <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2 mb-1">
+                  <h3 className="font-semibold text-base text-slate-100 truncate group-hover:text-violet-300 transition-colors">
+                    {item.title}
+                  </h3>
+                  <span className="text-xs text-slate-500 flex-shrink-0 flex items-center gap-1">
+                    {formatDate(item.createdAt)}
+                  </span>
+                </div>
+                
+                <p className="text-sm text-slate-400 line-clamp-2 mb-2 opacity-100">
+                  {item.description || "No description available."}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between mt-auto">
+                <div className="flex flex-wrap gap-1.5 overflow-hidden h-6">
+                  {item.tags.slice(0, 4).map(tag => (
+                    <span
+                      key={tag}
+                      className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px] border border-white/5 group-hover:border-white/10 transition-colors whitespace-nowrap opacity-100"
+                    >
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+                
+                {/* Status Badge (Mini) */}
+                {item.processingStatus === 'pending' && (
+                  <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Processing" />
+                )}
+                {item.processingStatus === 'failed' && (
+                  <div className="w-2 h-2 rounded-full bg-red-500" title="Failed" />
+                )}
+              </div>
             </div>
           </div>
         </motion.div>
@@ -119,7 +187,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
     );
   }
 
-  // Grid View (Original)
+  // Grid View - Traditional vertical card layout (image on top, content below)
   return (
     <Link href={`/items/${item.id}`}>
       <motion.div
@@ -148,7 +216,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
         style={isMobile ? undefined : { willChange: 'transform' }}
         className="group relative h-full flex flex-col bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-violet-500/10"
       >
-        {/* Image Preview */}
+        {/* Image Preview - Top (all screen sizes) */}
         {item.imageUrl && (
           <div className="relative h-40 w-full overflow-hidden bg-slate-900">
             <img
@@ -174,6 +242,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
           </div>
         )}
 
+        {/* Content - Bottom (all screen sizes) */}
         <div className="flex-1 p-5 flex flex-col">
           {/* Header */}
           <div className="flex items-start justify-between gap-2 mb-2">
@@ -181,6 +250,17 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
               {getIcon()}
               <span>{formatDate(item.createdAt)}</span>
             </div>
+            {/* Status indicator for items without images */}
+            {!item.imageUrl && (
+              <>
+                {item.processingStatus === 'pending' && (
+                  <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Processing" />
+                )}
+                {item.processingStatus === 'failed' && (
+                  <div className="w-2 h-2 rounded-full bg-red-500" title="Failed" />
+                )}
+              </>
+            )}
           </div>
 
           {/* Title */}

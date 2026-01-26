@@ -26,7 +26,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
         throw new Error('Not authenticated');
       }
       
-      const response = await getItems(token, search, tags, 50, pageParam as string | undefined);
+      const response = await getItems(token, search, tags, 20, pageParam as string | undefined);
       
       // Handle both old format (array) and new format (object with pagination)
       let itemsData: any[];
@@ -35,7 +35,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
       if (Array.isArray(response)) {
         // Old format - backward compatibility
         itemsData = response;
-        pagination = { next_cursor: null, has_more: false, limit: 50, total: response.length };
+        pagination = { next_cursor: null, has_more: false, limit: 20, total: response.length };
       } else {
         // New format with pagination
         itemsData = response.items;
