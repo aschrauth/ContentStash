@@ -34,7 +34,8 @@
     {
       "matches": ["<all_urls>"],
       "js": ["src/content/content-script.ts"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "world": "ISOLATED"
     }
   ],
   "web_accessible_resources": [

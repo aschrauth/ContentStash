@@ -1,6 +1,6 @@
 {
   "../../../../../../@crx/manifest": {
-    "file": "assets/crx-manifest.js-CD6XRRTD.js",
+    "file": "assets/crx-manifest.js-CDXsa1rB.js",
     "name": "crx-manifest.js",
     "src": "../../../../../../@crx/manifest",
     "isEntry": true
@@ -9,20 +9,32 @@
     "file": "assets/storage-B2v7XTAb.js",
     "name": "storage"
   },
+  "_youtube-extractor-CS8Kjpb5.js": {
+    "file": "assets/youtube-extractor-CS8Kjpb5.js",
+    "name": "youtube-extractor"
+  },
+  "content-script.ts-loader.js": {
+    "file": "assets/content-script.ts-loader-DezKFnaD.js",
+    "src": "content-script.ts-loader.js"
+  },
   "src/background/service-worker.ts": {
-    "file": "assets/service-worker.ts-CiRnSQNd.js",
+    "file": "assets/service-worker.ts-DIBONjo8.js",
     "name": "service-worker.ts",
     "src": "src/background/service-worker.ts",
     "isEntry": true,
     "imports": [
-      "_storage-B2v7XTAb.js"
+      "_storage-B2v7XTAb.js",
+      "_youtube-extractor-CS8Kjpb5.js"
     ]
   },
   "src/content/content-script.ts": {
-    "file": "assets/content-script.ts-BpBEZArj.js",
+    "file": "assets/content-script.ts-CQiTXErK.js",
     "name": "content-script.ts",
     "src": "src/content/content-script.ts",
-    "isEntry": true
+    "isEntry": true,
+    "imports": [
+      "_youtube-extractor-CS8Kjpb5.js"
+    ]
   },
   "src/popup/popup.html": {
     "file": "assets/popup--zHWJF1m.js",

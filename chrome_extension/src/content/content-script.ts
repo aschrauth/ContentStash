@@ -3,6 +3,7 @@
 
 import { Readability } from '@mozilla/readability';
 import TurndownService from 'turndown';
+import { isYouTubeUrl } from '../lib/youtube-extractor';
 
 // Listen for extraction requests from background script
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -276,7 +277,7 @@ function selectiveCleanup(doc: Document, isSubstack: boolean = false): void {
 
 async function extractPageContent(): Promise<string> {
   // Check if this is a YouTube page
-  if (window.location.hostname.includes('youtube.com')) {
+  if (isYouTubeUrl(window.location.href)) {
     return await extractYouTubeContent();
   }
 
@@ -486,8 +487,126 @@ async function extractWithReadability(isSubstack: boolean = false): Promise<stri
   // Fallback to simple extraction
   return extractSimpleContent();
 }
+/**
+ * Format duration in seconds as HH:MM:SS or MM:SS
+ */
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Format timestamp from seconds to MM:SS
+ */
+function formatTimestamp(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Format YouTube metadata only (when transcript is not available)
+ */
+function formatMetadataOnly(metadata: any): string {
+  const duration = formatDuration(metadata.lengthSeconds);
+  return `# ${metadata.title}
+
+**Channel:** ${metadata.author}
+**Video ID:** ${metadata.videoId}
+**Duration:** ${duration}
+**URL:** https://www.youtube.com/watch?v=${metadata.videoId}
+
+---
+
+## Transcript
+
+[Transcript not available or extraction failed]
+`;
+}
+
+/**
+ * Format transcript with metadata as markdown
+ */
+function formatTranscriptMarkdown(metadata: any, lines: Array<{ time: string; text: string }>): string {
+  const duration = formatDuration(metadata.lengthSeconds);
+  let markdown = `# ${metadata.title}
+
+**Channel:** ${metadata.author}
+**Video ID:** ${metadata.videoId}
+**Duration:** ${duration}
+**URL:** https://www.youtube.com/watch?v=${metadata.videoId}
+
+---
+
+## Transcript
+
+`;
+
+  for (const line of lines) {
+    markdown += `**[${line.time}]** ${line.text}\n\n`;
+  }
+
+  return markdown;
+}
 
 async function extractYouTubeContent(): Promise<string> {
+  try {
+    // Get metadata and transcript XML from background script
+    const response = await chrome.runtime.sendMessage({
+      type: 'EXTRACT_YOUTUBE_FROM_TAB'
+    });
+
+    if (!response.success || !response.metadata) {
+      throw new Error('Failed to extract metadata');
+    }
+
+    const metadata = response.metadata;
+
+    // Check if we got transcript XML from MAIN world
+    if (response.transcriptXml && response.transcriptXml.length > 0) {
+      // Parse the XML - YouTube uses <p> tags with t (time) and d (duration) attributes
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(response.transcriptXml, 'text/xml');
+      const textElements = xmlDoc.querySelectorAll('p');
+      
+      if (textElements.length > 0) {
+        const transcriptLines: Array<{ time: string; text: string }> = [];
+        
+        for (const element of Array.from(textElements)) {
+          const start = element.getAttribute('t'); // time in milliseconds
+          const text = element.textContent;
+          
+          if (start && text) {
+            const seconds = parseFloat(start) / 1000; // Convert ms to seconds
+            const time = formatTimestamp(seconds);
+            transcriptLines.push({ time, text: text.trim() });
+          }
+        }
+        
+        if (transcriptLines.length > 0) {
+          const content = formatTranscriptMarkdown(metadata, transcriptLines);
+          return content;
+        }
+      }
+    }
+
+    // Fallback to metadata only
+    const content = formatMetadataOnly(metadata);
+    return content;
+
+  } catch (error) {
+    console.error('YouTube extraction error:', error);
+    return extractYouTubeMetadataOnly();
+  }
+}
+
+function extractYouTubeMetadataOnly(): string {
   try {
     // Get video title
     const titleElement = document.querySelector('h1.ytd-video-primary-info-renderer, h1.title');
@@ -502,7 +621,6 @@ async function extractYouTubeContent(): Promise<string> {
     const description = descriptionElement?.textContent?.trim() || '';
 
     // Build content with metadata only
-    // The backend will handle transcript extraction using youtube_transcript_api and yt-dlp
     let content = `# ${title}\n\n`;
     if (channel) {
       content += `**Channel:** ${channel}\n\n`;
@@ -511,12 +629,12 @@ async function extractYouTubeContent(): Promise<string> {
       content += `## Description\n\n${description}\n\n`;
     }
     
-    // Add note that transcript will be extracted by backend
-    content += `## Transcript\n\n[Transcript will be extracted by the backend]`;
+    // Add note that transcript extraction failed
+    content += `## Transcript\n\n[Transcript extraction failed - will be attempted by backend]`;
 
     return content;
   } catch (error) {
-    console.error('YouTube extraction failed:', error);
+    console.error('YouTube metadata extraction failed:', error);
     return extractSimpleContent();
   }
 }

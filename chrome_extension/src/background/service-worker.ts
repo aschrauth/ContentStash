@@ -210,8 +210,8 @@ async function processGenericItem(item: SavedItem) {
   }
 }
 
-// Handle messages from popup
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+// Handle messages from popup and content scripts
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'PROCESS_PENDING_NOW') {
     processPendingItems().then(() => {
       sendResponse({ success: true });
@@ -234,7 +234,224 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     return true;
   }
+  
+  // Handle YouTube extraction request from content script
+  if (message.type === 'EXTRACT_YOUTUBE_FROM_TAB') {
+    (async () => {
+      try {
+        if (!sender.tab?.id) {
+          sendResponse({ success: false, error: 'No tab ID available' });
+          return;
+        }
+        
+        // Extract metadata and caption URL from MAIN world
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: sender.tab.id },
+          world: 'MAIN',
+          func: extractYouTubeTranscriptFromPage,
+        });
+        
+        const result = results[0]?.result;
+        
+        if (!result || !result.success) {
+          sendResponse({ success: false, error: result?.error || 'Metadata extraction failed' });
+          return;
+        }
+        
+        const metadata = result.metadata;
+        
+        if (!metadata) {
+          sendResponse({ success: false, error: 'No metadata returned' });
+          return;
+        }
+        
+        // Check if we got transcript XML from MAIN world
+        const transcriptXml = result.transcriptXml;
+        
+        if (transcriptXml) {
+          sendResponse({
+            success: true,
+            metadata: metadata,
+            transcriptXml: transcriptXml
+          });
+        } else {
+          sendResponse({
+            success: true,
+            metadata: metadata
+          });
+        }
+        
+      } catch (error) {
+        console.error('YouTube extraction error:', error);
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    })();
+    return true; // Keep channel open for async response
+  }
+  
+  // DEPRECATED: YouTube transcript extraction now happens via chrome.scripting.executeScript
+  // with world: "MAIN" to avoid CSP violations
+  // Keeping this code commented for reference
+  /*
+  if (message.type === 'EXTRACT_YOUTUBE_TRANSCRIPT') {
+    const { videoId } = message.payload;
+    
+    if (!videoId) {
+      sendResponse({ success: false, error: 'No video ID provided' });
+      return false;
+    }
+    
+    // Extract transcript using privileged background context
+    extractYouTubeTranscript(videoId)
+      .then((transcript) => {
+        sendResponse({ success: true, transcript });
+      })
+      .catch((error) => {
+        console.error('[Background] Transcript extraction failed:', error);
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
+    
+    return true; // Keep channel open for async response
+  }
+  */
 });
+
+// MAIN world extraction function - uses InnerTube API with Android client spoofing
+// This function will be serialized and executed in the page context
+async function extractYouTubeTranscriptFromPage(): Promise<{
+  success: boolean;
+  metadata?: {
+    title: string;
+    author: string;
+    videoId: string;
+    lengthSeconds: number;
+    captionUrl: string | null;
+  };
+  transcriptXml?: string;
+  error?: string;
+}> {
+  try {
+    const playerResponse = (window as any).ytInitialPlayerResponse;
+    
+    if (!playerResponse?.videoDetails) {
+      throw new Error('ytInitialPlayerResponse not found');
+    }
+
+    // Extract metadata
+    const { title, author, videoId, lengthSeconds } = playerResponse.videoDetails;
+
+    // Step 1: Extract INNERTUBE_API_KEY from page HTML
+    const html = document.documentElement.outerHTML;
+    const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":\s*"([^"]+)"/);
+    
+    if (!apiKeyMatch) {
+      return {
+        success: true,
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+      };
+    }
+    
+    const apiKey = apiKeyMatch[1];
+
+    // Step 2: POST to InnerTube API with Android client context
+    const innerTubeUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`;
+    
+    const innerTubeResponse = await fetch(innerTubeUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept-Language': 'en-US'
+      },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'ANDROID',
+            clientVersion: '20.10.38'
+          }
+        },
+        videoId: videoId
+      })
+    });
+
+    if (!innerTubeResponse.ok) {
+      return {
+        success: true,
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+      };
+    }
+
+    const playerData = await innerTubeResponse.json();
+
+    // Step 3: Extract caption tracks from InnerTube response
+    const captionTracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    
+    if (!captionTracks || captionTracks.length === 0) {
+      return {
+        success: true,
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+      };
+    }
+
+    // Select best English track (prefer manual over auto-generated)
+    let selectedTrack = null;
+    for (const track of captionTracks) {
+      if (track.languageCode === 'en') {
+        if (!track.kind) {
+          // Manual track (no kind property)
+          selectedTrack = track;
+          break;
+        } else if (!selectedTrack) {
+          // Auto-generated track (has kind property)
+          selectedTrack = track;
+        }
+      }
+    }
+
+    if (!selectedTrack?.baseUrl) {
+      return {
+        success: true,
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+      };
+    }
+
+    const captionUrl = selectedTrack.baseUrl;
+
+    // Step 4: Fetch transcript XML
+    const transcriptResponse = await fetch(captionUrl);
+
+    if (!transcriptResponse.ok) {
+      return {
+        success: true,
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+      };
+    }
+
+    const xml = await transcriptResponse.text();
+
+    if (!xml || xml.length === 0) {
+      return {
+        success: true,
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+      };
+    }
+
+    return {
+      success: true,
+      metadata: { title, author, videoId, lengthSeconds, captionUrl },
+      transcriptXml: xml
+    };
+
+  } catch (error) {
+    console.error('YouTube extraction error:', error);
+    return { success: false, error: String(error) };
+  }
+}
 
 // Export for testing
 export { processPendingItems, processItem, processYouTubeItem, processGenericItem };
