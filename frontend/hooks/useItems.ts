@@ -17,10 +17,11 @@ interface UseItemsOptions {
  */
 export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<PaginatedResponse<SavedItem>, Error> {
   const token = useStore((state) => state.token);
+  const userId = useStore((state) => state.currentUser?.id);
   const { search, tags, enabled = true } = options;
 
   return useInfiniteQuery({
-    queryKey: ['items', search, tags],
+    queryKey: ['items', userId, search, tags],
     queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
       if (!token) {
         throw new Error('Not authenticated');

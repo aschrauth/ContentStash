@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { API_ENDPOINTS, getItems } from './api';
+import { getQueryClient } from '@/components/providers/QueryProvider';
 
 // --- Types ---
 
@@ -120,6 +121,15 @@ export const useStore = create<AppState>()(
 
       register: async (email, password, name) => {
         try {
+          // Clear React Query cache before registering new user
+          const queryClient = getQueryClient();
+          if (queryClient) {
+            queryClient.clear();
+          }
+          
+          // Clear Zustand persisted state (items and chatThreads)
+          set({ items: [], chatThreads: [] });
+          
           const response = await fetch(API_ENDPOINTS.signup, {
             method: 'POST',
             headers: {
@@ -152,6 +162,15 @@ export const useStore = create<AppState>()(
 
       login: async (email, password) => {
         try {
+          // Clear React Query cache before logging in new user
+          const queryClient = getQueryClient();
+          if (queryClient) {
+            queryClient.clear();
+          }
+          
+          // Clear Zustand persisted state (items and chatThreads)
+          set({ items: [], chatThreads: [] });
+          
           const response = await fetch(API_ENDPOINTS.login, {
             method: 'POST',
             headers: {
@@ -183,6 +202,12 @@ export const useStore = create<AppState>()(
       },
 
       logout: () => {
+        // Clear React Query cache FIRST to prevent stale data
+        const queryClient = getQueryClient();
+        if (queryClient) {
+          queryClient.clear();
+        }
+        
         // Remove token from localStorage
         localStorage.removeItem('token');
         
@@ -197,7 +222,14 @@ export const useStore = create<AppState>()(
           }).catch(err => console.error('Logout error:', err));
         }
         
-        set({ currentUser: null, token: null });
+        // Clear all user-specific state including persisted data
+        set({
+          currentUser: null,
+          token: null,
+          items: [],
+          chatThreads: [],
+          tags: []
+        });
       },
 
       updateProfile: (name, email) => {
