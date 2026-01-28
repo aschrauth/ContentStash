@@ -85,6 +85,12 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
                 <h3 className="font-semibold text-sm leading-tight text-slate-100 line-clamp-2 group-hover:text-violet-300 transition-colors">
                   {item.title}
                 </h3>
+                {/* Source field - Mobile List View */}
+                {item.source && (
+                  <p className="text-xs text-slate-500 truncate">
+                    {item.source}
+                  </p>
+                )}
                 <div className="flex items-center gap-2 text-xs text-slate-400">
                   <span>{formatDate(item.createdAt)}</span>
                   {/* Status indicator */}
@@ -154,6 +160,13 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
                     {formatDate(item.createdAt)}
                   </span>
                 </div>
+                
+                {/* Source field - Desktop List View */}
+                {item.source && (
+                  <p className="text-xs text-slate-500 mb-1">
+                    {item.source}
+                  </p>
+                )}
                 
                 <p className="text-sm text-slate-400 line-clamp-2 mb-2 opacity-100">
                   {item.description || "No description available."}
@@ -248,7 +261,16 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 text-xs text-slate-400">
               {getIcon()}
-              <span>{formatDate(item.createdAt)}</span>
+              {/* Source and date - Grid View */}
+              {item.source ? (
+                <>
+                  <span>{item.source}</span>
+                  <span>•</span>
+                  <span>{formatDate(item.createdAt)}</span>
+                </>
+              ) : (
+                <span>{formatDate(item.createdAt)}</span>
+              )}
             </div>
             {/* Status indicator for items without images */}
             {!item.imageUrl && (

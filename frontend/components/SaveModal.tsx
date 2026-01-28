@@ -22,6 +22,7 @@ const saveSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
   tags: z.string().optional(), // Comma separated
+  source: z.string().optional(),
 }).refine(data => data.url || data.content, {
   message: "Either URL or Content is required",
   path: ["url"],
@@ -58,6 +59,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
       description: '',
       tags: '',
       content: '',
+      source: '',
     }
   });
 
@@ -244,6 +246,11 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         ? data.tags.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean)
         : [];
 
+      // For pasted content, use provided source or default to "Pasted Content"
+      const source = activeTab === 'paste'
+        ? (data.source?.trim() || 'Pasted Content')
+        : undefined;
+
       const newItemId = await addItem({
         title: data.title,
         description: data.description,
@@ -252,6 +259,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         tags,
         processingStatus: 'pending',
         archivedText: activeTab === 'paste' ? data.content : undefined,
+        source,
         suggestedTopic: suggestedTopic || undefined,
         extractionType: activeTab === 'url' ? extractionType : undefined,
       });
@@ -393,11 +401,25 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                     />
                   )}
                 />
+                
+                {/* Source Input Field */}
+                <div className="space-y-2 mt-4">
+                  <Label htmlFor="source">Source (optional)</Label>
+                  <Input
+                    id="source"
+                    placeholder="e.g., New York Times, Personal Notes"
+                    {...register('source')}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Defaults to "Pasted Content" if left empty.
+                  </p>
+                </div>
+                
                 <div className="flex justify-end mt-2">
-                  <Button 
-                    type="button" 
-                    variant="secondary" 
-                    size="sm" 
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={handleGenerateMetadata}
                     isLoading={isGeneratingMeta}
                     disabled={!contentValue || contentValue.length < 10}

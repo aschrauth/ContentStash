@@ -30,6 +30,7 @@ export default function ItemDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editSource, setEditSource] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [newTag, setNewTag] = useState('');
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
@@ -93,6 +94,7 @@ export default function ItemDetailPage() {
             suggestedTags: data.suggested_tags,
             suggestedTopic: data.suggested_topic,
             archivedText: data.archived_text,  // THIS IS THE KEY LINE
+            source: data.source,
             extractionType: data.extraction_type,
             processingStatus: data.processing_status,
             createdAt: data.created_at,
@@ -103,6 +105,7 @@ export default function ItemDetailPage() {
           setItem(formattedItem);
           setEditTitle(formattedItem.title);
           setEditDescription(formattedItem.description || '');
+          setEditSource(formattedItem.source || '');
           setNoteContent(formattedItem.notesMarkdown || '');
           setIsLoading(false);
           
@@ -161,6 +164,7 @@ export default function ItemDetailPage() {
             suggestedTags: updatedData.suggested_tags,
             suggestedTopic: updatedData.suggested_topic,
             archivedText: updatedData.archived_text,
+            source: updatedData.source,
             extractionType: updatedData.extraction_type,
             processingStatus: updatedData.processing_status,
             createdAt: updatedData.created_at,
@@ -251,6 +255,7 @@ export default function ItemDetailPage() {
     updateItem(item.id, {
       title: editTitle,
       description: editDescription,
+      source: editSource,
     });
     setIsEditing(false);
     toast.success("Changes saved");
@@ -406,10 +411,16 @@ export default function ItemDetailPage() {
 
                 {isEditing ? (
                   <div className="space-y-4">
-                    <Input 
-                      value={editTitle} 
+                    <Input
+                      value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
                       className="text-xl font-bold"
+                    />
+                    <Input
+                      value={editSource}
+                      onChange={(e) => setEditSource(e.target.value)}
+                      placeholder="Source (e.g., nytimes.com or YouTube | CGP Grey)"
+                      className="text-sm"
                     />
                     <textarea
                       value={editDescription}
@@ -421,6 +432,13 @@ export default function ItemDetailPage() {
                 ) : (
                   <div className="clearfix">
                     <h1 className="text-3xl font-bold text-white mb-4 leading-tight">{item.title}</h1>
+                    
+                    {/* Source field - Detail View */}
+                    {item.source && (
+                      <p className="text-sm text-slate-400 mb-4">
+                        {item.source}
+                      </p>
+                    )}
                     
                     {/* Preview Image - Floated Left */}
                     {item.imageUrl && (
@@ -445,7 +463,7 @@ export default function ItemDetailPage() {
                       rel="noopener noreferrer"
                       className="inline-flex items-center text-violet-400 hover:text-violet-300 transition-colors font-medium"
                     >
-                      Visit Original Source <ExternalLink className="w-4 h-4 ml-2" />
+                      Visit Original Link <ExternalLink className="w-4 h-4 ml-2" />
                     </a>
                   </div>
                 )}
@@ -635,6 +653,7 @@ export default function ItemDetailPage() {
                             suggestedTags: updatedData.suggested_tags,
                             suggestedTopic: updatedData.suggested_topic,
                             archivedText: updatedData.archived_text,
+                            source: updatedData.source,
                             extractionType: updatedData.extraction_type,
                             processingStatus: updatedData.processing_status,
                             createdAt: updatedData.created_at,

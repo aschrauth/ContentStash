@@ -14,6 +14,7 @@ from ..services.background import process_item_background
 from ..services.metadata import fetch_metadata
 from ..services.ai import generate_metadata_from_content
 from ..services.youtube import is_youtube_url, get_youtube_preview_metadata
+from ..services.extraction import extract_source_from_url
 from ..config import settings
 from ..utils.auth import verify_token
 
@@ -258,6 +259,21 @@ async def create_item(
     # Set extraction_type, defaulting to "fast" if not provided
     extraction_type = item_data.extraction_type or "fast"
     
+    # Handle source field
+    source = None
+    if item_data.url:
+        # For YouTube URLs, don't set source here - let background processing set it with channel name
+        # For other URLs, extract source from URL immediately for API response
+        if not is_youtube_url(item_data.url):
+            source = extract_source_from_url(item_data.url)
+        # For YouTube, source will be set by background processing as "YouTube | [Channel Name]"
+    elif item_data.source:
+        # For pasted content, use provided source if available
+        source = item_data.source
+    elif not item_data.url:
+        # For pasted content without source, default to "Pasted Content"
+        source = "Pasted Content"
+    
     item_doc = {
         "owner_id": ObjectId(current_user.id),
         "url": item_data.url,
@@ -269,6 +285,7 @@ async def create_item(
         "tags": item_data.tags,
         "archived_text": archived_text,
         "extraction_type": extraction_type,
+        "source": source,
         "suggested_tags": None,
         "suggested_topic": None,
         "processing_status": "pending",
@@ -304,6 +321,7 @@ async def create_item(
         tags=item_data.tags,
         archived_text=archived_text,
         extraction_type=extraction_type,
+        source=source,
         suggested_tags=None,
         suggested_topic=None,
         processing_status="pending",
@@ -419,6 +437,7 @@ async def list_items(
             tags=doc.get("tags", []),
             archived_text=None,  # Excluded from list endpoint
             extraction_type=doc.get("extraction_type", "fast"),
+            source=doc.get("source"),
             suggested_tags=doc.get("suggested_tags"),
             suggested_topic=doc.get("suggested_topic"),
             processing_status=doc.get("processing_status", "pending"),
@@ -490,6 +509,7 @@ async def get_pending_local_extraction(
             tags=doc.get("tags", []),
             archived_text=doc.get("archived_text"),
             extraction_type=doc.get("extraction_type", "fast"),
+            source=doc.get("source"),
             suggested_tags=doc.get("suggested_tags"),
             suggested_topic=doc.get("suggested_topic"),
             processing_status=doc.get("processing_status", "pending"),
@@ -554,6 +574,7 @@ async def get_item(
         tags=item_doc.get("tags", []),
         archived_text=item_doc.get("archived_text"),
         extraction_type=item_doc.get("extraction_type", "fast"),
+        source=item_doc.get("source"),
         suggested_tags=item_doc.get("suggested_tags"),
         suggested_topic=item_doc.get("suggested_topic"),
         processing_status=item_doc.get("processing_status", "pending"),
@@ -636,6 +657,9 @@ async def update_item(
     if updates.archived_text is not None:
         update_doc["archived_text"] = updates.archived_text
     
+    if updates.source is not None:
+        update_doc["source"] = updates.source
+    
     if updates.extraction_type is not None:
         # Check if extraction_type is actually changing
         if item_doc.get("extraction_type", "fast") != updates.extraction_type:
@@ -691,6 +715,7 @@ async def update_item(
         tags=updated_item_doc.get("tags", []),
         archived_text=updated_item_doc.get("archived_text"),
         extraction_type=updated_item_doc.get("extraction_type", "fast"),
+        source=updated_item_doc.get("source"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
@@ -839,6 +864,7 @@ async def reprocess_item(
         tags=updated_item_doc.get("tags", []),
         archived_text=updated_item_doc.get("archived_text"),
         extraction_type=updated_item_doc.get("extraction_type", "fast"),
+        source=updated_item_doc.get("source"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
@@ -853,6 +879,7 @@ class UploadContentRequest(BaseModel):
     """Request model for uploading extracted content from local agent."""
     content: str = Field(..., min_length=1, max_length=10000000)
     extraction_source: str = Field(default="local_extension", max_length=50)
+    source: Optional[str] = Field(default=None, max_length=200)
 
 
 @router.patch("/{item_id}/content", response_model=SavedItem)
@@ -972,16 +999,21 @@ async def upload_extracted_content(
         else:
             # Update item with extracted content and mark as processing
             # Use "processing" instead of "pending" to avoid infinite loop in local extraction queue
+            update_fields = {
+                "archived_text": request.content,
+                "processing_status": "processing",
+                "processing_error": None,
+                "updated_at": datetime.utcnow()
+            }
+            
+            # If source is provided (e.g., "YouTube | Channel Name" from extension), update it
+            if request.source:
+                logger.info(f"Updating source from extension for item {item_id}: {request.source}")
+                update_fields["source"] = request.source
+            
             await db.saved_items.update_one(
                 {"_id": ObjectId(item_id)},
-                {
-                    "$set": {
-                        "archived_text": request.content,
-                        "processing_status": "processing",
-                        "processing_error": None,
-                        "updated_at": datetime.utcnow()
-                    }
-                }
+                {"$set": update_fields}
             )
             
             # Trigger background processing for embeddings and AI categorization
@@ -1008,6 +1040,7 @@ async def upload_extracted_content(
         tags=updated_item_doc.get("tags", []),
         archived_text=updated_item_doc.get("archived_text"),
         extraction_type=updated_item_doc.get("extraction_type", "fast"),
+        source=updated_item_doc.get("source"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
         processing_status=updated_item_doc.get("processing_status", "pending"),

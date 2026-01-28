@@ -15,6 +15,7 @@ class SavedItemBase(BaseModel):
     tags: List[str] = Field(default_factory=list, max_length=20)
     archived_text: Optional[str] = None
     extraction_type: Optional[str] = Field(default="fast", pattern="^(fast|complete|local)$")
+    source: Optional[str] = Field(None, max_length=100)
     
     @field_validator('tags')
     @classmethod
@@ -44,6 +45,7 @@ class SavedItemUpdate(BaseModel):
     tags: Optional[List[str]] = Field(None, max_length=20)
     archived_text: Optional[str] = None
     extraction_type: Optional[str] = Field(None, pattern="^(fast|complete|local)$")
+    source: Optional[str] = Field(None, max_length=100)
     
     @field_validator('tags')
     @classmethod

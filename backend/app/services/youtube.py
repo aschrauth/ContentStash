@@ -211,7 +211,8 @@ def get_video_metadata_from_api(video_id: str, api_key: Optional[str] = None) ->
             'published_at': video_data.get('publishedAt', '')
         }
         
-        logger.info(f"Successfully fetched metadata from YouTube API for video ID: {video_id}")
+        logger.info(f"✅ [YT API] Successfully fetched metadata for video ID: {video_id}")
+        logger.info(f"✅ [YT API] Channel name: '{metadata['channel_name']}'")
         logger.debug(f"Metadata: title='{metadata['title']}', channel='{metadata['channel_name']}'")
         
         return metadata
@@ -276,7 +277,8 @@ def get_video_metadata_from_ytdlp(video_id: str) -> Optional[Dict]:
                 'published_at': info.get('upload_date', '')
             }
             
-            logger.info(f"Successfully fetched metadata from yt-dlp for video ID: {video_id}")
+            logger.info(f"✅ [YT-DLP] Successfully fetched metadata for video ID: {video_id}")
+            logger.info(f"✅ [YT-DLP] Channel name: '{metadata['channel_name']}'")
             logger.debug(f"Metadata: title='{metadata['title']}', channel='{metadata['channel_name']}'")
             
             return metadata
@@ -287,6 +289,51 @@ def get_video_metadata_from_ytdlp(video_id: str) -> Optional[Dict]:
     except Exception as e:
         logger.error(f"Unexpected error fetching metadata from yt-dlp for video ID {video_id}: {str(e)}")
         return None
+
+def get_youtube_channel_name_only(video_id: str, api_key: Optional[str] = None) -> Optional[str]:
+    """
+    Get ONLY the YouTube channel name without fetching transcript.
+    This is a lightweight operation for getting the source field.
+    
+    Tries multiple methods in order:
+    1. YouTube Data API (if key available) - fastest
+    2. yt-dlp metadata (no transcript) - fallback
+    
+    Args:
+        video_id: YouTube video ID
+        api_key: YouTube Data API v3 key (optional)
+        
+    Returns:
+        Formatted source string like "YouTube | Channel Name" or "YouTube" if channel name unavailable
+    """
+    logger.info(f"🎯 [LIGHTWEIGHT] Getting channel name only for video ID: {video_id}")
+    
+    # Try YouTube Data API first if key is available (fastest method)
+    if api_key:
+        logger.info("🎯 [LIGHTWEIGHT] Attempting YouTube Data API for channel name")
+        metadata = get_video_metadata_from_api(video_id, api_key)
+        if metadata and metadata.get('channel_name'):
+            channel_name = metadata['channel_name']
+            source = f"YouTube | {channel_name}"
+            logger.info(f"✅ [LIGHTWEIGHT] Got channel name from API: '{source}'")
+            return source
+        logger.warning("🎯 [LIGHTWEIGHT] YouTube Data API failed, trying yt-dlp")
+    else:
+        logger.info("🎯 [LIGHTWEIGHT] No YouTube API key, using yt-dlp directly")
+    
+    # Fallback to yt-dlp (more robust, works without API key)
+    logger.info("🎯 [LIGHTWEIGHT] Attempting yt-dlp for channel name")
+    metadata = get_video_metadata_from_ytdlp(video_id)
+    if metadata and metadata.get('channel_name'):
+        channel_name = metadata['channel_name']
+        source = f"YouTube | {channel_name}"
+        logger.info(f"✅ [LIGHTWEIGHT] Got channel name from yt-dlp: '{source}'")
+        return source
+    
+    # If all methods failed, return generic YouTube source
+    logger.warning(f"⚠️ [LIGHTWEIGHT] Could not get channel name for video ID: {video_id}, using generic 'YouTube'")
+    return "YouTube"
+
 
 def get_transcript_from_ytdlp(video_id: str) -> Optional[str]:
     """

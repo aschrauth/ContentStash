@@ -47,4 +47,14 @@ export interface CreateItemRequest {
 export interface UploadContentRequest {
   content: string;
   extraction_source: string;
+  source?: string;
+}
+
+export interface YouTubeMetadata {
+  title: string;
+  author: string;
+  videoId: string;
+  lengthSeconds: number;
+  captionUrl: string | null;
+  channelName?: string;
 }

@@ -91,22 +91,26 @@ async function processYouTubeItem(item: SavedItem) {
     console.log(`[YouTube] Extracted video ID: ${videoId}`);
     
     // Extract transcript using the YouTube extractor
-    const transcript = await extractYouTubeTranscript(videoId);
+    const result = await extractYouTubeTranscript(videoId);
     
-    if (!transcript || transcript.length < 100) {
+    if (!result || !result.content || result.content.length < 100) {
       console.warn(`[YouTube] Insufficient transcript content for item ${item.id}`);
       return;
     }
     
-    console.log(`[YouTube] Successfully extracted transcript (${transcript.length} chars)`);
+    console.log(`[YouTube] Successfully extracted transcript (${result.content.length} chars)`);
+    
+    // Format source field as "YouTube | [Channel Name]"
+    const source = result.channelName ? `YouTube | ${result.channelName}` : 'YouTube';
     
     // Upload to server
     await api.uploadContent(item.id, {
-      content: transcript,
+      content: result.content,
       extraction_source: 'chrome_extension_youtube',
+      source: source,
     });
     
-    console.log(`✓ [YouTube] Successfully uploaded transcript for item ${item.id}`);
+    console.log(`✓ [YouTube] Successfully uploaded transcript for item ${item.id} with source: ${source}`);
   } catch (error) {
     console.error(`[YouTube] Error processing item ${item.id}:`, error);
   }
@@ -332,6 +336,7 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
     videoId: string;
     lengthSeconds: number;
     captionUrl: string | null;
+    channelName?: string;
   };
   transcriptXml?: string;
   error?: string;
@@ -345,6 +350,7 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
 
     // Extract metadata
     const { title, author, videoId, lengthSeconds } = playerResponse.videoDetails;
+    const channelName = author; // Channel name is stored in the author field
 
     // Step 1: Extract INNERTUBE_API_KEY from page HTML
     const html = document.documentElement.outerHTML;
@@ -353,7 +359,7 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
     if (!apiKeyMatch) {
       return {
         success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
       };
     }
     
@@ -382,7 +388,7 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
     if (!innerTubeResponse.ok) {
       return {
         success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
       };
     }
 
@@ -394,7 +400,7 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
     if (!captionTracks || captionTracks.length === 0) {
       return {
         success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
       };
     }
 
@@ -416,7 +422,7 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
     if (!selectedTrack?.baseUrl) {
       return {
         success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
       };
     }
 
@@ -428,7 +434,7 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
     if (!transcriptResponse.ok) {
       return {
         success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
       };
     }
 
@@ -437,13 +443,13 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
     if (!xml || xml.length === 0) {
       return {
         success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null }
+        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
       };
     }
 
     return {
       success: true,
-      metadata: { title, author, videoId, lengthSeconds, captionUrl },
+      metadata: { title, author, videoId, lengthSeconds, captionUrl, channelName },
       transcriptXml: xml
     };
 

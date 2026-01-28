@@ -23,12 +23,17 @@ interface TranscriptSegment {
   text: string;
 }
 
+export interface YouTubeExtractionResult {
+  content: string;
+  channelName?: string;
+}
+
 /**
  * Extract YouTube transcript from a video ID
  * @param videoId - The YouTube video ID (e.g., "dQw4w9WgXcQ")
- * @returns Formatted transcript as Markdown, or null if extraction fails
+ * @returns Object with formatted transcript and channel name, or null if extraction fails
  */
-export async function extractYouTubeTranscript(videoId: string): Promise<string | null> {
+export async function extractYouTubeTranscript(videoId: string): Promise<YouTubeExtractionResult | null> {
   try {
     console.log(`[YouTube Extractor] Starting extraction for video: ${videoId}`);
     
@@ -92,7 +97,10 @@ export async function extractYouTubeTranscript(videoId: string): Promise<string 
     const markdown = formatTranscriptAsMarkdown(title, author, videoId, lengthSeconds, segments);
     
     console.log(`[YouTube Extractor] Successfully extracted ${segments.length} segments`);
-    return markdown;
+    return {
+      content: markdown,
+      channelName: author
+    };
     
   } catch (error) {
     console.error('[YouTube Extractor] Error during extraction:', error);

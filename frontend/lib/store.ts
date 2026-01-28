@@ -30,6 +30,7 @@ export type SavedItem = {
   suggestedTags?: string[];
   suggestedTopic?: string;
   archivedText?: string;
+  source?: string;
   extractionType?: 'fast' | 'complete' | 'local';
   processingStatus: 'pending' | 'processing' | 'processed' | 'failed' | 'pending_local_extraction';
   createdAt: string;
@@ -294,6 +295,7 @@ export const useStore = create<AppState>()(
             suggestedTags: item.suggested_tags,
             suggestedTopic: item.suggested_topic,
             archivedText: item.archived_text,
+            source: item.source,
             extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: item.processing_status,
             createdAt: item.created_at,
@@ -369,6 +371,7 @@ export const useStore = create<AppState>()(
               notes_markdown: itemData.notesMarkdown,  // Convert camelCase to snake_case
               tags: itemData.tags,
               archived_text: itemData.archivedText,  // Convert camelCase to snake_case
+              source: itemData.source,
               extraction_type: itemData.extractionType,  // Convert camelCase to snake_case
             }),
           });
@@ -394,6 +397,7 @@ export const useStore = create<AppState>()(
             suggestedTags: newItem.suggested_tags,
             suggestedTopic: newItem.suggested_topic,
             archivedText: newItem.archived_text,
+            source: newItem.source,
             extractionType: newItem.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: newItem.processing_status,
             createdAt: newItem.created_at,
@@ -432,6 +436,7 @@ export const useStore = create<AppState>()(
               notes_markdown: updates.notesMarkdown,
               tags: updates.tags,
               archived_text: updates.archivedText,
+              source: updates.source,
               extraction_type: updates.extractionType,
             }),
           });
@@ -457,6 +462,7 @@ export const useStore = create<AppState>()(
             suggestedTags: updatedItem.suggested_tags,
             suggestedTopic: updatedItem.suggested_topic,
             archivedText: updatedItem.archived_text,
+            source: updatedItem.source,
             extractionType: updatedItem.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: updatedItem.processing_status,
             createdAt: updatedItem.created_at,

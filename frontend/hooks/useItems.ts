@@ -57,6 +57,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
         suggestedTags: item.suggested_tags as string[] | undefined,
         suggestedTopic: item.suggested_topic as string | undefined,
         archivedText: item.archived_text as string | undefined,
+        source: item.source as string | undefined,
         extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
         processingStatus: item.processing_status as 'pending' | 'processed' | 'failed',
         createdAt: item.created_at as string,

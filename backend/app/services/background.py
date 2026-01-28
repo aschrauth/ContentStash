@@ -9,12 +9,13 @@ from typing import Optional, Dict, Any
 
 from app.database import get_database, get_item_chunks_collection
 from app.services.metadata import fetch_metadata
-from app.services.extraction import extract_content
+from app.services.extraction import extract_content, extract_content_with_metadata, extract_source_from_url
 from app.services.exceptions import ExtractionBlockError
 from app.services.ai import generate_tags_and_topic
 from app.services.chunking import chunk_text
 from app.services.gemini import gemini_service, GeminiServiceError
-from app.services.youtube import is_youtube_url
+from app.services.youtube import is_youtube_url, extract_video_id, get_youtube_channel_name_only
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -219,10 +220,29 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
             )
         
         # Step 1: Fetch metadata (if missing and URL exists)
+        # For YouTube URLs, we handle source separately with a lightweight function
         metadata = {}
-        if url and (not item_doc.get("title") or not item_doc.get("description")):
-            logger.info(f"Fetching metadata for {url}")
-            metadata = fetch_metadata(url)
+        should_fetch_metadata = url and (
+            not item_doc.get("title") or
+            not item_doc.get("description")
+        )
+        
+        if should_fetch_metadata:
+            logger.info(f"📋 [METADATA] Fetching metadata for {url} (is_youtube={is_youtube})")
+            # Use extract_content_with_metadata to get source along with other metadata
+            metadata_result = await extract_content_with_metadata(url, extraction_type)
+            if metadata_result:
+                logger.info(f"📋 [METADATA] Received metadata with source: '{metadata_result.get('source')}'")
+                metadata = {
+                    'title': metadata_result.get('title'),
+                    'description': metadata_result.get('description'),
+                    'image_url': metadata_result.get('image_url'),
+                    'source': metadata_result.get('source')
+                }
+                # If we got content from metadata extraction, use it
+                if metadata_result.get('text') and not archived_text:
+                    archived_text = metadata_result['text']
+                    logger.info(f"📋 [METADATA] Using content from metadata extraction for {url}")
         
         # Step 2: Extract content
         # - If skip_extraction=True: Content already provided, skip extraction entirely
@@ -511,6 +531,62 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
             
             if not item_doc.get("favicon_url") and metadata.get("favicon_url"):
                 update_doc["favicon_url"] = metadata["favicon_url"]
+            
+            if not item_doc.get("source") and metadata.get("source"):
+                logger.info(f"📋 [SOURCE] Setting source from metadata for item {item_id}: '{metadata.get('source')}'")
+                update_doc["source"] = metadata["source"]
+        
+        # If source is still not set and we have a URL, extract it
+        # CRITICAL: Check update_doc first - if we just set source from metadata, don't overwrite it!
+        # For YouTube URLs, use lightweight channel name extraction (no transcript)
+        if not update_doc.get("source") and not item_doc.get("source") and url:
+            if is_youtube:
+                logger.info(f"📋 [SOURCE] YouTube URL detected, using lightweight channel name extraction for item {item_id}")
+                video_id = extract_video_id(url)
+                if video_id:
+                    youtube_source = get_youtube_channel_name_only(video_id, settings.youtube_api_key)
+                    update_doc["source"] = youtube_source
+                    logger.info(f"📋 [SOURCE] Got YouTube source for item {item_id}: '{youtube_source}'")
+                else:
+                    logger.warning(f"📋 [SOURCE] Could not extract video ID from YouTube URL for item {item_id}")
+                    update_doc["source"] = "YouTube"
+            else:
+                logger.info(f"📋 [SOURCE] Source not set from metadata, extracting from URL for item {item_id}")
+                update_doc["source"] = extract_source_from_url(url)
+                logger.info(f"📋 [SOURCE] Extracted source from URL for item {item_id}: '{update_doc['source']}'")
+        
+        # RACE CONDITION FIX: Check-Before-Write strategy for source field
+        # Re-fetch item to check if source was set by extension/user during processing
+        # This prevents the background worker from overwriting high-quality sources
+        # (e.g., "YouTube | Channel Name") with generic fallbacks (e.g., "youtube.com")
+        if "source" in update_doc:
+            logger.info(f"🔍 [RACE CHECK] Checking for race condition on source field for item {item_id}")
+            current_item_dict = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+            current_source = current_item_dict.get("source") if current_item_dict else None
+            new_source = update_doc["source"]
+            
+            logger.info(f"🔍 [RACE CHECK] Current source in DB: '{current_source}'")
+            logger.info(f"🔍 [RACE CHECK] New source to set: '{new_source}'")
+            
+            # Determine if we should update the source
+            should_update_source = False
+            
+            if not current_source:
+                # No source set yet, use our extracted one
+                should_update_source = True
+                logger.info(f"✅ [RACE CHECK] No existing source, setting: '{new_source}'")
+            elif new_source and new_source.startswith("YouTube |") and current_source == "youtube.com":
+                # Upgrade from generic to specific YouTube source
+                should_update_source = True
+                logger.info(f"⬆️ [RACE CHECK] Upgrading from '{current_source}' to '{new_source}'")
+            elif new_source and current_source and not current_source.startswith("YouTube |") and new_source.startswith("YouTube |"):
+                # Upgrade to YouTube-specific source
+                should_update_source = True
+                logger.info(f"⬆️ [RACE CHECK] Upgrading from '{current_source}' to '{new_source}'")
+            else:
+                # Keep existing source - don't overwrite high-quality source with generic one
+                logger.info(f"🛑 [RACE CHECK] Keeping existing source: '{current_source}' (not overwriting with '{new_source}')")
+                update_doc["source"] = current_source  # Use existing value
         
         await db.saved_items.update_one(
             {"_id": ObjectId(item_id)},

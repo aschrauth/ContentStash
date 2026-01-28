@@ -23,6 +23,7 @@ interface TranscriptSegment {
 interface ExtractionResult {
   success: boolean;
   content?: string;
+  channelName?: string;
   error?: string;
 }
 
@@ -69,7 +70,8 @@ export async function extractYouTubeTranscriptFromPage(): Promise<ExtractionResu
       // Return metadata-only content
       return {
         success: true,
-        content: formatMetadataOnly(title, author, videoId, lengthSeconds)
+        content: formatMetadataOnly(title, author, videoId, lengthSeconds),
+        channelName: author
       };
     }
     
@@ -80,7 +82,8 @@ export async function extractYouTubeTranscriptFromPage(): Promise<ExtractionResu
       console.warn('[YouTube Page Extractor] No English caption track found');
       return {
         success: true,
-        content: formatMetadataOnly(title, author, videoId, lengthSeconds)
+        content: formatMetadataOnly(title, author, videoId, lengthSeconds),
+        channelName: author
       };
     }
     
@@ -93,7 +96,8 @@ export async function extractYouTubeTranscriptFromPage(): Promise<ExtractionResu
       console.error('[YouTube Page Extractor] Failed to fetch transcript XML');
       return {
         success: true,
-        content: formatMetadataOnly(title, author, videoId, lengthSeconds)
+        content: formatMetadataOnly(title, author, videoId, lengthSeconds),
+        channelName: author
       };
     }
     
@@ -104,7 +108,8 @@ export async function extractYouTubeTranscriptFromPage(): Promise<ExtractionResu
       console.error('[YouTube Page Extractor] No transcript segments found');
       return {
         success: true,
-        content: formatMetadataOnly(title, author, videoId, lengthSeconds)
+        content: formatMetadataOnly(title, author, videoId, lengthSeconds),
+        channelName: author
       };
     }
     
@@ -115,7 +120,8 @@ export async function extractYouTubeTranscriptFromPage(): Promise<ExtractionResu
     
     return {
       success: true,
-      content: markdown
+      content: markdown,
+      channelName: author
     };
     
   } catch (error) {

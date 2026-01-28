@@ -19,6 +19,52 @@ logger = logging.getLogger(__name__)
 # we'll try Playwright as the site likely uses JavaScript rendering
 MIN_CONTENT_LENGTH = 1000
 
+
+def extract_source_from_url(url: str) -> str:
+    """
+    Extract source domain from URL for display purposes.
+    
+    Args:
+        url: The URL to extract source from
+        
+    Returns:
+        Formatted source string (e.g., "nytimes.com" or "blog.example.com")
+        Returns "Unknown" if URL parsing fails
+    """
+    try:
+        from urllib.parse import urlparse
+        
+        # Parse the URL
+        parsed = urlparse(url)
+        
+        # Get the netloc (domain with subdomain)
+        netloc = parsed.netloc or parsed.path.split('/')[0]
+        
+        if not netloc:
+            return "Unknown"
+        
+        # Remove port if present
+        if ':' in netloc:
+            netloc = netloc.split(':')[0]
+        
+        # Split into parts
+        parts = netloc.split('.')
+        
+        # Handle edge cases
+        if len(parts) < 2:
+            return netloc
+        
+        # If subdomain is "www", return just domain.tld
+        if parts[0] == 'www':
+            return '.'.join(parts[1:])
+        
+        # Otherwise return subdomain.domain.tld
+        return netloc
+        
+    except Exception as e:
+        logger.warning(f"Failed to extract source from URL {url}: {str(e)}")
+        return "Unknown"
+
 def _clean_extracted_content(content: str) -> str:
     """
     Clean extracted markdown content by removing unwanted patterns.
@@ -524,10 +570,11 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
     """
     # Check if this is a YouTube URL and handle it specially
     if is_youtube_url(url):
-        logger.info(f"Detected YouTube URL for metadata extraction: {url}")
+        logger.info(f"🎥 [YOUTUBE METADATA] Detected YouTube URL: {url}")
         video_id = extract_video_id(url)
         
         if video_id:
+            logger.info(f"🎥 [YOUTUBE METADATA] Extracted video ID: {video_id}")
             # Step 1: Try youtube_transcript_api (fastest)
             transcript = get_video_transcript(video_id)
             
@@ -547,18 +594,25 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                 youtube_metadata = get_video_metadata_from_ytdlp(video_id)
                 if youtube_metadata:
                     logger.info(f"✓ Successfully fetched metadata from yt-dlp")
-            
-            if transcript:
-                logger.info(f"Successfully extracted YouTube transcript and metadata for {url}")
-                # If we have both transcript and metadata, use them
-                if youtube_metadata:
-                    return {
+                    logger.info(f"🎥 [YOUTUBE METADATA] Channel name from yt-dlp: {youtube_metadata.get('channel_name')}")
+                
+                if transcript:
+                    logger.info(f"🎥 [YOUTUBE METADATA] Successfully extracted YouTube transcript and metadata for {url}")
+                    # If we have both transcript and metadata, use them
+                    if youtube_metadata:
+                        # Format source as "YouTube | Channel Name"
+                        channel_name = youtube_metadata.get('channel_name', '')
+                        source = f"YouTube | {channel_name}" if channel_name else "YouTube"
+                        logger.info(f"🎥 [YOUTUBE METADATA] Formatted source field: '{source}'")
+                        
+                        return {
                         'text': transcript,
                         'title': youtube_metadata.get('title'),
                         'description': youtube_metadata.get('description'),
                         'image_url': youtube_metadata.get('thumbnail_url'),
                         'author': youtube_metadata.get('channel_name'),
                         'date': youtube_metadata.get('published_at'),
+                        'source': source,
                         'url': url
                     }
                 else:
@@ -571,6 +625,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                         'image_url': None,
                         'author': None,
                         'date': None,
+                        'source': 'YouTube',
                         'url': url
                     }
             elif youtube_metadata:
@@ -582,6 +637,11 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                 if youtube_metadata.get('description'):
                     content += f"{youtube_metadata['description']}"
                 
+                # Format source as "YouTube | Channel Name"
+                channel_name = youtube_metadata.get('channel_name', '')
+                source = f"YouTube | {channel_name}" if channel_name else "YouTube"
+                logger.info(f"🎥 [YOUTUBE METADATA] Formatted source field (no transcript): '{source}'")
+                
                 return {
                     'text': content,
                     'title': youtube_metadata.get('title'),
@@ -589,6 +649,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                     'image_url': youtube_metadata.get('thumbnail_url'),
                     'author': youtube_metadata.get('channel_name'),
                     'date': youtube_metadata.get('published_at'),
+                    'source': source,
                     'url': url
                 }
             else:
@@ -601,11 +662,12 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                     'image_url': None,
                     'author': None,
                     'date': None,
+                    'source': 'YouTube',
                     'url': url
                 }
         else:
             logger.error(f"Failed to extract video ID from YouTube URL: {url}")
-            return {'text': None}
+            return {'text': None, 'source': 'YouTube'}
     
     # For non-YouTube URLs, use the existing extraction logic
     try:
@@ -615,7 +677,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
             markdown_text = await _extract_with_playwright(url)
             
             if not markdown_text:
-                return {'text': None}
+                return {'text': None, 'source': extract_source_from_url(url)}
             
             # Try to get title from initial request
             try:
@@ -632,6 +694,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                 'title': title,
                 'author': None,
                 'date': None,
+                'source': extract_source_from_url(url),
                 'url': url
             }
         
@@ -661,6 +724,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                 'title': title,
                 'author': None,
                 'date': None,
+                'source': extract_source_from_url(url),
                 'url': url
             }
         
@@ -669,7 +733,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
         markdown_text = await _extract_with_playwright(url)
         
         if not markdown_text:
-            return {'text': None}
+            return {'text': None, 'source': extract_source_from_url(url)}
         
         # For title, we still need to parse the original response
         doc = Document(response.text)
@@ -681,6 +745,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
             'title': title,
             'author': None,
             'date': None,
+            'source': extract_source_from_url(url),
             'url': url
         }
         
@@ -694,9 +759,10 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                 'title': None,  # Can't get title without initial request
                 'author': None,
                 'date': None,
+                'source': extract_source_from_url(url),
                 'url': url
             }
-        return {'text': None}
+        return {'text': None, 'source': extract_source_from_url(url)}
     except Exception as e:
         logger.error(f"Error extracting content with metadata from {url}: {str(e)}")
-        return {'text': None}
+        return {'text': None, 'source': extract_source_from_url(url)}

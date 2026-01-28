@@ -194,10 +194,40 @@ function App() {
 
         setMessage('✓ Saved with local extraction!');
       } else {
-        // For fast/complete, just send URL and let server handle it
+        // For fast/complete, extract metadata and send to server
+        setMessage('Extracting metadata...');
+        
+        // Extract metadata using executeScript
+        const metadataResults = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const getMetaContent = (name: string): string | null => {
+              const meta = document.querySelector(`meta[property="${name}"], meta[name="${name}"]`);
+              return meta?.getAttribute('content') || null;
+            };
+
+            const description = getMetaContent('og:description') ||
+                              getMetaContent('description') ||
+                              getMetaContent('twitter:description') || '';
+            
+            const image = getMetaContent('og:image') ||
+                         getMetaContent('twitter:image') || '';
+
+            return {
+              description,
+              image_url: image,
+            };
+          }
+        });
+
+        const metadata = metadataResults[0]?.result;
+
+        // Create item with metadata and let server handle extraction
         await api.createItem({
           url: tab.url,
           title: tab.title,
+          description: metadata?.description || undefined,
+          image_url: metadata?.image_url || undefined,
           extraction_type: extractionType,
         });
 

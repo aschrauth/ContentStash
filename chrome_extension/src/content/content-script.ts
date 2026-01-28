@@ -568,6 +568,10 @@ async function extractYouTubeContent(): Promise<string> {
 
     const metadata = response.metadata;
 
+    // Store channel name for potential use by the extension
+    // The channel name will be used by the background script when uploading
+    (window as any).__youtubeChannelName = metadata.channelName || metadata.author;
+
     // Check if we got transcript XML from MAIN world
     if (response.transcriptXml && response.transcriptXml.length > 0) {
       // Parse the XML - YouTube uses <p> tags with t (time) and d (duration) attributes
