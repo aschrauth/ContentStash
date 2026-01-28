@@ -7,6 +7,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { useStore } from '@/lib/store';
 import { API_ENDPOINTS } from '@/lib/api';
@@ -36,6 +37,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   const addItem = useStore((state) => state.addItem);
   const updateItem = useStore((state) => state.updateItem);
   const token = useStore((state) => state.token);
+  const queryClient = useQueryClient();
   
   const [activeTab, setActiveTab] = useState<'url' | 'paste'>('url');
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
@@ -253,6 +255,9 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         suggestedTopic: suggestedTopic || undefined,
         extractionType: activeTab === 'url' ? extractionType : undefined,
       });
+
+      // Invalidate React Query cache to refresh the library immediately
+      queryClient.invalidateQueries({ queryKey: ['items'] });
 
       toast.success("Item saved to library!");
       onClose();

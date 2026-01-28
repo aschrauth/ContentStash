@@ -6,6 +6,7 @@ import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw,
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { useStore, SavedItem } from '@/lib/store';
 import { formatDate, cn, cleanMarkdown } from '@/lib/utils';
@@ -22,6 +23,7 @@ export default function ItemDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { items, updateItem, deleteItem, token, _hasHydrated } = useStore();
+  const queryClient = useQueryClient();
   
   const [itemId, setItemId] = useState<string | null>(null);
   const [item, setItem] = useState<SavedItem | null>(null);
@@ -292,10 +294,19 @@ export default function ItemDetailPage() {
     setIsDeleteModalOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    deleteItem(item.id);
-    toast.success("Item deleted");
-    router.push('/library');
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteItem(item.id);
+      
+      // Invalidate React Query cache to refresh the library immediately
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      
+      toast.success("Item deleted");
+      router.push('/library');
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+      toast.error("Failed to delete item");
+    }
   };
 
   const handleReprocess = async () => {

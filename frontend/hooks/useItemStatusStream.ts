@@ -55,8 +55,8 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
           const data = JSON.parse(event.data);
           const currentPendingCount = data.pending_count;
 
-          // If pending count decreased, refresh items
-          if (lastPendingCount > 0 && currentPendingCount < lastPendingCount) {
+          // If pending count changed (increased or decreased), refresh items
+          if (lastPendingCount !== -1 && lastPendingCount !== currentPendingCount) {
             if (onItemsUpdated) {
               onItemsUpdated();
             }
