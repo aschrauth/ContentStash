@@ -30,7 +30,7 @@ Create a vector search index with the following JSON configuration:
     {
       "type": "vector",
       "path": "embedding",
-      "numDimensions": 768,
+      "numDimensions": 3072,
       "similarity": "cosine"
     },
     {
@@ -67,7 +67,7 @@ Paste the following JSON configuration:
     {
       "type": "vector",
       "path": "embedding",
-      "numDimensions": 768,
+      "numDimensions": 3072,
       "similarity": "cosine"
     },
     {
@@ -90,8 +90,10 @@ Paste the following JSON configuration:
 
 - **Field**: `embedding`
 - **Type**: `vector`
-- **Dimensions**: `768` (matches Gemini text-embedding-004 output)
+- **Dimensions**: `3072` (matches Gemini models/gemini-embedding-001 output)
 - **Similarity**: `cosine` (recommended for text embeddings)
+
+**Important**: The embedding model `models/gemini-embedding-001` is used because it's compatible with the Gemini v1beta API. This model produces 3072-dimensional embeddings. The newer `text-embedding-004` model is only available in v1 API and will cause errors if used with v1beta.
 
 ### Filter Field Configuration
 
@@ -145,12 +147,27 @@ Test by:
 1. No chunks exist for the user (check `owner_id` filter)
 2. Query embedding failed (check Gemini API key)
 3. Index not fully built yet (check status in Atlas UI)
+4. Embedding model incompatibility (ensure using `models/embedding-001`)
 
 **Debug steps**:
 1. Check backend logs for error messages
 2. Verify Gemini API key is configured
 3. Confirm chunks exist: `db.item_chunks.countDocuments({owner_id: "your_user_id"})`
 4. Verify index is "Active" in Atlas UI
+5. Check that `backend/app/services/gemini.py` uses `models/gemini-embedding-001` (not `text-embedding-004`)
+
+### Embedding Model Errors
+
+**Error**: "404 models/text-embedding-004 is not found for API version v1beta"
+
+**Cause**: Using incompatible embedding model with v1beta API
+
+**Solution**: The code has been updated to use `models/gemini-embedding-001` which is compatible with v1beta API. If you see this error, verify that `backend/app/services/gemini.py` has the correct model specified in the `embed_content()` and `embed_batch()` methods.
+
+**Available Models**: To see all available models in your Gemini API version, run:
+```bash
+cd backend && source venv/bin/activate && python list_available_models.py
+```
 
 ## Performance Considerations
 
@@ -162,7 +179,7 @@ Test by:
 
 ### Index Size
 
-- Each 768-dimensional vector uses ~3KB of storage
+- Each 3072-dimensional vector uses ~12KB of storage
 - Plan storage accordingly based on expected number of chunks
 
 ### Query Performance

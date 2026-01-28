@@ -188,14 +188,14 @@ class GeminiService:
     def embed_content(
         self,
         text: str,
-        model: str = "text-embedding-004"
+        model: str = "models/gemini-embedding-001"
     ) -> List[float]:
         """
         Generate embeddings for a single text using Gemini API.
         
         Args:
             text: The text to embed
-            model: The embedding model to use (default: text-embedding-004)
+            model: The embedding model to use (default: models/gemini-embedding-001)
         
         Returns:
             List of floats representing the embedding vector
@@ -232,14 +232,14 @@ class GeminiService:
     def embed_batch(
         self,
         texts: List[str],
-        model: str = "text-embedding-004"
+        model: str = "models/gemini-embedding-001"
     ) -> List[List[float]]:
         """
         Generate embeddings for multiple texts efficiently using batch processing.
         
         Args:
             texts: List of texts to embed
-            model: The embedding model to use (default: text-embedding-004)
+            model: The embedding model to use (default: models/gemini-embedding-001)
         
         Returns:
             List of embedding vectors, one for each input text
