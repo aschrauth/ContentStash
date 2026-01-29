@@ -17,19 +17,34 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [isChatOpen, setIsChatOpen] = useState(false);
 
   if (!isAuthenticated) {
-    return null; // or loading spinner, but useAuth handles redirect
+    // Show a loading shell instead of blocking blank screen
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col">
+        <Navbar onSaveClick={() => { }} onChatClick={() => { }} />
+        <main className="flex-1 container mx-auto px-4 py-8">
+          <div className="space-y-8 animate-pulse opacity-50">
+            <div className="h-8 w-48 bg-slate-800 rounded mb-4"></div>
+            <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="h-64 bg-slate-800 rounded-xl"></div>
+              ))}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col">
-      {/* Background Ambient Effects */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+      {/* Background Ambient Effects - Visible only on larger screens for mobile performance */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0 hidden sm:block">
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-violet-900/10 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-cyan-900/10 rounded-full blur-[120px]" />
       </div>
 
-      <Navbar 
-        onSaveClick={() => setIsSaveModalOpen(true)} 
+      <Navbar
+        onSaveClick={() => setIsSaveModalOpen(true)}
         onChatClick={() => setIsChatOpen(true)}
       />
 

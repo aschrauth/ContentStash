@@ -36,7 +36,6 @@ export default function RootLayout({
       >
         <QueryProvider>
           <NextTopLoader color="#8b5cf6" />
-          {/* <Toaster /> */}
           {children}
         </QueryProvider>
       </body>

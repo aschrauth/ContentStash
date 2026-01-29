@@ -73,19 +73,19 @@ interface AppState {
   chatThreads: ChatThread[];
   _hasHydrated: boolean;
   setHasHydrated: (state: boolean) => void;
-  
+
   // Pagination state
   itemsCursor: string | null;
   hasMoreItems: boolean;
   isLoadingMore: boolean;
-  
+
   // Actions
   register: (email: string, password: string, name: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   updateProfile: (name: string, email: string) => void;
   updatePreferences: (preferences: Partial<User['preferences']>) => void;
-  
+
   fetchItems: (searchQuery?: string, tags?: string[], loadMore?: boolean) => Promise<void>;
   loadMoreItems: () => Promise<void>;
   fetchTags: () => Promise<void>;
@@ -94,7 +94,7 @@ interface AppState {
   deleteItem: (id: string) => Promise<void>; // Soft delete
   restoreItem: (id: string) => void;
   permanentlyDeleteItem: (id: string) => void;
-  
+
   fetchChatThreads: () => Promise<void>;
   fetchChatThread: (threadId: string) => Promise<ChatThread | null>;
   createChatThread: (firstMessage: string) => Promise<string>;
@@ -114,7 +114,7 @@ export const useStore = create<AppState>()(
       setHasHydrated: (state) => {
         set({ _hasHydrated: state });
       },
-      
+
       // Pagination state
       itemsCursor: null,
       hasMoreItems: false,
@@ -127,10 +127,10 @@ export const useStore = create<AppState>()(
           if (queryClient) {
             queryClient.clear();
           }
-          
+
           // Clear Zustand persisted state (items and chatThreads)
           set({ items: [], chatThreads: [] });
-          
+
           const response = await fetch(API_ENDPOINTS.signup, {
             method: 'POST',
             headers: {
@@ -145,15 +145,15 @@ export const useStore = create<AppState>()(
           }
 
           const data = await response.json();
-          
+
           // Store token in localStorage
           localStorage.setItem('token', data.token);
-          
+
           set({
             currentUser: data.user,
             token: data.token
           });
-          
+
           // Let useAuth hook handle initial data fetch
         } catch (error) {
           console.error('Registration error:', error);
@@ -168,10 +168,10 @@ export const useStore = create<AppState>()(
           if (queryClient) {
             queryClient.clear();
           }
-          
+
           // Clear Zustand persisted state (items and chatThreads)
           set({ items: [], chatThreads: [] });
-          
+
           const response = await fetch(API_ENDPOINTS.login, {
             method: 'POST',
             headers: {
@@ -186,15 +186,15 @@ export const useStore = create<AppState>()(
           }
 
           const data = await response.json();
-          
+
           // Store token in localStorage
           localStorage.setItem('token', data.token);
-          
+
           set({
             currentUser: data.user,
             token: data.token
           });
-          
+
           // Let useAuth hook handle initial data fetch
         } catch (error) {
           console.error('Login error:', error);
@@ -208,10 +208,10 @@ export const useStore = create<AppState>()(
         if (queryClient) {
           queryClient.clear();
         }
-        
+
         // Remove token from localStorage
         localStorage.removeItem('token');
-        
+
         // Call logout endpoint (optional, mainly for server-side cleanup)
         const { token } = get();
         if (token) {
@@ -222,7 +222,7 @@ export const useStore = create<AppState>()(
             },
           }).catch(err => console.error('Logout error:', err));
         }
-        
+
         // Clear all user-specific state including persisted data
         set({
           currentUser: null,
@@ -236,7 +236,7 @@ export const useStore = create<AppState>()(
       updateProfile: (name, email) => {
         const { currentUser } = get();
         if (!currentUser) return;
-        
+
         const updatedUser = { ...currentUser, name, email };
         set({ currentUser: updatedUser });
       },
@@ -245,9 +245,9 @@ export const useStore = create<AppState>()(
         const { currentUser } = get();
         if (!currentUser) return;
 
-        const updatedUser = { 
-          ...currentUser, 
-          preferences: { ...currentUser.preferences, ...preferences } 
+        const updatedUser = {
+          ...currentUser,
+          preferences: { ...currentUser.preferences, ...preferences }
         };
 
         set({ currentUser: updatedUser });
@@ -260,18 +260,18 @@ export const useStore = create<AppState>()(
         try {
           // Use cursor if loading more, otherwise start fresh
           const cursor = loadMore ? itemsCursor : undefined;
-          
+
           // If not loading more, reset pagination state
           if (!loadMore) {
             set({ itemsCursor: null, hasMoreItems: false });
           }
-          
+
           const response = await getItems(token, searchQuery, tags, 50, cursor);
-          
+
           // Handle both old format (array) and new format (object with pagination)
           let itemsData: any[];
           let pagination: { next_cursor: string | null; has_more: boolean } | null = null;
-          
+
           if (Array.isArray(response)) {
             // Old format - backward compatibility
             itemsData = response;
@@ -280,7 +280,7 @@ export const useStore = create<AppState>()(
             itemsData = response.items;
             pagination = response.pagination;
           }
-          
+
           // Convert snake_case to camelCase for all items
           const formattedItems: SavedItem[] = itemsData.map((item: Record<string, unknown>) => ({
             id: item.id,
@@ -305,7 +305,7 @@ export const useStore = create<AppState>()(
 
           // If loading more, append to existing items; otherwise replace
           const newItems = loadMore ? [...currentItems, ...formattedItems] : formattedItems;
-          
+
           set({
             items: newItems,
             itemsCursor: pagination?.next_cursor || null,
@@ -319,11 +319,11 @@ export const useStore = create<AppState>()(
           }
         }
       },
-      
+
       loadMoreItems: async () => {
         const { itemsCursor, isLoadingMore, hasMoreItems } = get();
         if (isLoadingMore || !hasMoreItems || !itemsCursor) return;
-        
+
         set({ isLoadingMore: true });
         await get().fetchItems('', [], true); // loadMore = true
         set({ isLoadingMore: false });
@@ -382,7 +382,7 @@ export const useStore = create<AppState>()(
           }
 
           const newItem = await response.json();
-          
+
           // Convert snake_case to camelCase for frontend
           const formattedItem: SavedItem = {
             id: newItem.id,
@@ -408,7 +408,7 @@ export const useStore = create<AppState>()(
           // Add to local state
           const { items } = get();
           set({ items: [formattedItem, ...items] });
-          
+
           return formattedItem.id;
         } catch (error) {
           console.error('Failed to create item:', error);
@@ -447,7 +447,7 @@ export const useStore = create<AppState>()(
           }
 
           const updatedItem = await response.json();
-          
+
           // Convert snake_case to camelCase
           const formattedItem: SavedItem = {
             id: updatedItem.id,
@@ -514,9 +514,9 @@ export const useStore = create<AppState>()(
       restoreItem: (id) => {
         const { items } = get();
         set({
-          items: items.map(item => 
-            item.id === id 
-              ? { ...item, archivedAt: undefined } 
+          items: items.map(item =>
+            item.id === id
+              ? { ...item, archivedAt: undefined }
               : item
           )
         });
@@ -543,7 +543,7 @@ export const useStore = create<AppState>()(
           }
 
           const threadsData = await response.json();
-          
+
           // Convert snake_case to camelCase
           const formattedThreads: ChatThread[] = threadsData.map((thread: Record<string, unknown>) => ({
             id: thread.id as string,
@@ -585,7 +585,7 @@ export const useStore = create<AppState>()(
           }
 
           const threadData = await response.json();
-          
+
           // Convert snake_case to camelCase
           const formattedThread: ChatThread = {
             id: threadData.id as string,
@@ -643,7 +643,7 @@ export const useStore = create<AppState>()(
           }
 
           const threadData = await response.json();
-          
+
           // Convert snake_case to camelCase
           const formattedThread: ChatThread = {
             id: threadData.id as string,
@@ -666,7 +666,7 @@ export const useStore = create<AppState>()(
           // Add to local state
           const { chatThreads } = get();
           set({ chatThreads: [formattedThread, ...chatThreads] });
-          
+
           return formattedThread.id;
         } catch (error) {
           console.error('Failed to create chat thread:', error);
@@ -694,7 +694,7 @@ export const useStore = create<AppState>()(
           }
 
           const threadData = await response.json();
-          
+
           // Convert snake_case to camelCase
           const formattedThread: ChatThread = {
             id: threadData.id as string,
@@ -754,12 +754,10 @@ export const useStore = create<AppState>()(
       },
     }),
     {
-      name: 'stash-storage',
+      name: 'stash-storage-v2', // Bump version to invalidate old bloated cache
       partialize: (state) => ({
-        items: state.items,
-        chatThreads: state.chatThreads,
+        currentUser: state.currentUser,
         // Store token separately in localStorage, not in zustand persist
-        // currentUser will be fetched from /me endpoint on app load
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
