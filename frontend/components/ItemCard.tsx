@@ -47,7 +47,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
         >
           {/* Unified Container: Flex Wrap on Mobile, Flex Row No Wrap on Desktop */}
           <div className="flex flex-wrap md:flex-nowrap items-start md:items-stretch h-full">
-            
+
             {/* Image Section */}
             {/* Mobile: Small left thumbnail (116px width). Desktop: Fixed left sidebar (230px width) */}
             <div className={`
@@ -81,33 +81,33 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
             {/* Mobile: display:contents allows children to participate in the parent flex-wrap container
                 Desktop: flex-col to stack vertically in the right pane */}
             <div className="contents md:flex md:flex-col md:flex-1 md:justify-between md:min-w-0 md:p-4">
-              
+
               {/* Top Section: Title & Date */}
               {/* Mobile: Fills remaining width next to image. Desktop: Top of column */}
               <div className="flex flex-col justify-center gap-1 w-[calc(100%-116px-24px)] h-16 pt-3 pr-3 md:w-full md:h-auto md:p-0 md:mb-1">
-                 {/* Desktop: Header Row */}
-                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
-                    <h3 className="font-semibold text-sm md:text-base leading-tight text-slate-100 line-clamp-2 truncate group-hover:text-violet-300 transition-colors">
-                      {item.title}
-                    </h3>
-                    <span className="text-xs text-slate-400 flex-shrink-0 flex items-center gap-2 md:gap-1">
-                      <span className="hidden md:inline">{formatDate(item.createdAt)}</span>
-                      {/* Mobile Date is below title, Desktop is right aligned */}
-                      <span className="md:hidden">{formatDate(item.createdAt)}</span>
-                       
-                      {/* Status Indicators */}
-                      {item.processingStatus === 'pending' && (
-                        <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-amber-500 animate-pulse" title="Processing" />
-                      )}
-                      {item.processingStatus === 'failed' && (
-                        <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-red-500" title="Failed" />
-                      )}
-                    </span>
-                 </div>
+                {/* Desktop: Header Row */}
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
+                  <h3 className="font-semibold text-sm md:text-base leading-tight text-slate-100 line-clamp-2 truncate group-hover:text-violet-300 transition-colors">
+                    {item.title}
+                  </h3>
+                  <span className="text-xs text-slate-400 flex-shrink-0 flex items-center gap-2 md:gap-1">
+                    <span className="hidden md:inline">{formatDate(item.createdAt)}</span>
+                    {/* Mobile Date is below title, Desktop is right aligned */}
+                    <span className="md:hidden">{formatDate(item.createdAt)}</span>
 
-                 {/* Source */}
-                 {item.source && (
-                  <p className="text-xs text-slate-500 truncate md:mb-1">
+                    {/* Status Indicators */}
+                    {item.processingStatus === 'pending' && (
+                      <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-amber-500 animate-pulse" title="Processing" />
+                    )}
+                    {item.processingStatus === 'failed' && (
+                      <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-red-500" title="Failed" />
+                    )}
+                  </span>
+                </div>
+
+                {/* Source */}
+                {item.source && (
+                  <p className="text-xs text-slate-500 truncate pb-0.5 md:mb-1">
                     {item.source}
                   </p>
                 )}
@@ -117,31 +117,32 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
               {/* Mobile: Full width below image. Desktop: Middle of column */}
               <div className="w-full px-3 pb-2 md:p-0 md:mb-2 order-3 md:order-none">
                 <p className="text-xs md:text-sm text-slate-400 line-clamp-2 opacity-100">
-                   {item.description || "No description available."}
+                  {item.description || "No description available."}
                 </p>
               </div>
 
-              {/* Tags & Footer Section */}
-              {/* Mobile: Full width at bottom. Desktop: Bottom of column */}
-              <div className="w-full px-3 pb-3 md:p-0 md:mt-auto order-4 md:order-none">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-wrap gap-1.5 overflow-hidden h-5 md:h-6">
-                    {item.tags.slice(0, 3).map(tag => (
-                      <span
-                        key={tag}
-                        className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-300 text-[10px] border border-white/5 group-hover:border-white/10 transition-colors whitespace-nowrap"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                    {item.tags.length > 3 && (
-                      <span className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px]">
-                        +{item.tags.length - 3}
-                      </span>
-                    )}
+              {/* Tags Section - Only show if tags exist to avoid extra space */}
+              {item.tags.length > 0 && (
+                <div className="w-full px-3 pb-3 md:p-0 md:mt-auto order-4 md:order-none">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap gap-1.5 overflow-hidden h-5 md:h-6">
+                      {item.tags.slice(0, 3).map(tag => (
+                        <span
+                          key={tag}
+                          className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-300 text-[10px] border border-white/5 group-hover:border-white/10 transition-colors whitespace-nowrap"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                      {item.tags.length > 3 && (
+                        <span className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px]">
+                          +{item.tags.length - 3}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
             </div>
           </div>
@@ -185,7 +186,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent opacity-60" />
-            
+
             {/* Status Badge */}
             <div className="absolute top-3 right-3">
               {item.processingStatus === 'pending' && (
