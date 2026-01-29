@@ -256,17 +256,13 @@ function formatTranscriptAsMarkdown(
   _lengthSeconds: number,
   segments: TranscriptSegment[]
 ): string {
-  console.log('[Page Extractor] Formatting transcript with', segments.length, 'segments');
   const lines: string[] = [];
   
   // Group segments into paragraphs (NO metadata header - matches server-side behavior)
   let currentParagraph: string[] = [];
   let lastEndTime = 0;
-  let paragraphCount = 0;
   
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    
+  for (const segment of segments) {
     // Skip empty segments entirely - don't process them at all
     if (!segment.text) {
       continue;
@@ -286,25 +282,10 @@ function formatTranscriptAsMarkdown(
       currentLength > 500;
     
     if (shouldStartNewParagraph && currentParagraph.length > 0) {
-      // Write out the current paragraph without timestamp
       const paragraphText = currentParagraph.join(' ');
-      
-      // Log first 3 paragraphs
-      if (paragraphCount < 3) {
-        console.log(`[Page Extractor] Paragraph ${paragraphCount} length:`, paragraphText.length);
-        console.log(`[Page Extractor] Paragraph ${paragraphCount} preview:`, paragraphText.substring(0, 100));
-        console.log(`[Page Extractor] Paragraph ${paragraphCount} has newlines:`, paragraphText.includes('\n'));
-      }
-      
       lines.push(paragraphText);
       lines.push('');
       currentParagraph = [];
-      paragraphCount++;
-    }
-    
-    // Log paragraph building decisions for first few segments
-    if (i < 5) {
-      console.log(`[Page Extractor] Segment ${i}: time gap=${timeSinceLastSegment.toFixed(2)}s, currentLength=${currentLength}, shouldStartNew=${shouldStartNewParagraph}`);
     }
     
     // Add text to paragraph and update last end time
@@ -315,17 +296,9 @@ function formatTranscriptAsMarkdown(
   // Write out the final paragraph
   if (currentParagraph.length > 0) {
     const paragraphText = currentParagraph.join(' ');
-    console.log(`[Page Extractor] Final paragraph ${paragraphCount} length:`, paragraphText.length);
     lines.push(paragraphText);
     lines.push('');
-    paragraphCount++;
   }
   
-  const finalMarkdown = lines.join('\n');
-  console.log('[Page Extractor] Total paragraphs created:', paragraphCount);
-  console.log('[Page Extractor] Final markdown length:', finalMarkdown.length);
-  console.log('[Page Extractor] Final markdown preview (first 200 chars):', finalMarkdown.substring(0, 200));
-  console.log('[Page Extractor] Final markdown has excessive newlines:', /\n{3,}/.test(finalMarkdown));
-  
-  return finalMarkdown;
+  return lines.join('\n');
 }

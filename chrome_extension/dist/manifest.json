@@ -33,7 +33,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/content-script.ts-loader-DhV2S0jn.js"
+        "assets/content-script.ts-loader-vaU2HGAg.js"
       ],
       "matches": [
         "<all_urls>"
@@ -49,8 +49,8 @@
       ],
       "resources": [
         "src/content/*",
-        "assets/youtube-extractor-CQHK5C-0.js",
-        "assets/content-script.ts-eVZBrYf0.js"
+        "assets/youtube-extractor-Ca3U6Ul5.js",
+        "assets/content-script.ts-rzKddv9y.js"
       ],
       "use_dynamic_url": false
     }
