@@ -3,10 +3,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, Plus, LogOut, MessageSquare } from 'lucide-react';
+import { Plus, LogOut, MessageSquare } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 
 interface NavbarProps {
   onSaveClick: () => void;
@@ -16,21 +15,10 @@ interface NavbarProps {
 export default function Navbar({ onSaveClick, onChatClick }: NavbarProps) {
   const router = useRouter();
   const { currentUser, logout } = useStore();
-  const [searchQuery, setSearchQuery] = React.useState('');
 
   const handleLogout = () => {
     logout();
     router.push('/login');
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      // In a real app, this would navigate or filter. 
-      // For MVP, we might just rely on the library page's search state, 
-      // but let's assume this global search redirects to library with query param
-      router.push(`/library?q=${encodeURIComponent(searchQuery)}`);
-    }
   };
 
   return (
@@ -45,22 +33,6 @@ export default function Navbar({ onSaveClick, onChatClick }: NavbarProps) {
             Stash
           </span>
         </Link>
-
-        {/* Search Bar - Hidden on mobile to prevent Autofill performance issues */}
-        <form
-          onSubmit={handleSearch}
-          className="flex-1 max-w-md hidden md:block relative"
-          suppressHydrationWarning
-        >
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-          <Input
-            placeholder="Search your second brain..."
-            className="pl-10 bg-white/5 border-white/10 focus:bg-white/10 transition-all"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            suppressHydrationWarning
-          />
-        </form>
 
         {/* Actions */}
         <div className="flex items-center gap-2 sm:gap-4">
