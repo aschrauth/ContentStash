@@ -87,11 +87,121 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
   let inJsonBlock = false;
   let inFeaturedSection = false;
   let inPromotionalBlock = false;
+  let inRelatedSection = false;
+  let inClutterSection = false;
+  let inNavigation = false;
+  let inConsentSection = false;
   let pastMainContent = false;
+  let skipUntilContent = 0;
+  
+  let skippedCount = {
+    plainUrls: 0,
+    consentSection: 0,
+    images: 0,
+    navigation: 0,
+    relatedSection: 0,
+    clutterSection: 0,
+    other: 0
+  };
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const stripped = line.trim();
     const lowerLine = stripped.toLowerCase();
+    
+    // Skip lines if we're in a skip zone
+    if (skipUntilContent > 0) {
+      skipUntilContent--;
+      continue;
+    }
+    
+    // Detect "Manage Consent Preferences" section - skip everything after this
+    // This needs to be very aggressive since it's always at the end
+    // Check both the line itself and if it's a heading
+    if (lowerLine.includes('manage consent') ||
+        lowerLine.includes('consent preferences') ||
+        lowerLine.includes('strictly necessary cookies') ||
+        lowerLine.includes('always active') ||
+        lowerLine.includes('opt out of sale') ||
+        lowerLine.includes('switch label') ||
+        lowerLine.includes('targeting cookies') ||
+        stripped.match(/^#{1,6}\s*manage consent/i) ||
+        stripped.match(/^#{1,6}\s*consent preferences/i)) {
+      inConsentSection = true;
+      skippedCount.consentSection++;
+      continue;
+    }
+    
+    // Once in consent section, skip everything
+    if (inConsentSection) {
+      skippedCount.consentSection++;
+      continue;
+    }
+    
+    // Detect broken markdown link patterns: lines that are just "](url)"
+    // These are the second half of multi-line markdown links (usually related articles)
+    if (stripped.match(/^\]\(https?:\/\/[^)]+\)$/)) {
+      skippedCount.plainUrls++;
+      continue;
+    }
+    
+    // Detect plain URLs (not markdown links) that are standalone
+    // These are usually related articles
+    if (stripped.match(/^https?:\/\/[^\s]+$/)) {
+      skippedCount.plainUrls++;
+      continue;
+    }
+    
+    // Detect multi-line markdown image-link patterns (related articles)
+    // Pattern: "[" on one line, followed by image, followed by "](url)"
+    // This is a 3-5 line pattern that represents a related article link
+    if (stripped === '[') {
+      // Look ahead to see if this is a multi-line image link pattern
+      const next1 = i + 1 < lines.length ? lines[i + 1].trim() : '';
+      const next2 = i + 2 < lines.length ? lines[i + 2].trim() : '';
+      const next3 = i + 3 < lines.length ? lines[i + 3].trim() : '';
+      
+      // Check if next line is blank, then image, then blank, then link closing
+      if (next1 === '' && next2.startsWith('![') && next3 === '') {
+        const next4 = i + 4 < lines.length ? lines[i + 4].trim() : '';
+        if (next4.match(/^\]\(https?:\/\/[^)]+\)$/)) {
+          // Skip the entire pattern: "[", blank, image, blank, "](url)"
+          skipUntilContent = 4; // Skip next 4 lines (we're already on the "[")
+          skippedCount.images++;
+          continue;
+        }
+      }
+    }
+    
+    // Detect embedded related article images - these are usually standalone images
+    // that link to other articles (not part of the main content)
+    if (stripped.startsWith('![')) {
+      // Check if this is followed by a link or if it's a standalone image
+      const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
+      const prevLine = i > 0 ? lines[i - 1].trim() : '';
+      
+      // If the image is followed by a link, or surrounded by blank lines, it's likely related content
+      if (nextLine.startsWith('[') || nextLine.startsWith('http') ||
+          (prevLine === '' && nextLine === '')) {
+        skippedCount.images++;
+        continue;
+      }
+    }
+    
+    // Detect standalone article links (URLs that appear on their own line)
+    // These are usually related articles, not inline citations
+    if (stripped.match(/^https?:\/\/.*\/(news|features|articles?|gallery|video)\//) ||
+        stripped.match(/^\[.*\]\(https?:\/\/.*\/(news|features|articles?|gallery|video)\/.*\)/)) {
+      // Check if this is standalone (surrounded by blank lines or other media)
+      const prevLine = i > 0 ? lines[i - 1].trim() : '';
+      const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
+      
+      // If it's standalone or part of a media block, skip it
+      if (prevLine === '' || nextLine === '' ||
+          prevLine.startsWith('![') || nextLine.startsWith('![')) {
+        continue;
+      }
+    }
     
     // Track main content headings (## level headings that are part of the article)
     // We consider "Fairness" to be the last main content section for this site
@@ -123,6 +233,33 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
       continue;
     }
 
+    // Detect navigation patterns (common menu items)
+    const navigationPatterns = [
+      'open menu', 'close menu', 'open search', 'close search',
+      'got a tip', 'newsletters', 'sign in', 'sign up',
+      'news', 'film', 'tv', 'awards', 'video', 'toolkit',
+      'future of filmmaking'
+    ];
+    
+    // Check if line is likely navigation (short line with navigation keywords)
+    if (stripped.length < 30 && navigationPatterns.some(pattern => lowerLine.includes(pattern))) {
+      // Check if next few lines are also short (indicates menu structure)
+      const nextLinesShort = lines.slice(i + 1, i + 4).filter(l => l.trim().length < 30).length;
+      if (nextLinesShort >= 2) {
+        inNavigation = true;
+        continue;
+      }
+    }
+    
+    // Exit navigation when we hit substantial content
+    if (inNavigation && (stripped.length > 100 || /^#{1,3}\s+\w+/.test(stripped))) {
+      inNavigation = false;
+    }
+    
+    if (inNavigation) {
+      continue;
+    }
+
     // Skip standalone "Next" navigation elements
     if (stripped === 'Next' || lowerLine === 'next') {
       continue;
@@ -144,6 +281,59 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
 
     // Skip lines with hex-encoded JavaScript
     if (/\\x[0-9a-fA-F]{2}/.test(line)) {
+      continue;
+    }
+
+    // Detect "Read Next" or similar inline related content
+    if (/^read next:/i.test(lowerLine)) {
+      // Skip this line and the next 2-3 lines (usually the related article title/link)
+      skipUntilContent = 3;
+      continue;
+    }
+
+    // Detect "Related articles" or similar sections
+    const relatedPatterns = [
+      /^#+\s*(related articles?|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)/i,
+      /^(related articles?|related|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)$/i
+    ];
+    
+    if (relatedPatterns.some(pattern => pattern.test(stripped))) {
+      inRelatedSection = true;
+      continue;
+    }
+    
+    // Skip everything in the related section
+    if (inRelatedSection) {
+      continue;
+    }
+
+    // Detect common clutter sections (policies, sharing, consent, etc.)
+    const clutterHeadings = [
+      'privacy policy', 'cookie policy', 'terms of service', 'advertising policy',
+      'consent preferences', 'manage consent', 'privacy settings',
+      'share this', 'share article', 'follow us', 'newsletter', 'subscribe',
+      'sign up', 'get updates', 'stay connected', 'join our',
+      'cookies', 'advertising', 'your privacy choices',
+      'opt out of sale', 'targeted advertising', 'switch label'
+    ];
+    
+    if (clutterHeadings.some(heading => lowerLine.includes(heading))) {
+      // Check if it's a heading or standalone text
+      if (/^#+\s*/.test(stripped) || stripped.length < 80) {
+        inClutterSection = true;
+        continue;
+      }
+    }
+    
+    // Exit clutter section when we hit a substantial heading that's not clutter
+    if (inClutterSection && /^#{1,3}\s+/.test(stripped) && stripped.length > 20) {
+      // Check if this is still a clutter heading
+      if (!clutterHeadings.some(heading => lowerLine.includes(heading))) {
+        inClutterSection = false;
+      }
+    }
+    
+    if (inClutterSection) {
       continue;
     }
 
@@ -184,6 +374,16 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
     if (/^\[.*\]\(\)$/.test(stripped)) {
       continue;
     }
+    
+    // Skip standalone social media/sharing text
+    const standaloneSkip = [
+      'share', 'email', 'print', 'facebook', 'twitter', 'linkedin',
+      'copy link', 'share this article', 'share this story', 'whatsapp',
+      'reddit', 'pinterest', 'share on facebook', 'share on twitter'
+    ];
+    if (standaloneSkip.includes(lowerLine)) {
+      continue;
+    }
 
     cleanedLines.push(line);
   }
@@ -197,81 +397,27 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
 
 /**
  * Selectively remove unwanted elements from the DOM without breaking document structure
- * This function removes navigation, ads, and promotional content while preserving
- * the main document structure (documentElement, body) that Readability needs
+ * Uses generalizable patterns for ads, navigation, sharing widgets, and policies
  */
 function selectiveCleanup(doc: Document, isSubstack: boolean = false): void {
+  // Conservative cleanup - only remove obvious non-content elements
+  // Let Readability handle the rest
+  
   // Remove unwanted structural elements
-  // For Substack, be more conservative - don't remove headers that might contain article content
   const structuralSelectors = isSubstack ? [
     'nav:not(.post-header)',
     'header:not(.post-header)',
     'footer',
-    '[role="navigation"]',
-    '[role="banner"]',
   ] : [
+    // Only remove obvious structural elements
     'nav',
-    'header',
+    'header:not([role="banner"]):not(.article-header)',
     'footer',
-    'aside',
-    '[role="navigation"]',
-    '[role="banner"]',
-    '[role="complementary"]',
   ];
 
   structuralSelectors.forEach(selector => {
     const elements = doc.querySelectorAll(selector);
     elements.forEach(el => el.remove());
-  });
-
-  // Remove elements with unwanted class/id patterns
-  // For Substack, skip patterns that might match article content containers
-  const unwantedPatterns = isSubstack ? [
-    /^featured$/i,  // Only exact match
-    /^recommended$/i,
-    /^social$/i,
-    /^share$/i,
-    /^comment/i,
-    /^sidebar$/i,
-    /^advertisement$/i,
-    /\bad\b/i,
-    /^promo$/i,
-    /^follow$/i,
-  ] : [
-    /featured/i,
-    /related/i,
-    /recommended/i,
-    /social/i,
-    /share/i,
-    /comment/i,
-    /sidebar/i,
-    /advertisement/i,
-    /\bad\b/i,
-    /promo/i,
-    /newsletter/i,
-    /subscribe/i,
-    /follow/i,
-  ];
-  
-  // Check all elements for unwanted patterns in class or id
-  const allElements = doc.querySelectorAll('*');
-  allElements.forEach(el => {
-    const className = el.className?.toString() || '';
-    const id = el.id || '';
-    const combined = `${className} ${id}`;
-
-    // Don't remove body or documentElement
-    if (el === doc.body || el === doc.documentElement) {
-      return;
-    }
-
-    // Check if element matches any unwanted pattern
-    for (const pattern of unwantedPatterns) {
-      if (pattern.test(combined)) {
-        el.remove();
-        break;
-      }
-    }
   });
 }
 
@@ -658,11 +804,29 @@ function extractYouTubeMetadataOnly(): string {
 }
 
 function extractSimpleContent(): string {
-  // Try to find main content area
+  // Try to find main content area using semantic HTML5 and CMS patterns
   const selectors = [
-    'main',
+    // Semantic HTML5
+    'article[role="article"]',
     'article',
+    'main[role="main"]',
+    'main',
     '[role="main"]',
+    
+    // Common CMS patterns (WordPress, Medium, Ghost, etc.)
+    '.post-content',
+    '.entry-content',
+    '.article-content',
+    '.content-body',
+    '.article-body',
+    '.post-body',
+    
+    // News sites (IndieWire, etc.)
+    '.article__body',
+    '.story-body',
+    '.news-article',
+    
+    // Generic fallbacks
     '.main-content',
     '#main-content',
     '.content',
@@ -695,6 +859,65 @@ function extractSimpleContent(): string {
         return element.textContent?.trim() || '';
       }
     }
+  }
+
+  // If no selector worked, try to find the largest content container (heuristic)
+  try {
+    const elements = Array.from(document.querySelectorAll('div, section'));
+    
+    // Filter out elements that are likely navigation/ads/footer
+    const filtered = elements.filter(el => {
+      const classes = el.className?.toLowerCase() || '';
+      const id = el.id?.toLowerCase() || '';
+      const combined = classes + ' ' + id;
+      
+      // Skip obvious non-content elements
+      if (combined.includes('nav') ||
+          combined.includes('header') ||
+          combined.includes('footer') ||
+          combined.includes('sidebar') ||
+          combined.includes('menu') ||
+          combined.includes('ad-') ||
+          combined.includes('cookie') ||
+          combined.includes('consent')) {
+        return false;
+      }
+      return true;
+    });
+    
+    // Find element with most paragraph content (better indicator of article text)
+    let maxScore = 0;
+    let bestElement: Element | null = null;
+    
+    for (const el of filtered) {
+      const textLength = el.textContent?.length || 0;
+      const paragraphs = el.querySelectorAll('p').length;
+      
+      // Score based on text length and paragraph count
+      // Paragraphs are a strong indicator of article content
+      const score = textLength + (paragraphs * 200);
+      
+      if (score > maxScore && textLength > 500) {
+        maxScore = score;
+        bestElement = el;
+      }
+    }
+    
+    if (bestElement) {
+      console.log('Found content using largest container heuristic');
+      const turndownService = new TurndownService({
+        headingStyle: 'atx',
+        codeBlockStyle: 'fenced',
+      });
+      turndownService.remove(['script', 'style']);
+      
+      let markdown = turndownService.turndown(bestElement.innerHTML);
+      markdown = cleanMarkdownContent(markdown);
+      
+      return markdown;
+    }
+  } catch (error) {
+    console.error('Largest container heuristic failed:', error);
   }
 
   // Last resort: get body text

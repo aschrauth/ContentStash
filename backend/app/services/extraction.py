@@ -68,6 +68,7 @@ def extract_source_from_url(url: str) -> str:
 def _clean_extracted_content(content: str) -> str:
     """
     Clean extracted markdown content by removing unwanted patterns.
+    Uses generalizable patterns for ads, navigation, sharing widgets, and policies.
     
     Args:
         content: The markdown content to clean
@@ -77,14 +78,96 @@ def _clean_extracted_content(content: str) -> str:
     """
     import re
     
-    # Remove JSON data blocks (lines starting with [ { and containing JSON-like patterns)
     lines = content.split('\n')
     cleaned_lines = []
     in_json_block = False
     in_related_section = False
+    in_clutter_section = False
+    in_navigation = False
+    in_consent_section = False
+    skip_until_content = 0  # Counter to skip lines after certain patterns
     
-    for line in lines:
+    for i, line in enumerate(lines):
         stripped = line.strip()
+        lower_line = stripped.lower()
+        
+        # Skip lines if we're in a skip zone
+        if skip_until_content > 0:
+            skip_until_content -= 1
+            continue
+        
+        # Detect "Manage Consent Preferences" section - skip everything after this
+        # This needs to be very aggressive since it's always at the end
+        # Check both the line itself and if it's a heading
+        if 'manage consent' in lower_line or \
+           'consent preferences' in lower_line or \
+           'strictly necessary cookies' in lower_line or \
+           'always active' in lower_line or \
+           'opt out of sale' in lower_line or \
+           'switch label' in lower_line or \
+           'targeting cookies' in lower_line or \
+           'performance cookies' in lower_line or \
+           re.match(r'^#{1,6}\s*manage consent', stripped, re.IGNORECASE) or \
+           re.match(r'^#{1,6}\s*consent preferences', stripped, re.IGNORECASE):
+            in_consent_section = True
+            continue
+        
+        # Once in consent section, skip everything
+        if in_consent_section:
+            continue
+        
+        # Detect broken markdown link patterns: lines that are just "](url)"
+        # These are the second half of multi-line markdown links (usually related articles)
+        if re.match(r'^\]\(https?://[^)]+\)$', stripped):
+            continue
+        
+        # Detect plain URLs (not markdown links) that are standalone
+        # These are usually related articles
+        if re.match(r'^https?://[^\s]+$', stripped):
+            # It's a standalone URL on its own line - likely a related article
+            continue
+        
+        # Detect multi-line markdown image-link patterns (related articles)
+        # Pattern: "[" on one line, followed by image, followed by "](url)"
+        if stripped == '[':
+            # Look ahead to see if this is a multi-line image link pattern
+            next1 = lines[i + 1].strip() if i + 1 < len(lines) else ''
+            next2 = lines[i + 2].strip() if i + 2 < len(lines) else ''
+            next3 = lines[i + 3].strip() if i + 3 < len(lines) else ''
+            
+            # Check if next line is blank, then image, then blank, then link closing
+            if next1 == '' and next2.startswith('![') and next3 == '':
+                next4 = lines[i + 4].strip() if i + 4 < len(lines) else ''
+                if re.match(r'^\]\(https?://[^)]+\)$', next4):
+                    # Skip the entire pattern: "[", blank, image, blank, "](url)"
+                    skip_until_content = 4  # Skip next 4 lines (we're already on the "[")
+                    continue
+        
+        # Detect embedded related article images - these are usually standalone images
+        # that link to other articles (not part of the main content)
+        if stripped.startswith('!['):
+            # Check if this is followed by a link or if it's a standalone image
+            next_line = lines[i + 1].strip() if i + 1 < len(lines) else ''
+            prev_line = lines[i - 1].strip() if i > 0 else ''
+            
+            # If the image is followed by a link, or surrounded by blank lines, it's likely related content
+            if next_line.startswith('[') or next_line.startswith('http') or \
+               (prev_line == '' and next_line == ''):
+                # Skip this image
+                continue
+        
+        # Detect standalone article links (URLs that appear on their own line)
+        # These are usually related articles, not inline citations
+        if re.match(r'^https?://.*/(news|features|articles?|gallery|video)/', stripped) or \
+           re.match(r'^\[.*\]\(https?://.*/(news|features|articles?|gallery|video)/.*\)', stripped):
+            # Check if this is standalone (surrounded by blank lines or other media)
+            prev_line = lines[i - 1].strip() if i > 0 else ''
+            next_line = lines[i + 1].strip() if i + 1 < len(lines) else ''
+            
+            # If it's standalone or part of a media block, skip it
+            if prev_line == '' or next_line == '' or \
+               prev_line.startswith('![') or next_line.startswith('!['):
+                continue
         
         # Detect start of JSON block
         if stripped.startswith('[ {') or (stripped.startswith('[') and '"type":' in stripped):
@@ -105,15 +188,51 @@ def _clean_extracted_content(content: str) -> str:
         if re.search(r'[a-z]\[\'\\x[0-9a-fA-F]{2}', line):
             continue
         
-        # Detect "Related articles" or similar sections and skip everything after
-        # Be VERY specific to avoid false positives that would remove article content
-        # Only trigger on exact heading patterns, not inline mentions
-        if re.match(r'^#+\s*(related articles|you might also like|more from|read next|discover more|in our library)$', stripped, re.IGNORECASE):
-            in_related_section = True
+        # Detect navigation patterns (common menu items)
+        navigation_patterns = [
+            'open menu', 'close menu', 'open search', 'close search',
+            'got a tip', 'newsletters', 'sign in', 'sign up',
+            'news', 'film', 'tv', 'awards', 'video', 'toolkit',
+            'future of filmmaking'
+        ]
+        
+        # Check if line is likely navigation (short line with navigation keywords)
+        if len(stripped) < 30 and any(pattern in lower_line for pattern in navigation_patterns):
+            # Check if next few lines are also short (indicates menu structure)
+            next_lines_short = sum(1 for j in range(i+1, min(i+4, len(lines)))
+                                  if len(lines[j].strip()) < 30)
+            if next_lines_short >= 2:
+                in_navigation = True
+                continue
+        
+        # Exit navigation when we hit substantial content
+        if in_navigation and (len(stripped) > 100 or re.match(r'^#{1,3}\s+\w+', stripped)):
+            in_navigation = False
+        
+        if in_navigation:
             continue
         
-        # Also check for these as standalone lines (not headings)
-        if stripped.lower() in ['related articles', 'you might also like', 'more from', 'read next', 'discover more', 'in our library']:
+        # Detect ad/redirect messages (common pattern)
+        if 'you will be redirected' in lower_line or 'redirecting' in lower_line:
+            continue
+        
+        # Skip ad countdown/timer text
+        if re.match(r'^(skip ad|ad \d+|advertisement|\d+ seconds?)$', lower_line):
+            continue
+        
+        # Detect "Read Next" or similar inline related content
+        if re.match(r'^read next:', lower_line, re.IGNORECASE):
+            # Skip this line and the next 2-3 lines (usually the related article title/link)
+            skip_until_content = 3
+            continue
+        
+        # Detect "Related articles" or similar sections
+        related_patterns = [
+            r'^#+\s*(related articles?|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)',
+            r'^(related articles?|related|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)$'
+        ]
+        
+        if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in related_patterns):
             in_related_section = True
             continue
         
@@ -121,18 +240,52 @@ def _clean_extracted_content(content: str) -> str:
         if in_related_section:
             continue
         
-        # Skip common footer/navigation patterns
+        # Detect common clutter sections (policies, sharing, consent, etc.)
+        clutter_headings = [
+            'privacy policy', 'cookie policy', 'terms of service', 'advertising policy',
+            'consent preferences', 'manage consent', 'privacy settings',
+            'share this', 'share article', 'follow us', 'newsletter', 'subscribe',
+            'sign up', 'get updates', 'stay connected', 'join our',
+            'cookies', 'advertising', 'your privacy choices',
+            'opt out of sale', 'targeted advertising', 'switch label'
+        ]
+        
+        if any(heading in lower_line for heading in clutter_headings):
+            # Check if it's a heading or standalone text
+            if re.match(r'^#+\s*', stripped) or len(stripped) < 80:
+                in_clutter_section = True
+                continue
+        
+        # Exit clutter section when we hit a substantial heading that's not clutter
+        if in_clutter_section and re.match(r'^#{1,3}\s+', stripped) and len(stripped) > 20:
+            # Check if this is still a clutter heading
+            if not any(heading in lower_line for heading in clutter_headings):
+                in_clutter_section = False
+        
+        if in_clutter_section:
+            continue
+        
+        # Skip common sharing/social patterns
         skip_patterns = [
             r'^\[.*\]\(/resources\?author=',  # Author links
             r'^\[.*\]\(/resources/tag/',       # Tag links
             r'^\[!\[\].*\]\(/resources/',      # Related article image links
             r'^\[.*\]\(/resources/[^)]+\)$',   # Generic resource links
-            r'^Share this',
-            r'^Subscribe',
-            r'^Newsletter',
+            r'^(share|email|print|facebook|twitter|linkedin|copy link|whatsapp|reddit|pinterest)$',  # Sharing buttons
+            r'^\*\*(share|email|print|facebook|twitter|linkedin|copy link)\*\*$',  # Bold sharing buttons
+            r'^\[(share|email|print|facebook|twitter|linkedin|copy link)\]',  # Link sharing buttons
         ]
         
         if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in skip_patterns):
+            continue
+        
+        # Skip standalone social media/sharing text
+        standalone_skip = [
+            'share', 'email', 'print', 'facebook', 'twitter', 'linkedin',
+            'copy link', 'share this article', 'share this story', 'whatsapp',
+            'reddit', 'pinterest', 'share on facebook', 'share on twitter'
+        ]
+        if lower_line in standalone_skip:
             continue
         
         cleaned_lines.append(line)
@@ -148,7 +301,7 @@ def _clean_extracted_content(content: str) -> str:
 async def _extract_with_playwright(url: str) -> Optional[str]:
     """
     Extract content using Playwright for JavaScript-heavy sites.
-    Uses direct text extraction from the main content area instead of relying on readability.
+    Uses semantic HTML5 elements and common CMS patterns for robust extraction.
     
     Args:
         url: The URL to extract content from
@@ -190,43 +343,30 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
             timeout = 90000 if is_substack else 30000
             
             # Navigate to the page - use 'domcontentloaded' for faster loading
-            # networkidle can be too slow for some sites
             await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
             
             # For Substack, wait for specific content elements to load
             if is_substack:
                 try:
-                    # Wait for the main article content to be present
                     await page.wait_for_selector('article, .post-content, .body', timeout=10000)
                     logger.info("Substack article content loaded")
                 except:
                     logger.warning("Substack content selector not found, continuing anyway")
             
-            # Wait a bit more for any lazy-loaded content
+            # Wait for any lazy-loaded content
             await asyncio.sleep(3 if is_substack else 2)
             
-            # Remove unwanted elements before extraction
-            # For Substack, be VERY conservative - don't remove elements that might contain article content
+            # Only remove obvious non-content elements (conservative approach)
             is_substack_js = 'true' if is_substack else 'false'
             await page.evaluate(f"""
                 () => {{
                     const isSubstack = {is_substack_js};
                     
-                    // Remove script and style tags
+                    // Remove script and style tags only
                     document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
                     
-                    // Remove JSON data blocks (often in square brackets)
-                    document.querySelectorAll('*').forEach(el => {{
-                        if (el.textContent.trim().startsWith('[') &&
-                            el.textContent.includes('"type":') &&
-                            el.textContent.includes('"id":')) {{
-                            el.remove();
-                        }}
-                    }});
-                    
                     if (isSubstack) {{
-                        // For Substack, only remove very specific elements
-                        // DO NOT use broad selectors that might catch article content
+                        // Conservative cleanup for Substack
                         const unwantedSelectors = [
                             'nav:not(.post-header)',
                             'header:not(.post-header)',
@@ -234,78 +374,46 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
                             '.comments-container',
                             '.subscription-widget-wrap'
                         ];
-                        
-                        unwantedSelectors.forEach(selector => {{
-                            document.querySelectorAll(selector).forEach(el => el.remove());
-                        }});
-                    }} else {{
-                        // For non-Substack sites, use broader cleanup
-                        const unwantedSelectors = [
-                            'nav', 'header', 'footer',
-                            '.navigation', '.nav', '.menu',
-                            '.sidebar', '.related', '.comments',
-                            '.share', '.social', '.newsletter',
-                            '[class*="related"]', '[class*="share"]',
-                            '[class*="subscribe"]', '[class*="newsletter"]',
-                            '.blog-meta-item', '.blog-categories',
-                            '.blog-tags', '.author-bio',
-                            '[class*="summary-item"]', '.summary-item-list'
-                        ];
-                        
                         unwantedSelectors.forEach(selector => {{
                             document.querySelectorAll(selector).forEach(el => el.remove());
                         }});
                     }}
-                    
-                    // Remove elements containing "More useful" or similar text
-                    // Be VERY specific - only match exact phrases as standalone headings
-                    document.querySelectorAll('h3, h4, h5, h6').forEach(el => {{
-                        const text = el.textContent.toLowerCase().trim();
-                        // Only match exact phrases, not partial matches
-                        if (text === 'more useful' ||
-                            text === 'you might also like' ||
-                            text === 'related articles' ||
-                            text === 'related posts' ||
-                            text === 'related content' ||
-                            text === 'discover more' ||
-                            text === 'read next' ||
-                            text === 'more from' ||
-                            text === 'in our library') {{
-                            // Remove this heading and all following siblings
-                            let sibling = el.nextElementSibling;
-                            el.remove();
-                            while (sibling) {{
-                                const next = sibling.nextElementSibling;
-                                sibling.remove();
-                                sibling = next;
-                            }}
-                        }}
-                    }});
                 }}
             """)
             
-            # Try to find the main content area using common selectors
-            # Different selectors for different platforms
+            # Try to find main content using semantic HTML5 and CMS patterns
             if is_substack:
-                # Substack-specific selectors (in priority order)
                 content_selectors = [
-                    '.body.markup',  # Main article body in Substack
-                    'article .body',  # Article body
-                    '.post-content',  # Post content wrapper
-                    'article',  # Generic article tag
-                    '.available-content',  # Available content section
-                    'main',  # Main content area
+                    '.body.markup',
+                    'article .body',
+                    '.post-content',
+                    'article',
+                    '.available-content',
+                    'main',
                 ]
             else:
-                # Generic selectors for other sites (Squarespace, etc.)
+                # Prioritize semantic HTML5 elements and common CMS patterns
                 content_selectors = [
+                    # Semantic HTML5
+                    'article[role="article"]',
                     'article',
+                    'main[role="main"]',
                     'main',
                     '[role="main"]',
-                    '.blog-item-content',
-                    '.sqs-block-content',
-                    '#page',
-                    '.page-content'
+                    
+                    # Common CMS patterns (WordPress, Medium, Ghost, etc.)
+                    '.post-content', '.entry-content', '.article-content',
+                    '.content-body', '.article-body', '.post-body',
+                    
+                    # IndieWire and similar news sites
+                    '.article__body', '.story-body', '.news-article',
+                    
+                    # Squarespace
+                    '.blog-item-content', '.sqs-block-content',
+                    
+                    # Generic fallbacks
+                    '#content', '.content', '#main-content', '.main-content',
+                    '#page', '.page-content'
                 ]
             
             extracted_html = None
@@ -320,9 +428,67 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
                 except:
                     continue
             
-            # If no selector worked, get the full body
+            # If no selector worked, try to find the largest content container
             if not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH:
-                logger.info("Using full body content as fallback")
+                logger.info("Semantic selectors failed, searching for largest content container")
+                try:
+                    # Use JavaScript to find the element with the most text content
+                    # This works for sites with custom/obfuscated class names
+                    extracted_html = await page.evaluate("""
+                        () => {
+                            // Find all divs and sections
+                            const elements = Array.from(document.querySelectorAll('div, section'));
+                            
+                            // Filter out elements that are likely navigation/ads/footer
+                            const filtered = elements.filter(el => {
+                                const classes = el.className.toLowerCase();
+                                const id = el.id.toLowerCase();
+                                const combined = classes + ' ' + id;
+                                
+                                // Skip obvious non-content elements
+                                if (combined.includes('nav') ||
+                                    combined.includes('header') ||
+                                    combined.includes('footer') ||
+                                    combined.includes('sidebar') ||
+                                    combined.includes('menu') ||
+                                    combined.includes('ad-') ||
+                                    combined.includes('cookie') ||
+                                    combined.includes('consent')) {
+                                    return false;
+                                }
+                                return true;
+                            });
+                            
+                            // Find element with most paragraph content (better indicator of article text)
+                            let maxScore = 0;
+                            let bestElement = null;
+                            
+                            for (const el of filtered) {
+                                const textLength = el.innerText?.length || 0;
+                                const paragraphs = el.querySelectorAll('p').length;
+                                
+                                // Score based on text length and paragraph count
+                                // Paragraphs are a strong indicator of article content
+                                const score = textLength + (paragraphs * 200);
+                                
+                                if (score > maxScore && textLength > 500) {
+                                    maxScore = score;
+                                    bestElement = el;
+                                }
+                            }
+                            
+                            return bestElement ? bestElement.innerHTML : null;
+                        }
+                    """)
+                    
+                    if extracted_html and len(extracted_html) > MIN_CONTENT_LENGTH:
+                        logger.info(f"Found content using largest container heuristic ({len(extracted_html)} chars)")
+                except Exception as e:
+                    logger.warning(f"Largest container heuristic failed: {str(e)}")
+            
+            # Last resort: get the full body
+            if not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH:
+                logger.info("Using full body content as final fallback")
                 body = await page.query_selector('body')
                 if body:
                     extracted_html = await body.inner_html()
@@ -340,7 +506,7 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
                 strip=['script', 'style', 'nav', 'header', 'footer']
             )
             
-            # Post-process to remove any remaining JSON blocks and unwanted patterns
+            # Post-process to remove any remaining clutter
             markdown_content = _clean_extracted_content(markdown_content)
             
             logger.info(f"Playwright successfully extracted {len(markdown_content)} characters from {url}")
@@ -494,25 +660,40 @@ async def extract_content(url: str, extraction_type: str = "fast") -> tuple[Opti
         doc = Document(response.text)
         html_content = doc.summary()
         
-        # Check if we got enough content
+        # Check if we got enough content AND it's not just ad/redirect text
         if html_content and len(html_content) >= MIN_CONTENT_LENGTH:
-            # Good content from readability, convert to markdown
+            # Convert to markdown first to check content quality
             markdown_content = md(
                 html_content,
                 heading_style="ATX",
                 strip=['script', 'style']
             )
             
-            if markdown_content:
-                logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using readability (fast mode)")
-                return markdown_content, "fast"
+            # Check for ad/redirect patterns that indicate bad extraction
+            lower_content = markdown_content.lower()
+            is_ad_content = (
+                'you will be redirected' in lower_content or
+                'redirecting' in lower_content or
+                markdown_content.strip().startswith('Skip Ad') or
+                (len(markdown_content) < 500 and 'advertisement' in lower_content)
+            )
+            
+            if markdown_content and not is_ad_content:
+                # Clean the content
+                markdown_content = _clean_extracted_content(markdown_content)
+                
+                # Verify we still have substantial content after cleaning
+                if len(markdown_content) >= 500:
+                    logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using readability (fast mode)")
+                    return markdown_content, "fast"
+                else:
+                    logger.warning(f"Readability content too short after cleaning ({len(markdown_content)} chars), trying Playwright")
+            else:
+                logger.warning(f"Readability extracted ad/redirect content from {url}, trying Playwright")
+        else:
+            logger.warning(f"Readability extracted insufficient content ({len(html_content) if html_content else 0} chars) from {url}, trying Playwright")
         
-        # If we got here, readability didn't extract enough content
-        # This likely means the site uses JavaScript rendering
-        logger.warning(f"Readability extracted insufficient content ({len(html_content) if html_content else 0} chars) from {url}, trying Playwright")
-        
-        # Second attempt: Use Playwright for JavaScript rendering
-        # Note: _extract_with_playwright now returns markdown directly
+        # Second attempt: Use Playwright for JavaScript rendering or better content extraction
         markdown_content = await _extract_with_playwright(url)
         
         if markdown_content:

@@ -1040,10 +1040,14 @@ async def upload_extracted_content(
                 }
             )
         else:
+            # Clean the content before storing it
+            from ..services.extraction import _clean_extracted_content
+            cleaned_content = _clean_extracted_content(request.content)
+            
             # Update item with extracted content and mark as processing
             # Use "processing" instead of "pending" to avoid infinite loop in local extraction queue
             update_fields = {
-                "archived_text": request.content,
+                "archived_text": cleaned_content,
                 "processing_status": "processing",
                 "processing_error": None,
                 "updated_at": datetime.utcnow()
