@@ -83,6 +83,7 @@ def _clean_extracted_content(content: str) -> str:
     cleaned_lines = []
     in_json_block = False
     in_related_section = False
+    related_section_skip_count = 0  # Track how many lines we've skipped in related section
     in_clutter_section = False
     in_navigation = False
     in_consent_section = False
@@ -247,10 +248,10 @@ def _clean_extracted_content(content: str) -> str:
         if in_author_bio:
             continue
         
-        # Detect "Read More" sections
+        # Detect "Read More" sections - including with colons
         read_more_patterns = [
             r'^#+\s*(read more|more reading|further reading|related reading)',
-            r'^(read more|more reading|further reading|related reading)$'
+            r'^(read more|more reading|further reading|related reading):?$'
         ]
         
         if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in read_more_patterns):
@@ -293,19 +294,36 @@ def _clean_extracted_content(content: str) -> str:
             skip_until_content = 3
             continue
         
-        # Detect "Related articles" or similar sections
+        # Detect "Related articles" or similar sections - ONLY trigger on headings
+        # This makes detection more precise and prevents false positives
         related_patterns = [
-            r'^#+\s*(related articles?|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)',
-            r'^(related articles?|related|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)$'
+            r'^#{1,6}\s*(related articles?|related stories|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)',
         ]
         
         if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in related_patterns):
             in_related_section = True
+            related_section_skip_count = 0
             continue
         
-        # Skip everything in the related section
+        # Exit related section when we encounter:
+        # 1. A major heading (H1-H3) - indicates new section
+        # 2. A long paragraph (>200 chars) - indicates main content resumed
+        # 3. After skipping more than 10 consecutive lines - related sections are usually short
         if in_related_section:
-            continue
+            # Check exit conditions
+            is_major_heading = re.match(r'^#{1,3}\s+\w+', stripped)
+            is_long_paragraph = len(stripped) > 200 and not stripped.startswith('#')
+            too_many_skipped = related_section_skip_count > 10
+            
+            if is_major_heading or is_long_paragraph or too_many_skipped:
+                # Exit related section and process this line normally
+                in_related_section = False
+                related_section_skip_count = 0
+                # Don't continue - let this line be processed normally
+            else:
+                # Still in related section, skip this line
+                related_section_skip_count += 1
+                continue
         
         # Detect common clutter sections (policies, sharing, consent, etc.)
         clutter_headings = [
@@ -411,11 +429,8 @@ def _clean_extracted_content(content: str) -> str:
             # This is likely an author name heading (FirstName LastName)
             continue
         
-        # Skip "Related Stories" heading and everything after it
-        if re.match(r'^#{1,6}\s*related stories', stripped, re.IGNORECASE) or \
-           stripped.lower() == 'related stories':
-            in_related_section = True
-            continue
+        # This duplicate "Related Stories" check is now handled above with better logic
+        # Removed to avoid redundancy
         
         cleaned_lines.append(line)
     
