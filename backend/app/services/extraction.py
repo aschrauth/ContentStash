@@ -294,17 +294,6 @@ def _clean_extracted_content(content: str) -> str:
             skip_until_content = 3
             continue
         
-        # Detect "Related articles" or similar sections - ONLY trigger on headings
-        # This makes detection more precise and prevents false positives
-        related_patterns = [
-            r'^#{1,6}\s*(related articles?|related stories|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)',
-        ]
-        
-        if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in related_patterns):
-            in_related_section = True
-            related_section_skip_count = 0
-            continue
-        
         # Exit related section when we encounter:
         # 1. A major heading (H1-H3) - indicates new section
         # 2. A long paragraph (>200 chars) - indicates main content resumed
@@ -324,6 +313,18 @@ def _clean_extracted_content(content: str) -> str:
                 # Still in related section, skip this line
                 related_section_skip_count += 1
                 continue
+        
+        # Detect "Related articles" or similar sections - ONLY trigger on headings
+        # This makes detection more precise and prevents false positives
+        # IMPORTANT: This check must happen BEFORE we add the line to cleaned_lines
+        related_patterns = [
+            r'^#{1,6}\s*(related articles?|related stories|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)',
+        ]
+        
+        if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in related_patterns):
+            in_related_section = True
+            related_section_skip_count = 0
+            continue
         
         # Detect common clutter sections (policies, sharing, consent, etc.)
         clutter_headings = [
