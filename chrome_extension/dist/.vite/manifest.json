@@ -9,31 +9,31 @@
     "file": "assets/storage-B2v7XTAb.js",
     "name": "storage"
   },
-  "_youtube-extractor-BQyGgTWY.js": {
-    "file": "assets/youtube-extractor-BQyGgTWY.js",
+  "_youtube-extractor-CQHK5C-0.js": {
+    "file": "assets/youtube-extractor-CQHK5C-0.js",
     "name": "youtube-extractor"
   },
   "content-script.ts-loader.js": {
-    "file": "assets/content-script.ts-loader-CmL8i075.js",
+    "file": "assets/content-script.ts-loader-DhV2S0jn.js",
     "src": "content-script.ts-loader.js"
   },
   "src/background/service-worker.ts": {
-    "file": "assets/service-worker.ts-DArxffCq.js",
+    "file": "assets/service-worker.ts-D9aRWEnB.js",
     "name": "service-worker.ts",
     "src": "src/background/service-worker.ts",
     "isEntry": true,
     "imports": [
       "_storage-B2v7XTAb.js",
-      "_youtube-extractor-BQyGgTWY.js"
+      "_youtube-extractor-CQHK5C-0.js"
     ]
   },
   "src/content/content-script.ts": {
-    "file": "assets/content-script.ts-Ctc2Ez0B.js",
+    "file": "assets/content-script.ts-eVZBrYf0.js",
     "name": "content-script.ts",
     "src": "src/content/content-script.ts",
     "isEntry": true,
     "imports": [
-      "_youtube-extractor-BQyGgTWY.js"
+      "_youtube-extractor-CQHK5C-0.js"
     ]
   },
   "src/popup/popup.html": {

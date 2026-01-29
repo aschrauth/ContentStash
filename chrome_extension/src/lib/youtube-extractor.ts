@@ -35,7 +35,10 @@ export interface YouTubeExtractionResult {
  */
 export async function extractYouTubeTranscript(videoId: string): Promise<YouTubeExtractionResult | null> {
   try {
+    console.log('='.repeat(80));
+    console.log(`[YouTube Extractor] EXTRACTION PATH: youtube-extractor.ts`);
     console.log(`[YouTube Extractor] Starting extraction for video: ${videoId}`);
+    console.log('='.repeat(80));
     
     // Step 1: Fetch the YouTube watch page
     const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
@@ -178,20 +181,40 @@ function parseTranscriptXml(xml: string): TranscriptSegment[] {
   const segments: TranscriptSegment[] = [];
   
   try {
+    console.log('[YouTube Extractor] Parsing transcript XML, length:', xml.length);
     const parser = new DOMParser();
     const doc = parser.parseFromString(xml, 'text/xml');
     
     const textNodes = doc.querySelectorAll('text');
+    console.log('[YouTube Extractor] Found text nodes:', textNodes.length);
     
-    textNodes.forEach(node => {
+    textNodes.forEach((node, index) => {
       const start = parseFloat(node.getAttribute('start') || '0');
       const duration = parseFloat(node.getAttribute('dur') || '0');
       const text = decodeHtmlEntities(node.textContent || '');
       
+      // Log first 3 segments in detail
+      if (index < 3) {
+        console.log(`[YouTube Extractor] Segment ${index} RAW text:`, JSON.stringify(text));
+        console.log(`[YouTube Extractor] Segment ${index} has newlines:`, text.includes('\n'));
+      }
+      
       if (text.trim()) {
-        segments.push({ start, duration, text: text.trim() });
+        // Replace internal newlines and multiple spaces with single space, then trim
+        // This matches server-side .strip() behavior
+        const cleanText = text.replace(/\s+/g, ' ').trim();
+        
+        // Log first 3 segments after cleaning
+        if (index < 3) {
+          console.log(`[YouTube Extractor] Segment ${index} AFTER normalization:`, JSON.stringify(cleanText));
+          console.log(`[YouTube Extractor] Segment ${index} still has newlines:`, cleanText.includes('\n'));
+        }
+        
+        segments.push({ start, duration, text: cleanText });
       }
     });
+    
+    console.log('[YouTube Extractor] Total segments parsed:', segments.length);
     
   } catch (error) {
     console.error('[YouTube Extractor] Error parsing XML:', error);
@@ -210,87 +233,88 @@ function decodeHtmlEntities(text: string): string {
 }
 
 /**
- * Format seconds as HH:MM:SS or MM:SS
- */
-function formatTimestamp(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  
-  return `${minutes}:${secs.toString().padStart(2, '0')}`;
-}
-
-/**
- * Format the transcript as Markdown with metadata and timestamps
+ * Format the transcript as plain text paragraphs (NO metadata header)
+ * Metadata should be sent separately when uploading to backend
  */
 function formatTranscriptAsMarkdown(
-  title: string,
-  author: string,
-  videoId: string,
-  lengthSeconds: number,
+  _title: string,
+  _author: string,
+  _videoId: string,
+  _lengthSeconds: number,
   segments: TranscriptSegment[]
 ): string {
+  console.log('[YouTube Extractor] Formatting transcript with', segments.length, 'segments');
   const lines: string[] = [];
   
-  // Add metadata header
-  lines.push(`# ${title}`);
-  lines.push('');
-  lines.push(`**Channel:** ${author}`);
-  lines.push(`**Video ID:** ${videoId}`);
-  lines.push(`**Duration:** ${formatTimestamp(lengthSeconds)}`);
-  lines.push(`**URL:** https://www.youtube.com/watch?v=${videoId}`);
-  lines.push('');
-  lines.push('---');
-  lines.push('');
-  lines.push('## Transcript');
-  lines.push('');
-  
-  // Group segments into paragraphs
+  // Group segments into paragraphs (NO metadata header - matches server-side behavior)
   let currentParagraph: string[] = [];
-  let paragraphStartTime = 0;
   let lastEndTime = 0;
+  let paragraphCount = 0;
   
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
+    
+    // Skip empty segments entirely - don't process them at all
+    if (!segment.text) {
+      continue;
+    }
+    
     const timeSinceLastSegment = segment.start - lastEndTime;
     
     // Start a new paragraph if:
     // 1. This is the first segment
     // 2. There's a pause > 2 seconds
     // 3. Current paragraph is getting too long (> 500 chars)
-    const shouldStartNewParagraph = 
+    // Match server-side logic: >2 second gap OR >500 chars
+    const currentLength = currentParagraph.join(' ').length;
+    const shouldStartNewParagraph =
       currentParagraph.length === 0 ||
       timeSinceLastSegment > 2.0 ||
-      currentParagraph.join(' ').length > 500;
+      currentLength > 500;
     
     if (shouldStartNewParagraph && currentParagraph.length > 0) {
-      // Write out the current paragraph with timestamp
-      const timestamp = formatTimestamp(paragraphStartTime);
-      lines.push(`**[${timestamp}]** ${currentParagraph.join(' ')}`);
+      // Write out the current paragraph without timestamp
+      const paragraphText = currentParagraph.join(' ');
+      
+      // Log first 3 paragraphs
+      if (paragraphCount < 3) {
+        console.log(`[YouTube Extractor] Paragraph ${paragraphCount} length:`, paragraphText.length);
+        console.log(`[YouTube Extractor] Paragraph ${paragraphCount} preview:`, paragraphText.substring(0, 100));
+        console.log(`[YouTube Extractor] Paragraph ${paragraphCount} has newlines:`, paragraphText.includes('\n'));
+      }
+      
+      lines.push(paragraphText);
       lines.push('');
       currentParagraph = [];
+      paragraphCount++;
     }
     
-    if (currentParagraph.length === 0) {
-      paragraphStartTime = segment.start;
+    // Log paragraph building decisions for first few segments
+    if (i < 5) {
+      console.log(`[YouTube Extractor] Segment ${i}: time gap=${timeSinceLastSegment.toFixed(2)}s, currentLength=${currentLength}, shouldStartNew=${shouldStartNewParagraph}`);
     }
     
+    // Add text to paragraph and update last end time
     currentParagraph.push(segment.text);
     lastEndTime = segment.start + segment.duration;
   }
   
   // Write out the final paragraph
   if (currentParagraph.length > 0) {
-    const timestamp = formatTimestamp(paragraphStartTime);
-    lines.push(`**[${timestamp}]** ${currentParagraph.join(' ')}`);
+    const paragraphText = currentParagraph.join(' ');
+    console.log(`[YouTube Extractor] Final paragraph ${paragraphCount} length:`, paragraphText.length);
+    lines.push(paragraphText);
     lines.push('');
+    paragraphCount++;
   }
   
-  return lines.join('\n');
+  const finalMarkdown = lines.join('\n');
+  console.log('[YouTube Extractor] Total paragraphs created:', paragraphCount);
+  console.log('[YouTube Extractor] Final markdown length:', finalMarkdown.length);
+  console.log('[YouTube Extractor] Final markdown preview (first 200 chars):', finalMarkdown.substring(0, 200));
+  console.log('[YouTube Extractor] Final markdown has excessive newlines:', /\n{3,}/.test(finalMarkdown));
+  
+  return finalMarkdown;
 }
 
 /**

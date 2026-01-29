@@ -488,20 +488,6 @@ async function extractWithReadability(isSubstack: boolean = false): Promise<stri
   return extractSimpleContent();
 }
 /**
- * Format duration in seconds as HH:MM:SS or MM:SS
- */
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  return `${minutes}:${secs.toString().padStart(2, '0')}`;
-}
-
-/**
  * Format timestamp from seconds to MM:SS
  */
 function formatTimestamp(seconds: number): string {
@@ -512,51 +498,96 @@ function formatTimestamp(seconds: number): string {
 
 /**
  * Format YouTube metadata only (when transcript is not available)
+ * Returns just a placeholder message (NO metadata header)
  */
-function formatMetadataOnly(metadata: any): string {
-  const duration = formatDuration(metadata.lengthSeconds);
-  return `# ${metadata.title}
-
-**Channel:** ${metadata.author}
-**Video ID:** ${metadata.videoId}
-**Duration:** ${duration}
-**URL:** https://www.youtube.com/watch?v=${metadata.videoId}
-
----
-
-## Transcript
-
-[Transcript not available or extraction failed]
-`;
+function formatMetadataOnly(_metadata: any): string {
+  return '[Transcript not available or extraction failed]';
 }
 
 /**
- * Format transcript with metadata as markdown
+ * Format transcript as plain text paragraphs (NO metadata header)
+ * Metadata should be sent separately when uploading to backend
+ * Groups segments into readable paragraphs without timestamps
  */
-function formatTranscriptMarkdown(metadata: any, lines: Array<{ time: string; text: string }>): string {
-  const duration = formatDuration(metadata.lengthSeconds);
-  let markdown = `# ${metadata.title}
+function formatTranscriptMarkdown(_metadata: any, segments: Array<{ time: string; text: string; seconds: number; durationSeconds: number }>): string {
+  console.log('[Content Script] Formatting transcript with', segments.length, 'segments');
+  let markdown = '';
 
-**Channel:** ${metadata.author}
-**Video ID:** ${metadata.videoId}
-**Duration:** ${duration}
-**URL:** https://www.youtube.com/watch?v=${metadata.videoId}
-
----
-
-## Transcript
-
-`;
-
-  for (const line of lines) {
-    markdown += `**[${line.time}]** ${line.text}\n\n`;
+  // Group segments into paragraphs for better readability (NO metadata header - matches server-side behavior)
+  let currentParagraph: string[] = [];
+  let lastEndSeconds = 0;
+  let paragraphCount = 0;
+  
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    
+    // Skip empty segments entirely - don't process them at all
+    if (!segment.text) {
+      continue;
+    }
+    
+    const timeSinceLastSegment = segment.seconds - lastEndSeconds;
+    
+    // Start a new paragraph if:
+    // 1. This is the first segment
+    // 2. There's a pause > 2 seconds
+    // 3. Current paragraph is getting too long (> 500 chars)
+    // Match server-side logic: >2 second gap OR >500 chars
+    const currentLength = currentParagraph.join(' ').length;
+    const shouldStartNewParagraph =
+      currentParagraph.length === 0 ||
+      timeSinceLastSegment > 2.0 ||
+      currentLength > 500;
+    
+    if (shouldStartNewParagraph && currentParagraph.length > 0) {
+      // Write out the current paragraph without timestamp
+      const paragraphText = currentParagraph.join(' ');
+      
+      // Log first 3 paragraphs
+      if (paragraphCount < 3) {
+        console.log(`[Content Script] Paragraph ${paragraphCount} length:`, paragraphText.length);
+        console.log(`[Content Script] Paragraph ${paragraphCount} preview:`, paragraphText.substring(0, 100));
+        console.log(`[Content Script] Paragraph ${paragraphCount} has newlines:`, paragraphText.includes('\n'));
+      }
+      
+      markdown += `${paragraphText}\n\n`;
+      currentParagraph = [];
+      paragraphCount++;
+    }
+    
+    // Log paragraph building decisions for first few segments
+    if (i < 5) {
+      console.log(`[Content Script] Segment ${i}: time gap=${timeSinceLastSegment.toFixed(2)}s, currentLength=${currentLength}, shouldStartNew=${shouldStartNewParagraph}`);
+    }
+    
+    // Add text to paragraph and update last end time
+    currentParagraph.push(segment.text);
+    lastEndSeconds = segment.seconds + segment.durationSeconds;
   }
+  
+  // Write out the final paragraph
+  if (currentParagraph.length > 0) {
+    const paragraphText = currentParagraph.join(' ');
+    console.log(`[Content Script] Final paragraph ${paragraphCount} length:`, paragraphText.length);
+    markdown += `${paragraphText}\n\n`;
+    paragraphCount++;
+  }
+
+  console.log('[Content Script] Total paragraphs created:', paragraphCount);
+  console.log('[Content Script] Final markdown length:', markdown.length);
+  console.log('[Content Script] Final markdown preview (first 200 chars):', markdown.substring(0, 200));
+  console.log('[Content Script] Final markdown has excessive newlines:', /\n{3,}/.test(markdown));
 
   return markdown;
 }
 
 async function extractYouTubeContent(): Promise<string> {
   try {
+    console.log('='.repeat(80));
+    console.log('[Content Script] EXTRACTION PATH: content-script.ts');
+    console.log('[Content Script] Requesting YouTube extraction from background script');
+    console.log('='.repeat(80));
+    
     // Get metadata and transcript XML from background script
     const response = await chrome.runtime.sendMessage({
       type: 'EXTRACT_YOUTUBE_FROM_TAB'
@@ -574,26 +605,51 @@ async function extractYouTubeContent(): Promise<string> {
 
     // Check if we got transcript XML from MAIN world
     if (response.transcriptXml && response.transcriptXml.length > 0) {
+      console.log('[Content Script] Received transcript XML, length:', response.transcriptXml.length);
+      console.log('[Content Script] Parsing XML...');
       // Parse the XML - YouTube uses <p> tags with t (time) and d (duration) attributes
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(response.transcriptXml, 'text/xml');
       const textElements = xmlDoc.querySelectorAll('p');
       
+      console.log(`[Content Script] Found ${textElements.length} transcript segments`);
+      
       if (textElements.length > 0) {
-        const transcriptLines: Array<{ time: string; text: string }> = [];
+        const transcriptLines: Array<{ time: string; text: string; seconds: number; durationSeconds: number }> = [];
         
-        for (const element of Array.from(textElements)) {
+        for (const [index, element] of Array.from(textElements).entries()) {
           const start = element.getAttribute('t'); // time in milliseconds
+          const duration = element.getAttribute('d'); // duration in milliseconds
           const text = element.textContent;
+          
+          // Log first 3 segments in detail
+          if (index < 3) {
+            console.log(`[Content Script] Segment ${index} RAW text:`, JSON.stringify(text));
+            console.log(`[Content Script] Segment ${index} has newlines:`, text?.includes('\n'));
+          }
           
           if (start && text) {
             const seconds = parseFloat(start) / 1000; // Convert ms to seconds
+            const durationSeconds = duration ? parseFloat(duration) / 1000 : 0; // Convert ms to seconds
             const time = formatTimestamp(seconds);
-            transcriptLines.push({ time, text: text.trim() });
+            // Replace internal newlines and multiple spaces with single space, then trim
+            // This matches server-side .strip() behavior
+            const cleanText = text.replace(/\s+/g, ' ').trim();
+            
+            // Log first 3 segments after cleaning
+            if (index < 3) {
+              console.log(`[Content Script] Segment ${index} AFTER normalization:`, JSON.stringify(cleanText));
+              console.log(`[Content Script] Segment ${index} still has newlines:`, cleanText.includes('\n'));
+            }
+            
+            // Store the CLEANED text in the segment
+            transcriptLines.push({ time, text: cleanText, seconds, durationSeconds });
           }
         }
         
         if (transcriptLines.length > 0) {
+          console.log('[Content Script] Total transcript lines:', transcriptLines.length);
+          console.log('[Content Script] Now using paragraph grouping format');
           const content = formatTranscriptMarkdown(metadata, transcriptLines);
           return content;
         }
