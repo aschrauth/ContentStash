@@ -8,6 +8,7 @@ The iOS Shortcut allows you to:
 - Save URLs from any app using the Share Sheet
 - Send URLs directly to your ContentStash server
 - Choose extraction type (Fast, Complete, or Local)
+- Automatically fetch metadata (title, description, thumbnail) from URLs
 
 ## Prerequisites
 
@@ -38,23 +39,14 @@ The iOS Shortcut allows you to:
 - Variable Name: **URL**
 - Value: **Shortcut Input**
 
-#### Action 3: Ask for Input
-- Prompt: **"Title for this item?"**
-- Input Type: **Text**
-- Default Answer: Leave empty
-
-#### Action 4: Set Variable
-- Variable Name: **Title**
-- Value: **Provided Input**
-
-#### Action 5: Choose from Menu
+#### Action 3: Choose from Menu
 - Prompt: **"Extraction Type"**
 - Options:
   - Fast (Server)
   - Complete (Server)
   - Local (Browser)
 
-#### Action 6-8: For each menu option, add "Get Contents of URL"
+#### Action 4-6: For each menu option, add "Get Contents of URL"
 
 **For "Fast (Server)" option:**
 ```
@@ -66,7 +58,6 @@ Headers:
 Request Body: JSON
 {
   "url": "[URL Variable]",
-  "title": "[Title Variable]",
   "extraction_type": "fast"
 }
 ```
@@ -81,7 +72,6 @@ Headers:
 Request Body: JSON
 {
   "url": "[URL Variable]",
-  "title": "[Title Variable]",
   "extraction_type": "complete"
 }
 ```
@@ -96,14 +86,13 @@ Headers:
 Request Body: JSON
 {
   "url": "[URL Variable]",
-  "title": "[Title Variable]",
   "extraction_type": "local"
 }
 ```
 
-#### Action 9: Show Notification
+#### Action 7: Show Notification
 - Title: **"Saved to ContentStash"**
-- Body: **"[Title Variable]"**
+- Body: **"URL saved successfully"**
 
 ### Step 3: Configure the Shortcut
 
@@ -124,9 +113,9 @@ In each "Get Contents of URL" action:
 1. Open a webpage you want to save
 2. Tap the **Share** button
 3. Scroll down and tap **"Save to ContentStash"**
-4. Enter a title (or use default)
-5. Choose extraction type
-6. Done! You'll see a notification
+4. Choose extraction type
+5. Done! The title and metadata will be automatically fetched from the URL
+6. You'll see a notification when saved
 
 ### From Other Apps
 1. Find content with a shareable URL (articles, videos, etc.)
@@ -134,13 +123,29 @@ In each "Get Contents of URL" action:
 3. Select **"Save to ContentStash"**
 4. Follow the prompts
 
-## Advanced: Automatic Title Extraction
+## Advanced: Manual Title Entry (Optional)
 
-To automatically extract the page title instead of asking:
+If you prefer to manually enter titles instead of automatic extraction:
 
-Replace Action 3 (Ask for Input) with:
-- **Get Name of URL**
-- Then use that as the Title variable
+Add these actions after Action 2 (Set Variable for URL):
+1. **Ask for Input**
+   - Prompt: "Title for this item? (Leave empty for auto-fetch)"
+   - Input Type: Text
+   - Default Answer: Leave empty
+2. **Set Variable**
+   - Variable Name: Title
+   - Value: Provided Input
+
+Then in each "Get Contents of URL" action, add the title field to the JSON:
+```json
+{
+  "url": "[URL Variable]",
+  "title": "[Title Variable]",
+  "extraction_type": "fast"
+}
+```
+
+**Note**: If you provide an empty title, the server will automatically fetch it from the URL's metadata.
 
 ## Troubleshooting
 

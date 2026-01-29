@@ -7,7 +7,7 @@ from bson import ObjectId
 class SavedItemBase(BaseModel):
     """Base saved item schema with common fields"""
     url: Optional[str] = None
-    title: str = Field(..., max_length=500)
+    title: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = Field(None, max_length=5000)
     image_url: Optional[str] = None
     favicon_url: Optional[str] = None

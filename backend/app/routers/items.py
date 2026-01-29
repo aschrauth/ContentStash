@@ -233,6 +233,7 @@ async def create_item(
     Create a new saved item.
     
     - Validates that either URL or content is provided
+    - If URL is provided without title, automatically fetches metadata (title, description, image)
     - Sets processing_status to "pending"
     - Sets owner_id from current user
     - Schedules background processing if URL is provided
@@ -248,6 +249,48 @@ async def create_item(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Either URL or title must be provided"
         )
+    
+    # If URL is provided but title is missing, fetch metadata
+    if item_data.url and not item_data.title:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Title not provided for URL {item_data.url}, fetching metadata...")
+        
+        try:
+            # Check if this is a YouTube URL and handle it specially
+            if is_youtube_url(item_data.url):
+                logger.info(f"Fetching YouTube metadata for: {item_data.url}")
+                youtube_metadata = get_youtube_preview_metadata(item_data.url, settings.youtube_api_key)
+                
+                if youtube_metadata:
+                    item_data.title = youtube_metadata.get('title') or item_data.url
+                    if not item_data.description:
+                        item_data.description = youtube_metadata.get('description')
+                    if not item_data.image_url:
+                        item_data.image_url = youtube_metadata.get('thumbnail')
+                    if not item_data.favicon_url:
+                        item_data.favicon_url = 'https://www.youtube.com/favicon.ico'
+                    logger.info(f"✓ Successfully fetched YouTube metadata: {item_data.title}")
+                else:
+                    logger.warning(f"✗ YouTube metadata extraction failed, using URL as title")
+                    item_data.title = item_data.url
+            else:
+                # For non-YouTube URLs, use generic metadata fetching
+                logger.info(f"Fetching generic metadata for: {item_data.url}")
+                metadata = fetch_metadata(item_data.url)
+                
+                item_data.title = metadata.get('title') or item_data.url
+                if not item_data.description:
+                    item_data.description = metadata.get('description')
+                if not item_data.image_url:
+                    item_data.image_url = metadata.get('image_url')
+                if not item_data.favicon_url:
+                    item_data.favicon_url = metadata.get('favicon_url')
+                logger.info(f"✓ Successfully fetched metadata: {item_data.title}")
+        except Exception as e:
+            logger.error(f"Error fetching metadata for {item_data.url}: {str(e)}")
+            # Fallback to using URL as title if metadata fetch fails
+            item_data.title = item_data.url
     
     # Create item document
     now = datetime.utcnow()
