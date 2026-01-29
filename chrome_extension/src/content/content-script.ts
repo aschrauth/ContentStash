@@ -701,9 +701,63 @@ function extractSimpleContent(): string {
   return document.body.textContent?.trim() || '';
 }
 
+/**
+ * Extract metadata from the current page (Open Graph, meta tags, etc.)
+ */
+function extractPageMetadata(): {
+  title?: string;
+  description?: string;
+  image?: string;
+} {
+  const metadata: {
+    title?: string;
+    description?: string;
+    image?: string;
+  } = {};
+
+  // Try Open Graph title first
+  const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute('content');
+  if (ogTitle) {
+    metadata.title = ogTitle;
+  } else {
+    // Fallback to page title
+    const titleElement = document.querySelector('title');
+    if (titleElement?.textContent) {
+      metadata.title = titleElement.textContent.trim();
+    }
+  }
+
+  // Try Open Graph description
+  const ogDescription = document.querySelector('meta[property="og:description"]')?.getAttribute('content');
+  if (ogDescription) {
+    metadata.description = ogDescription;
+  } else {
+    // Fallback to meta description
+    const metaDescription = document.querySelector('meta[name="description"]')?.getAttribute('content');
+    if (metaDescription) {
+      metadata.description = metaDescription;
+    }
+  }
+
+  // Try Open Graph image
+  const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+  if (ogImage) {
+    metadata.image = ogImage;
+  } else {
+    // Fallback to Twitter image
+    const twitterImage = document.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
+    if (twitterImage) {
+      metadata.image = twitterImage;
+    }
+  }
+
+  return metadata;
+}
+
 // Export for use in injected scripts
 (window as any).ContentStashExtractor = {
   extractPageContent,
   extractYouTubeContent,
   extractSimpleContent,
+  extractPageMetadata,
 };

@@ -4,6 +4,9 @@ package-lock.json
 .next
 .env.local
 
+# Build artifacts
+chrome_extension/dist/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -123,6 +123,17 @@ async function processGenericItem(item: SavedItem) {
   try {
     console.log(`[Generic] Processing page: ${item.url}`);
     
+    // Check if metadata is missing (title looks like a URL)
+    const needsMetadata = !item.title ||
+                          item.title.startsWith('http://') ||
+                          item.title.startsWith('https://') ||
+                          !item.description ||
+                          !item.image_url;
+    
+    if (needsMetadata) {
+      console.log(`[Generic] Item ${item.id} needs metadata extraction`);
+    }
+    
     // Create a new tab in the background
     tab = await chrome.tabs.create({
       url: item.url,
@@ -149,6 +160,46 @@ async function processGenericItem(item: SavedItem) {
 
     // Wait a bit more for dynamic content
     await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Extract metadata if needed
+    if (needsMetadata) {
+      try {
+        console.log(`[Generic] Extracting metadata for item ${item.id}`);
+        const metadataResults = await chrome.scripting.executeScript({
+          target: { tabId: tab.id! },
+          func: () => {
+            // @ts-ignore - ContentStashExtractor is injected by content-script.js
+            return window.ContentStashExtractor?.extractPageMetadata();
+          },
+        });
+
+        const metadata = metadataResults[0]?.result;
+        
+        if (metadata && (metadata.title || metadata.description || metadata.image)) {
+          console.log(`[Generic] Extracted metadata:`, metadata);
+          
+          // Update item with extracted metadata
+          const updateData: any = {};
+          if (metadata.title && metadata.title !== item.title) {
+            updateData.title = metadata.title;
+          }
+          if (metadata.description && !item.description) {
+            updateData.description = metadata.description;
+          }
+          if (metadata.image && !item.image_url) {
+            updateData.image_url = metadata.image;
+          }
+          
+          if (Object.keys(updateData).length > 0) {
+            await api.updateItemMetadata(item.id, updateData);
+            console.log(`✓ [Generic] Updated metadata for item ${item.id}`);
+          }
+        }
+      } catch (metadataError) {
+        console.warn(`[Generic] Failed to extract/update metadata for item ${item.id}:`, metadataError);
+        // Continue with content extraction even if metadata fails
+      }
+    }
 
     // Call the extraction function from the content script (already injected via manifest)
     const results = await chrome.scripting.executeScript({
