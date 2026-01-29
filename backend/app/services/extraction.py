@@ -69,6 +69,7 @@ def _clean_extracted_content(content: str) -> str:
     """
     Clean extracted markdown content by removing unwanted patterns.
     Uses generalizable patterns for ads, navigation, sharing widgets, and policies.
+    Matches the comprehensive cleaning logic from the Chrome extension.
     
     Args:
         content: The markdown content to clean
@@ -85,6 +86,8 @@ def _clean_extracted_content(content: str) -> str:
     in_clutter_section = False
     in_navigation = False
     in_consent_section = False
+    in_author_bio = False
+    in_read_more_section = False
     skip_until_content = 0  # Counter to skip lines after certain patterns
     
     for i, line in enumerate(lines):
@@ -116,9 +119,15 @@ def _clean_extracted_content(content: str) -> str:
         if in_consent_section:
             continue
         
-        # Detect broken markdown link patterns: lines that are just "](url)"
+        # Detect broken markdown link patterns: lines that are just "](url)" or "text](url)"
         # These are the second half of multi-line markdown links (usually related articles)
         if re.match(r'^\]\(https?://[^)]+\)$', stripped):
+            continue
+        
+        # Detect orphaned link endings from partially removed markdown links
+        # Pattern: "Google Preferred](url)" or similar
+        if re.match(r'^[^[]*\]\(https?://[^)]+\)$', stripped):
+            # This looks like an orphaned link ending (no opening bracket)
             continue
         
         # Detect plain URLs (not markdown links) that are standalone
@@ -212,6 +221,64 @@ def _clean_extracted_content(content: str) -> str:
         if in_navigation:
             continue
         
+        # Detect author bio sections
+        # Patterns: "has joined", "courtesy of", "more stories by"
+        author_bio_patterns = [
+            'has joined',
+            'courtesy of',
+            'more stories by',
+            'about the author',
+            'author bio',
+            'staff writer',
+            'senior reporter',
+            'contributing writer'
+        ]
+        
+        if any(pattern in lower_line for pattern in author_bio_patterns):
+            # Check if it's a short line (likely a bio snippet)
+            if len(stripped) < 200:
+                in_author_bio = True
+                continue
+        
+        # Exit author bio section when we hit substantial content or a heading
+        if in_author_bio and (len(stripped) > 200 or re.match(r'^#{1,3}\s+', stripped)):
+            in_author_bio = False
+        
+        if in_author_bio:
+            continue
+        
+        # Detect "Read More" sections
+        read_more_patterns = [
+            r'^#+\s*(read more|more reading|further reading|related reading)',
+            r'^(read more|more reading|further reading|related reading)$'
+        ]
+        
+        if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in read_more_patterns):
+            in_read_more_section = True
+            continue
+        
+        # Skip everything in the read more section
+        if in_read_more_section:
+            continue
+        
+        # Detect "Daily Headlines" and newsletter signup sections
+        newsletter_patterns = [
+            'daily headlines',
+            'newsletter',
+            'sign up for',
+            'subscribe to',
+            'get our newsletter',
+            'email updates',
+            'stay informed',
+            'join our mailing list'
+        ]
+        
+        if any(pattern in lower_line for pattern in newsletter_patterns):
+            # Check if it's a heading or short promotional text
+            if re.match(r'^#+\s*', stripped) or len(stripped) < 100:
+                in_clutter_section = True
+                continue
+        
         # Detect ad/redirect messages (common pattern)
         if 'you will be redirected' in lower_line or 'redirecting' in lower_line:
             continue
@@ -265,27 +332,89 @@ def _clean_extracted_content(content: str) -> str:
         if in_clutter_section:
             continue
         
-        # Skip common sharing/social patterns
+        # Skip common sharing/social patterns (comprehensive list from Chrome extension)
         skip_patterns = [
             r'^\[.*\]\(/resources\?author=',  # Author links
             r'^\[.*\]\(/resources/tag/',       # Tag links
             r'^\[!\[\].*\]\(/resources/',      # Related article image links
             r'^\[.*\]\(/resources/[^)]+\)$',   # Generic resource links
-            r'^(share|email|print|facebook|twitter|linkedin|copy link|whatsapp|reddit|pinterest)$',  # Sharing buttons
-            r'^\*\*(share|email|print|facebook|twitter|linkedin|copy link)\*\*$',  # Bold sharing buttons
-            r'^\[(share|email|print|facebook|twitter|linkedin|copy link)\]',  # Link sharing buttons
+            r'^(share|email|print|facebook|twitter|linkedin|copy link|whatsapp|reddit|pinterest|post|google|flipboard|tumblr)$',  # Sharing buttons
+            r'^\*\*(share|email|print|facebook|twitter|linkedin|copy link|post|google)\*\*$',  # Bold sharing buttons
+            r'^\[(share|email|print|facebook|twitter|linkedin|copy link|post|google)\]',  # Link sharing buttons
         ]
         
         if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in skip_patterns):
             continue
         
-        # Skip standalone social media/sharing text
+        # Skip markdown links with sharing/social text (including list items)
+        # Pattern: [Share on Facebook](url), * [Post](url), etc.
+        sharing_link_patterns = [
+            r'^\*?\s*\[share on facebook\]',
+            r'^\*?\s*\[share on twitter\]',
+            r'^\*?\s*\[share on linkedin\]',
+            r'^\*?\s*\[share on whatsapp\]',
+            r'^\*?\s*\[share to flipboard\]',
+            r'^\*?\s*\[submit to reddit\]',
+            r'^\*?\s*\[pin it\]',
+            r'^\*?\s*\[post to tumblr\]',
+            r'^\*?\s*\[print this page\]',
+            r'^\*?\s*\[show more sharing options\]',
+            r'^\*?\s*\[post\]\(',  # Twitter/X "Post" button as link
+            r'^\*?\s*\[google',  # Google sharing link (matches "google" or "google preferred")
+            r'^\*?\s*\[email\]\(',
+            r'^\*?\s*\[print\]\(',
+        ]
+        
+        if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in sharing_link_patterns):
+            continue
+        
+        # Skip standalone social media/sharing text (comprehensive list)
+        # Also check for list items (* text)
         standalone_skip = [
             'share', 'email', 'print', 'facebook', 'twitter', 'linkedin',
             'copy link', 'share this article', 'share this story', 'whatsapp',
-            'reddit', 'pinterest', 'share on facebook', 'share on twitter'
+            'reddit', 'pinterest', 'share on facebook', 'share on twitter',
+            'post',  # Twitter/X "Post" button
+            'google',  # Google sharing
+            'show more sharing options',
+            'share to flipboard',
+            'submit to reddit',
+            'pin it',  # Pinterest
+            'post to tumblr',
+            'print this page',
+            'share on whatsapp',
+            'share on linkedin',
+            'plus icon',  # Common icon text
+            'google preferred'  # Google sharing variant
         ]
-        if lower_line in standalone_skip:
+        # Check both with and without list marker
+        if lower_line in standalone_skip or lower_line.lstrip('* ') in standalone_skip:
+            continue
+        
+        # Skip lines that contain author bylines with names
+        # Pattern: "By [Author Name](url)" or just author names after bylines
+        if re.match(r'^by\s+\[.+\]\(.+\)', stripped, re.IGNORECASE):
+            # This is a byline with link - skip it entirely
+            continue
+        
+        # Skip lines that are just author names (when they appear standalone after byline)
+        # This catches "Brian Welk" or "### Brian Welk" appearing on its own line
+        if i > 0:
+            prev_line = lines[i - 1].strip().lower()
+            # If previous line was a byline link and this is a short line, it's likely the author name
+            # Also check if it's a heading with just a name
+            if ('author' in prev_line or 'by [' in prev_line) and len(stripped) < 50:
+                continue
+        
+        # Skip headings that are just author names (e.g., "### Brian Welk")
+        if re.match(r'^#{1,6}\s+[A-Z][a-z]+\s+[A-Z][a-z]+$', stripped):
+            # This is likely an author name heading (FirstName LastName)
+            continue
+        
+        # Skip "Related Stories" heading and everything after it
+        if re.match(r'^#{1,6}\s*related stories', stripped, re.IGNORECASE) or \
+           stripped.lower() == 'related stories':
+            in_related_section = True
             continue
         
         cleaned_lines.append(line)

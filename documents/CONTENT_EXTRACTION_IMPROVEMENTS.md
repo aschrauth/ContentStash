@@ -295,6 +295,16 @@ for line in lines:
 
 ## Changelog
 
+### 2026-01-29 (Complete Extraction Enhancement)
+- **Complete Extraction Cleaning**: Enhanced [`_clean_extracted_content()`](../backend/app/services/extraction.py:68-426) to match local extraction quality
+  - Added author bio section detection and removal (patterns: "has joined", "courtesy of", "more stories by", "staff writer", etc.)
+  - Added "Read More" section detection and complete removal
+  - Added newsletter signup section detection (patterns: "daily headlines", "newsletter", "sign up for", "subscribe to", etc.)
+  - Enhanced sharing widget removal to catch all variants (list items, bold text, plain text)
+  - Improved related content detection to catch all section types
+  - Complete extraction now produces clean article content comparable to local extraction
+  - Verified with IndieWire test: all unwanted patterns successfully removed
+
 ### 2026-01-29 (Final Fix)
 - **Critical Backend Fix**: Added `_clean_extracted_content()` call to [`upload_extracted_content()`](../backend/app/routers/items.py:1042-1050) endpoint
   - Previously, content from Chrome extension was stored directly without cleaning
