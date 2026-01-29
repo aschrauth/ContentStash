@@ -314,11 +314,14 @@ def _clean_extracted_content(content: str) -> str:
                 related_section_skip_count += 1
                 continue
         
-        # Detect "Related articles" or similar sections - ONLY trigger on headings
-        # This makes detection more precise and prevents false positives
+        # Detect "Related articles" or similar sections
+        # Check both heading format (# Related Stories) and standalone text (Related Stories)
         # IMPORTANT: This check must happen BEFORE we add the line to cleaned_lines
         related_patterns = [
+            # Heading format (with # markers)
             r'^#{1,6}\s*(related articles?|related stories|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)',
+            # Standalone text format (without # markers) - must be exact match to avoid false positives
+            r'^(related articles?|related stories|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)$',
         ]
         
         if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in related_patterns):
