@@ -16,26 +16,30 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
     const token = localStorage.getItem('token');
     if (!token) return;
 
-    // Prevent multiple connections from being created
-    if (isConnectingRef.current || eventSourceRef.current) {
-      return;
-    }
-
     let lastPendingCount = -1;
 
     const connect = () => {
+      // Clean up any existing connection and timeouts
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      if (eventSourceRef.current) {
+        // Only close if it's not already closed
+        if (eventSourceRef.current.readyState !== 2) {
+          eventSourceRef.current.close();
+        }
+        eventSourceRef.current = null;
+      }
+
       // Guard against multiple simultaneous connection attempts
-      if (isConnectingRef.current || eventSourceRef.current) {
+      if (isConnectingRef.current) {
         return;
       }
 
       isConnectingRef.current = true;
-
-      // Clean up any existing connection
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      console.log('SSE: Connecting...');
 
       // Create EventSource connection with token as query parameter
       const eventSource = new EventSource(
@@ -45,6 +49,7 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
+        console.log('SSE: Connection established');
         isConnectingRef.current = false;
         // Reset delay on successful connection
         reconnectDelayRef.current = 1000;
@@ -64,29 +69,63 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
 
           lastPendingCount = currentPendingCount;
         } catch (error) {
-          console.error('Error parsing SSE data:', error);
+          console.error('SSE: Error parsing data:', error);
         }
       };
 
       eventSource.onerror = (error) => {
-        console.error('SSE connection error:', error);
-        eventSource.close();
-        eventSourceRef.current = null;
+        console.error('SSE: Connection error', error);
+
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
+
         isConnectingRef.current = false;
-        
+
         // Exponential backoff reconnection
-        reconnectTimeoutRef.current = setTimeout(() => {
-          reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 30000); // Max 30s
-          connect();
-        }, reconnectDelayRef.current);
+        if (!reconnectTimeoutRef.current) {
+          console.log(`SSE: Reconnecting in ${reconnectDelayRef.current}ms...`);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 30000); // Max 30s
+            connect();
+          }, reconnectDelayRef.current);
+        }
       };
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const isClosed = !eventSourceRef.current || eventSourceRef.current.readyState === 2;
+        if (isClosed && !isConnectingRef.current) {
+          console.log('SSE: Page visible, connection lost. Reconnecting...');
+          reconnectDelayRef.current = 1000; // Reset delay for immediate reconnection
+          connect();
+        }
+      }
+    };
+
+    const handleOnline = () => {
+      const isClosed = !eventSourceRef.current || eventSourceRef.current.readyState === 2;
+      if (isClosed && !isConnectingRef.current) {
+        console.log('SSE: Back online. Reconnecting...');
+        reconnectDelayRef.current = 1000; // Reset delay
+        connect();
+      }
     };
 
     // Initial connection
     connect();
 
+    // Listen for visibility and online events
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+
     // Cleanup on unmount
     return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+
       isConnectingRef.current = false;
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -97,5 +136,5 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
         reconnectTimeoutRef.current = null;
       }
     };
-  }, []); // Empty dependency array - only connect once per mount
+  }, [onItemsUpdated]); // Re-run if handler changes
 }
