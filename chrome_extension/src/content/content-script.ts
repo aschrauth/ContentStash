@@ -35,7 +35,7 @@ function isSubstackUrl(url: string = window.location.href): boolean {
 function findReferencesSection(doc: Document): string | null {
   // Find all headings
   const allHeadings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
-  
+
   // Look for a heading containing "reference" (case-insensitive)
   for (const heading of Array.from(allHeadings)) {
     const headingText = heading.textContent?.toLowerCase() || '';
@@ -43,10 +43,10 @@ function findReferencesSection(doc: Document): string | null {
       // Collect all content from this heading until the next major section or end
       const referencesContent: Element[] = [heading];
       let currentElement = heading.nextElementSibling;
-      
+
       // Collect siblings until we hit another heading of same or higher level
       const headingLevel = parseInt(heading.tagName.substring(1)); // h2 -> 2
-      
+
       while (currentElement) {
         // Stop if we hit another heading of same or higher level
         if (currentElement.tagName.match(/^H[1-6]$/)) {
@@ -55,26 +55,26 @@ function findReferencesSection(doc: Document): string | null {
             break;
           }
         }
-        
+
         // Stop if we hit certain markers that indicate end of article
         const elementText = currentElement.textContent?.toLowerCase() || '';
         if (elementText.includes('more useful') ||
-            elementText.includes('featured') ||
-            elementText.includes('stakeholder mapping') ||
-            elementText.includes('bluf')) {
+          elementText.includes('featured') ||
+          elementText.includes('stakeholder mapping') ||
+          elementText.includes('bluf')) {
           break;
         }
-        
+
         referencesContent.push(currentElement);
         currentElement = currentElement.nextElementSibling;
       }
-      
+
       // Convert collected elements to HTML
       const referencesHtml = referencesContent.map(el => el.outerHTML).join('\n');
       return referencesHtml;
     }
   }
-  
+
   return null;
 }
 
@@ -93,7 +93,7 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
   let inConsentSection = false;
   let pastMainContent = false;
   let skipUntilContent = 0;
-  
+
   let skippedCount = {
     plainUrls: 0,
     consentSection: 0,
@@ -108,50 +108,50 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
     const line = lines[i];
     const stripped = line.trim();
     const lowerLine = stripped.toLowerCase();
-    
+
     // Skip lines if we're in a skip zone
     if (skipUntilContent > 0) {
       skipUntilContent--;
       continue;
     }
-    
+
     // Detect "Manage Consent Preferences" section - skip everything after this
     // This needs to be very aggressive since it's always at the end
     // Check both the line itself and if it's a heading
     if (lowerLine.includes('manage consent') ||
-        lowerLine.includes('consent preferences') ||
-        lowerLine.includes('strictly necessary cookies') ||
-        lowerLine.includes('always active') ||
-        lowerLine.includes('opt out of sale') ||
-        lowerLine.includes('switch label') ||
-        lowerLine.includes('targeting cookies') ||
-        stripped.match(/^#{1,6}\s*manage consent/i) ||
-        stripped.match(/^#{1,6}\s*consent preferences/i)) {
+      lowerLine.includes('consent preferences') ||
+      lowerLine.includes('strictly necessary cookies') ||
+      lowerLine.includes('always active') ||
+      lowerLine.includes('opt out of sale') ||
+      lowerLine.includes('switch label') ||
+      lowerLine.includes('targeting cookies') ||
+      stripped.match(/^#{1,6}\s*manage consent/i) ||
+      stripped.match(/^#{1,6}\s*consent preferences/i)) {
       inConsentSection = true;
       skippedCount.consentSection++;
       continue;
     }
-    
+
     // Once in consent section, skip everything
     if (inConsentSection) {
       skippedCount.consentSection++;
       continue;
     }
-    
+
     // Detect broken markdown link patterns: lines that are just "](url)"
     // These are the second half of multi-line markdown links (usually related articles)
     if (stripped.match(/^\]\(https?:\/\/[^)]+\)$/)) {
       skippedCount.plainUrls++;
       continue;
     }
-    
+
     // Detect plain URLs (not markdown links) that are standalone
     // These are usually related articles
     if (stripped.match(/^https?:\/\/[^\s]+$/)) {
       skippedCount.plainUrls++;
       continue;
     }
-    
+
     // Detect multi-line markdown image-link patterns (related articles)
     // Pattern: "[" on one line, followed by image, followed by "](url)"
     // This is a 3-5 line pattern that represents a related article link
@@ -160,7 +160,7 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
       const next1 = i + 1 < lines.length ? lines[i + 1].trim() : '';
       const next2 = i + 2 < lines.length ? lines[i + 2].trim() : '';
       const next3 = i + 3 < lines.length ? lines[i + 3].trim() : '';
-      
+
       // Check if next line is blank, then image, then blank, then link closing
       if (next1 === '' && next2.startsWith('![') && next3 === '') {
         const next4 = i + 4 < lines.length ? lines[i + 4].trim() : '';
@@ -172,42 +172,42 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
         }
       }
     }
-    
+
     // Detect embedded related article images - these are usually standalone images
     // that link to other articles (not part of the main content)
     if (stripped.startsWith('![')) {
       // Check if this is followed by a link or if it's a standalone image
       const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
       const prevLine = i > 0 ? lines[i - 1].trim() : '';
-      
+
       // If the image is followed by a link, or surrounded by blank lines, it's likely related content
       if (nextLine.startsWith('[') || nextLine.startsWith('http') ||
-          (prevLine === '' && nextLine === '')) {
+        (prevLine === '' && nextLine === '')) {
         skippedCount.images++;
         continue;
       }
     }
-    
+
     // Detect standalone article links (URLs that appear on their own line)
     // These are usually related articles, not inline citations
     if (stripped.match(/^https?:\/\/.*\/(news|features|articles?|gallery|video)\//) ||
-        stripped.match(/^\[.*\]\(https?:\/\/.*\/(news|features|articles?|gallery|video)\/.*\)/)) {
+      stripped.match(/^\[.*\]\(https?:\/\/.*\/(news|features|articles?|gallery|video)\/.*\)/)) {
       // Check if this is standalone (surrounded by blank lines or other media)
       const prevLine = i > 0 ? lines[i - 1].trim() : '';
       const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
-      
+
       // If it's standalone or part of a media block, skip it
       if (prevLine === '' || nextLine === '' ||
-          prevLine.startsWith('![') || nextLine.startsWith('![')) {
+        prevLine.startsWith('![') || nextLine.startsWith('![')) {
         continue;
       }
     }
-    
+
     // Track main content headings (## level headings that are part of the article)
     // We consider "Fairness" to be the last main content section for this site
     if (/^#{1,3}\s+/.test(stripped)) {
       const headingText = stripped.replace(/^#+\s+/, '').toLowerCase();
-      
+
       // If we see "Fairness", mark that we're approaching the end of main content
       if (headingText.includes('fairness')) {
         pastMainContent = true;
@@ -240,7 +240,7 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
       'news', 'film', 'tv', 'awards', 'video', 'toolkit',
       'future of filmmaking'
     ];
-    
+
     // Check if line is likely navigation (short line with navigation keywords)
     if (stripped.length < 30 && navigationPatterns.some(pattern => lowerLine.includes(pattern))) {
       // Check if next few lines are also short (indicates menu structure)
@@ -250,12 +250,12 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
         continue;
       }
     }
-    
+
     // Exit navigation when we hit substantial content
     if (inNavigation && (stripped.length > 100 || /^#{1,3}\s+\w+/.test(stripped))) {
       inNavigation = false;
     }
-    
+
     if (inNavigation) {
       continue;
     }
@@ -296,12 +296,12 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
       /^#+\s*(related articles?|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)/i,
       /^(related articles?|related|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)$/i
     ];
-    
+
     if (relatedPatterns.some(pattern => pattern.test(stripped))) {
       inRelatedSection = true;
       continue;
     }
-    
+
     // Skip everything in the related section
     if (inRelatedSection) {
       continue;
@@ -316,7 +316,7 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
       'cookies', 'advertising', 'your privacy choices',
       'opt out of sale', 'targeted advertising', 'switch label'
     ];
-    
+
     if (clutterHeadings.some(heading => lowerLine.includes(heading))) {
       // Check if it's a heading or standalone text
       if (/^#+\s*/.test(stripped) || stripped.length < 80) {
@@ -324,7 +324,7 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
         continue;
       }
     }
-    
+
     // Exit clutter section when we hit a substantial heading that's not clutter
     if (inClutterSection && /^#{1,3}\s+/.test(stripped) && stripped.length > 20) {
       // Check if this is still a clutter heading
@@ -332,26 +332,26 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
         inClutterSection = false;
       }
     }
-    
+
     if (inClutterSection) {
       continue;
     }
 
     // Detect start of Featured/More useful sections
     if (lowerLine.startsWith('# featured') ||
-        lowerLine.startsWith('## featured') ||
-        lowerLine.startsWith('### featured') ||
-        lowerLine.startsWith('# more useful') ||
-        lowerLine.startsWith('## more useful') ||
-        lowerLine === 'featured' ||
-        lowerLine === 'more useful') {
+      lowerLine.startsWith('## featured') ||
+      lowerLine.startsWith('### featured') ||
+      lowerLine.startsWith('# more useful') ||
+      lowerLine.startsWith('## more useful') ||
+      lowerLine === 'featured' ||
+      lowerLine === 'more useful') {
       inFeaturedSection = true;
       continue;
     }
 
     // Exit featured section when we hit another major heading
     if (inFeaturedSection && /^#{1,2}\s+/.test(stripped) &&
-        !lowerLine.includes('featured') && !lowerLine.includes('more useful')) {
+      !lowerLine.includes('featured') && !lowerLine.includes('more useful')) {
       inFeaturedSection = false;
     }
 
@@ -374,7 +374,7 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
     if (/^\[.*\]\(\)$/.test(stripped)) {
       continue;
     }
-    
+
     // Skip standalone social media/sharing text
     const standaloneSkip = [
       'share', 'email', 'print', 'facebook', 'twitter', 'linkedin',
@@ -402,7 +402,7 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
 function selectiveCleanup(doc: Document, isSubstack: boolean = false): void {
   // Conservative cleanup - only remove obvious non-content elements
   // Let Readability handle the rest
-  
+
   // Remove unwanted structural elements
   const structuralSelectors = isSubstack ? [
     'nav:not(.post-header)',
@@ -421,11 +421,72 @@ function selectiveCleanup(doc: Document, isSubstack: boolean = false): void {
   });
 }
 
+/**
+ * Find and click "Read More" or "Expand" buttons to reveal full content
+ */
+async function expandHiddenContent(): Promise<void> {
+  const expandSelectors = [
+    '.readMoreBtn',
+    '.read-more-btn',
+    '.expand-btn',
+    '.show-more',
+    '.view-more',
+    'button'
+  ];
+
+  const expandTexts = [
+    'expand to continue reading',
+    'read more',
+    'continue reading',
+    'show more',
+    'view more'
+  ];
+
+  for (const selector of expandSelectors) {
+    try {
+      const buttons = Array.from(document.querySelectorAll(selector));
+      for (const btn of buttons) {
+        if (!(btn instanceof HTMLElement)) continue;
+
+        const text = btn.innerText?.toLowerCase() || '';
+        const isMatch = expandTexts.some(t => text.includes(t)) ||
+          (selector !== 'button' && selector !== '.show-more' && selector !== '.view-more');
+
+        if (isMatch && isVisible(btn)) {
+          console.log(`Expanding content via button with text: "${text.substring(0, 30)}..."`);
+          btn.click();
+          // Small wait for content expansion
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    } catch (e) {
+      console.error('Error expanding content:', e);
+    }
+  }
+}
+
+/**
+ * Check if an element is visible to the user
+ */
+function isVisible(el: HTMLElement): boolean {
+  const style = window.getComputedStyle(el);
+  return (
+    style.display !== 'none' &&
+    style.visibility !== 'hidden' &&
+    style.opacity !== '0' &&
+    el.offsetHeight > 0 &&
+    el.offsetWidth > 0
+  );
+}
+
 async function extractPageContent(): Promise<string> {
   // Check if this is a YouTube page
   if (isYouTubeUrl(window.location.href)) {
     return await extractYouTubeContent();
   }
+
+  // Try to expand any hidden content first (e.g., "Read More" buttons)
+  await expandHiddenContent();
 
   // Detect if this is a Substack article
   const isSubstack = isSubstackUrl();
@@ -440,18 +501,18 @@ async function extractPageContent(): Promise<string> {
     // Create a proper Document object for Readability
     // Using document.cloneNode(true) creates a proper document clone
     const documentClone = document.cloneNode(true) as Document;
-    
+
     // HYBRID APPROACH: Extract References section BEFORE Readability processes the document
     // This ensures we preserve it even if Readability's heuristics exclude it
     const savedReferencesHtml = findReferencesSection(documentClone);
-    
+
     // Apply selective cleanup to remove unwanted elements
     // This removes navigation, ads, and promotional content while preserving
     // the document structure that Readability needs
     selectiveCleanup(documentClone, false);
-    
+
     const article = new Readability(documentClone).parse();
-    
+
     if (article && article.content) {
       // Initialize Turndown with appropriate options
       const turndownService = new TurndownService({
@@ -467,7 +528,7 @@ async function extractPageContent(): Promise<string> {
 
       // Apply post-processing cleanup
       markdown = cleanMarkdownContent(markdown, false);
-      
+
       // HYBRID APPROACH: If References were saved but not in final markdown, append them
       let referencesMarkdown = '';
       if (savedReferencesHtml && !markdown.toLowerCase().includes('reference')) {
@@ -477,7 +538,7 @@ async function extractPageContent(): Promise<string> {
           codeBlockStyle: 'fenced',
         });
         turndownService.remove(['script', 'style']);
-        
+
         referencesMarkdown = turndownService.turndown(savedReferencesHtml);
       }
 
@@ -487,7 +548,7 @@ async function extractPageContent(): Promise<string> {
         content += `**By:** ${article.byline}\n\n`;
       }
       content += markdown;
-      
+
       // Append References if they were saved and excluded
       if (referencesMarkdown) {
         content += '\n\n' + referencesMarkdown;
@@ -516,7 +577,7 @@ async function extractSubstackContent(): Promise<string> {
     ];
 
     let contentElement: Element | null = null;
-    
+
     // Try each selector until we find content
     for (const selector of contentSelectors) {
       const element = document.querySelector(selector);
@@ -574,15 +635,15 @@ async function extractWithReadability(isSubstack: boolean = false): Promise<stri
   try {
     // Create a proper Document object for Readability
     const documentClone = document.cloneNode(true) as Document;
-    
+
     // Extract References section BEFORE Readability processes the document
     const savedReferencesHtml = findReferencesSection(documentClone);
-    
+
     // Apply selective cleanup with Substack awareness
     selectiveCleanup(documentClone, isSubstack);
-    
+
     const article = new Readability(documentClone).parse();
-    
+
     if (article && article.content) {
       // Initialize Turndown with appropriate options
       const turndownService = new TurndownService({
@@ -598,7 +659,7 @@ async function extractWithReadability(isSubstack: boolean = false): Promise<stri
 
       // Apply post-processing cleanup
       markdown = cleanMarkdownContent(markdown, isSubstack);
-      
+
       // HYBRID APPROACH: If References were saved but not in final markdown, append them
       let referencesMarkdown = '';
       if (savedReferencesHtml && !markdown.toLowerCase().includes('reference')) {
@@ -608,7 +669,7 @@ async function extractWithReadability(isSubstack: boolean = false): Promise<stri
           codeBlockStyle: 'fenced',
         });
         refTurndown.remove(['script', 'style']);
-        
+
         referencesMarkdown = refTurndown.turndown(savedReferencesHtml);
       }
 
@@ -618,7 +679,7 @@ async function extractWithReadability(isSubstack: boolean = false): Promise<stri
         content += `**By:** ${article.byline}\n\n`;
       }
       content += markdown;
-      
+
       // Append References if they were saved and excluded
       if (referencesMarkdown) {
         content += '\n\n' + referencesMarkdown;
@@ -661,17 +722,17 @@ function formatTranscriptMarkdown(_metadata: any, segments: Array<{ time: string
   // Group segments into paragraphs for better readability (NO metadata header - matches server-side behavior)
   let currentParagraph: string[] = [];
   let lastEndSeconds = 0;
-  
+
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
-    
+
     // Skip empty segments entirely - don't process them at all
     if (!segment.text) {
       continue;
     }
-    
+
     const timeSinceLastSegment = segment.seconds - lastEndSeconds;
-    
+
     // Start a new paragraph if:
     // 1. This is the first segment
     // 2. There's a pause > 2 seconds
@@ -682,18 +743,18 @@ function formatTranscriptMarkdown(_metadata: any, segments: Array<{ time: string
       currentParagraph.length === 0 ||
       timeSinceLastSegment > 2.0 ||
       currentLength > 500;
-    
+
     if (shouldStartNewParagraph && currentParagraph.length > 0) {
       const paragraphText = currentParagraph.join(' ');
       markdown += `${paragraphText}\n\n`;
       currentParagraph = [];
     }
-    
+
     // Add text to paragraph and update last end time
     currentParagraph.push(segment.text);
     lastEndSeconds = segment.seconds + segment.durationSeconds;
   }
-  
+
   // Write out the final paragraph
   if (currentParagraph.length > 0) {
     const paragraphText = currentParagraph.join(' ');
@@ -709,7 +770,7 @@ async function extractYouTubeContent(): Promise<string> {
     console.log('[Content Script] EXTRACTION PATH: content-script.ts');
     console.log('[Content Script] Requesting YouTube extraction from background script');
     console.log('='.repeat(80));
-    
+
     // Get metadata and transcript XML from background script
     const response = await chrome.runtime.sendMessage({
       type: 'EXTRACT_YOUTUBE_FROM_TAB'
@@ -731,15 +792,15 @@ async function extractYouTubeContent(): Promise<string> {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(response.transcriptXml, 'text/xml');
       const textElements = xmlDoc.querySelectorAll('p');
-      
+
       if (textElements.length > 0) {
         const transcriptLines: Array<{ time: string; text: string; seconds: number; durationSeconds: number }> = [];
-        
+
         for (const element of Array.from(textElements)) {
           const start = element.getAttribute('t'); // time in milliseconds
           const duration = element.getAttribute('d'); // duration in milliseconds
           const text = element.textContent;
-          
+
           if (start && text) {
             const seconds = parseFloat(start) / 1000; // Convert ms to seconds
             const durationSeconds = duration ? parseFloat(duration) / 1000 : 0; // Convert ms to seconds
@@ -747,12 +808,12 @@ async function extractYouTubeContent(): Promise<string> {
             // Replace internal newlines and multiple spaces with single space, then trim
             // This matches server-side .strip() behavior
             const cleanText = text.replace(/\s+/g, ' ').trim();
-            
+
             // Store the CLEANED text in the segment
             transcriptLines.push({ time, text: cleanText, seconds, durationSeconds });
           }
         }
-        
+
         if (transcriptLines.length > 0) {
           const content = formatTranscriptMarkdown(metadata, transcriptLines);
           return content;
@@ -792,7 +853,7 @@ function extractYouTubeMetadataOnly(): string {
     if (description) {
       content += `## Description\n\n${description}\n\n`;
     }
-    
+
     // Add note that transcript extraction failed
     content += `## Transcript\n\n[Transcript extraction failed - will be attempted by backend]`;
 
@@ -812,7 +873,7 @@ function extractSimpleContent(): string {
     'main[role="main"]',
     'main',
     '[role="main"]',
-    
+
     // Common CMS patterns (WordPress, Medium, Ghost, etc.)
     '.post-content',
     '.entry-content',
@@ -820,12 +881,12 @@ function extractSimpleContent(): string {
     '.content-body',
     '.article-body',
     '.post-body',
-    
+
     // News sites (IndieWire, etc.)
     '.article__body',
     '.story-body',
     '.news-article',
-    
+
     // Generic fallbacks
     '.main-content',
     '#main-content',
@@ -864,45 +925,45 @@ function extractSimpleContent(): string {
   // If no selector worked, try to find the largest content container (heuristic)
   try {
     const elements = Array.from(document.querySelectorAll('div, section'));
-    
+
     // Filter out elements that are likely navigation/ads/footer
     const filtered = elements.filter(el => {
       const classes = el.className?.toLowerCase() || '';
       const id = el.id?.toLowerCase() || '';
       const combined = classes + ' ' + id;
-      
+
       // Skip obvious non-content elements
       if (combined.includes('nav') ||
-          combined.includes('header') ||
-          combined.includes('footer') ||
-          combined.includes('sidebar') ||
-          combined.includes('menu') ||
-          combined.includes('ad-') ||
-          combined.includes('cookie') ||
-          combined.includes('consent')) {
+        combined.includes('header') ||
+        combined.includes('footer') ||
+        combined.includes('sidebar') ||
+        combined.includes('menu') ||
+        combined.includes('ad-') ||
+        combined.includes('cookie') ||
+        combined.includes('consent')) {
         return false;
       }
       return true;
     });
-    
+
     // Find element with most paragraph content (better indicator of article text)
     let maxScore = 0;
     let bestElement: Element | null = null;
-    
+
     for (const el of filtered) {
       const textLength = el.textContent?.length || 0;
       const paragraphs = el.querySelectorAll('p').length;
-      
+
       // Score based on text length and paragraph count
       // Paragraphs are a strong indicator of article content
       const score = textLength + (paragraphs * 200);
-      
+
       if (score > maxScore && textLength > 500) {
         maxScore = score;
         bestElement = el;
       }
     }
-    
+
     if (bestElement) {
       console.log('Found content using largest container heuristic');
       const turndownService = new TurndownService({
@@ -910,10 +971,10 @@ function extractSimpleContent(): string {
         codeBlockStyle: 'fenced',
       });
       turndownService.remove(['script', 'style']);
-      
+
       let markdown = turndownService.turndown(bestElement.innerHTML);
       markdown = cleanMarkdownContent(markdown);
-      
+
       return markdown;
     }
   } catch (error) {

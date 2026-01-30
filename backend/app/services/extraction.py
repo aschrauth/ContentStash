@@ -501,16 +501,53 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
                 except:
                     logger.warning("Substack content selector not found, continuing anyway")
             
-            # Wait for any lazy-loaded content
-            await asyncio.sleep(3 if is_substack else 2)
-            
-            # Only remove obvious non-content elements (conservative approach)
+            # Try to expand any "Read More" or "Expand" buttons and remove non-content elements
             is_substack_js = 'true' if is_substack else 'false'
             await page.evaluate(f"""
-                () => {{
+                async () => {{
                     const isSubstack = {is_substack_js};
                     
-                    // Remove script and style tags only
+                    // 1. Expand "Read More" buttons
+                    const expandSelectors = [
+                        '.readMoreBtn', 
+                        '.read-more-btn', 
+                        '.expand-btn',
+                        '.show-more',
+                        '.view-more',
+                        'button'
+                    ];
+                    
+                    const expandTexts = [
+                        'expand to continue reading',
+                        'read more',
+                        'continue reading',
+                        'show more',
+                        'view more'
+                    ];
+                    
+                    for (const selector of expandSelectors) {{
+                        try {{
+                            const buttons = Array.from(document.querySelectorAll(selector));
+                            for (const btn of buttons) {{
+                                const text = btn.innerText?.toLowerCase() || '';
+                                const isMatch = expandTexts.some(t => text.includes(t)) || 
+                                               (selector !== 'button' && selector !== '.show-more' && selector !== '.view-more');
+                                
+                                if (isMatch) {{
+                                    const style = window.getComputedStyle(btn);
+                                    if (style.display !== 'none' && style.visibility !== 'hidden' && btn.offsetHeight > 0) {{
+                                        btn.click();
+                                        // Wait a bit for content expansion
+                                        await new Promise(resolve => setTimeout(resolve, 1000));
+                                    }}
+                                }}
+                            }}
+                        }} catch (e) {{
+                            console.error('Error expanding content:', e);
+                        }}
+                    }}
+
+                    // 2. Remove script and style tags
                     document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
                     
                     if (isSubstack) {{
@@ -528,6 +565,9 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
                     }}
                 }}
             """)
+            
+            # Wait for any lazy-loaded content after expansion
+            await asyncio.sleep(3 if is_substack else 2)
             
             # Try to find main content using semantic HTML5 and CMS patterns
             if is_substack:
