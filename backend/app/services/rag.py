@@ -147,26 +147,10 @@ async def vector_search(query: str, owner_id: str, k: int = 8, max_chunks_per_it
                     "chunk_index": chunk["chunk_index"]
                 })
             
-            # Apply diversity filtering with two-pass approach
-            # First pass: strict diversity (max 2 chunks per article)
-            diverse_results = _apply_diversity_filter(all_results, k, max_chunks_per_item)
-            
-            # Second pass: relax constraints if we didn't get enough chunks
-            if len(diverse_results) < k:
-                logger.warning(
-                    f"First pass only got {len(diverse_results)}/{k} chunks with max_chunks_per_item={max_chunks_per_item}, "
-                    f"trying second pass with relaxed constraint"
-                )
-                # Relax to allow 3 chunks per item
-                diverse_results = _apply_diversity_filter(all_results, k, max_chunks_per_item=3)
-            
-            # Final fallback: just take top k if still not enough
-            if len(diverse_results) < k:
-                logger.warning(
-                    f"Second pass only got {len(diverse_results)}/{k} chunks, "
-                    f"using top-{k} without diversity constraints"
-                )
-                diverse_results = all_results[:k]
+            # Apply diversity filtering with Round-Robin approach
+            # This ensures multi-article diversity while allowing long articles 
+            # to provide more context if relevant.
+            diverse_results = _apply_diversity_filter(all_results, k)
             
             return diverse_results
             
@@ -195,19 +179,18 @@ async def vector_search(query: str, owner_id: str, k: int = 8, max_chunks_per_it
         return []
 
 
-def _apply_diversity_filter(chunks: List[Dict], k: int, max_chunks_per_item: int) -> List[Dict]:
+def _apply_diversity_filter(chunks: List[Dict], k: int) -> List[Dict]:
     """
-    Apply diversity filtering to ensure multiple unique articles in results.
+    Apply diversity filtering using a Round-Robin approach.
     
-    This function implements a greedy selection algorithm that:
-    1. Prioritizes high-scoring chunks (relevance)
-    2. Limits chunks per article to ensure diversity
-    3. Selects up to k chunks total
+    This ensures that we pick the top chunk from every unique article first,
+    then the second best chunk from each, and so on, until we reach k chunks.
+    This guarantees variety while allowing long articles to contribute more
+    if they are highly relevant.
     
     Args:
-        chunks: List of chunks sorted by relevance score (descending)
+        chunks: List of result chunks sorted by score (descending)
         k: Target number of chunks to return
-        max_chunks_per_item: Maximum chunks allowed per article
         
     Returns:
         List of up to k diverse chunks
@@ -215,25 +198,45 @@ def _apply_diversity_filter(chunks: List[Dict], k: int, max_chunks_per_item: int
     if not chunks:
         return []
     
-    # Track how many chunks we've selected per item
-    item_chunk_counts = {}
-    selected_chunks = []
-    
-    # Greedy selection: iterate through chunks in score order
+    # Group chunks by item_id, maintaining their relative order (sorted by score)
+    item_chunks_map = {}
     for chunk in chunks:
         item_id = chunk['item_id']
-        
-        # Check if we've reached the limit for this item
-        current_count = item_chunk_counts.get(item_id, 0)
-        
-        if current_count < max_chunks_per_item:
-            selected_chunks.append(chunk)
-            item_chunk_counts[item_id] = current_count + 1
-            
-            # Stop if we've selected enough chunks
-            if len(selected_chunks) >= k:
-                break
+        if item_id not in item_chunks_map:
+            item_chunks_map[item_id] = []
+        item_chunks_map[item_id].append(chunk)
     
+    # Sort the list of item_ids based on the score of their first (best) chunk
+    # This ensures that even in round-robin, we prioritize more relevant articles
+    sorted_item_ids = sorted(
+        item_chunks_map.keys(), 
+        key=lambda i: item_chunks_map[i][0]['score'], 
+        reverse=True
+    )
+    
+    selected_chunks = []
+    round_idx = 0
+    
+    # Continue rounds until we have k chunks or no more chunks are available
+    while len(selected_chunks) < k:
+        chunks_added_this_round = 0
+        
+        for item_id in sorted_item_ids:
+            # Check if this article has a chunk for the current round
+            if round_idx < len(item_chunks_map[item_id]):
+                selected_chunks.append(item_chunks_map[item_id][round_idx])
+                chunks_added_this_round += 1
+                
+                # Stop if we've reached the limit
+                if len(selected_chunks) >= k:
+                    break
+        
+        # If no chunks were added in a full round, we're done
+        if chunks_added_this_round == 0:
+            break
+            
+        round_idx += 1
+        
     return selected_chunks
 
 
@@ -430,9 +433,10 @@ async def _build_evidence_from_chunks(chunks: List[Dict]) -> tuple:
     
     for chunk in chunks:
         text = chunk.get('text', '')
-        # Truncate very long chunks to keep token usage low
-        if len(text) > 500:
-            text = text[:500] + "..."
+        # Truncate very long chunks to keep token usage within context limits
+        # Each chunk is ~500 tokens, which maps to ~2500-4000 chars.
+        if len(text) > 4000:
+            text = text[:4000] + "..."
         
         # Fetch item metadata to get the title
         item_metadata = await _get_item_metadata(chunk)
@@ -537,12 +541,14 @@ async def _get_item_metadata(chunk: Dict) -> Dict:
 
 async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], source_mapping: Dict[int, str]) -> tuple:
     """
-    Parse Gemini response to extract answer and generate citations using numbered references.
+    Parse Gemini response to extract answer and generate citations using sequential re-indexing.
     
     This function:
     1. Extracts the answer text
-    2. Identifies which sources were cited by number (e.g., [1], [2])
-    3. Creates Citation objects with titles and excerpts
+    2. Identifies which sources were cited by the AI (using original source numbers)
+    3. Re-indexes the cited sources sequentially ([1], [2], [3]...) based on their 
+       first appearance in the text to avoid gaps and offer a cleaner UX.
+    4. Creates Citation objects with matching sequential numbers
     
     Args:
         response_text: Raw response from Gemini
@@ -550,10 +556,10 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
         source_mapping: Dict mapping source numbers to titles
         
     Returns:
-        Tuple of (answer_text, list_of_citations)
+        Tuple of (reindexed_answer_text, list_of_citations)
     """
     import re
-    from bson import ObjectId
+    from ..models.chat import Citation
     
     # Extract answer (everything is the answer)
     answer = response_text.strip()
@@ -565,12 +571,8 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
         if item_id and item_id not in item_to_chunk:
             item_to_chunk[item_id] = chunk
     
-    # Build reverse mapping from source_mapping that was created in _build_evidence_from_chunks
-    # source_mapping already maps source_num -> title
-    # We need to map item_id -> source_num
-    
-    # Build mapping: item_id -> source number by re-using the logic from _build_evidence_from_chunks
-    item_to_number = {}
+    # Build mapping: item_id -> original source number
+    item_to_orig_number = {}
     seen_items = {}
     current_number = 1
     
@@ -578,51 +580,53 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
         item_id = chunk.get('item_id')
         if item_id and item_id not in seen_items:
             seen_items[item_id] = current_number
-            item_to_number[item_id] = current_number
+            item_to_orig_number[item_id] = current_number
             current_number += 1
-    
-    # Find all numbered citations in the answer
-    # Handles both [1] and [1, 2, 3] formats
+            
+    # Find all numbered citations in the answer (e.g. [1], [1, 2])
+    # This finds the original numbers used by the AI
     citation_pattern = r'\[(\d+(?:,\s*\d+)*)\]'
-    matches = re.findall(citation_pattern, answer)
     
-    # Extract individual numbers from matches (handles comma-separated lists)
-    cited_numbers = set()
-    for match in matches:
-        # Split by comma and extract each number
-        numbers = re.findall(r'\d+', match)
-        cited_numbers.update(numbers)
+    # 1. First, identify all unique original source numbers cited, in order of appearance
+    orig_matches = re.finditer(citation_pattern, answer)
+    ordered_orig_nums = []
+    seen_orig_nums = set()
     
-    # Generate citations for cited sources - one per unique source number
+    for match in orig_matches:
+        # Extract individual numbers from the match
+        nums = re.findall(r'\d+', match.group(1))
+        for n in nums:
+            n_int = int(n)
+            if n_int not in seen_orig_nums:
+                seen_orig_nums.add(n_int)
+                ordered_orig_nums.append(n_int)
+    
+    # 2. Create a mapping from original source number to new sequential citation number
+    # Only for sources that actually exist in our mapping
+    orig_to_new_map = {}
+    new_idx = 1
     citations = []
-    seen_source_numbers = set()  # Track source numbers to avoid duplicate citations
     
-    for num_str in sorted(cited_numbers, key=int):
-        source_num = int(num_str)
-        
-        # Skip if we've already created a citation for this source number
-        if source_num in seen_source_numbers:
-            continue
-        
-        # Get the title for this source number
-        title = source_mapping.get(source_num)
+    for orig_num in ordered_orig_nums:
+        title = source_mapping.get(orig_num)
         if not title:
             continue
-        
-        # Find the corresponding chunk/item for this source number
+            
+        # Find matching item_id
         matching_item_id = None
-        for item_id, num in item_to_number.items():
-            if num == source_num:
+        for item_id, num in item_to_orig_number.items():
+            if num == orig_num:
                 matching_item_id = item_id
                 break
         
         if not matching_item_id:
             continue
+            
+        # Assign new sequential index
+        orig_to_new_map[orig_num] = new_idx
         
-        seen_source_numbers.add(source_num)
+        # Create Citation object
         chunk = item_to_chunk.get(matching_item_id)
-        
-        # Create excerpt from chunk text (first 200 chars)
         excerpt = "No preview available"
         if chunk:
             text = chunk.get('text', '')
@@ -630,14 +634,31 @@ async def _parse_answer_with_citations(response_text: str, chunks: List[Dict], s
             if len(text) > 200:
                 excerpt += "..."
         
-        citation = Citation(
+        citations.append(Citation(
             id=str(matching_item_id),
-            title=f"{source_num}. {title}",
+            title=f"{new_idx}. {title}",
             excerpt=excerpt
-        )
-        citations.append(citation)
+        ))
+        new_idx += 1
+        
+    # 3. Handle citation replacement in the text to avoid gaps
+    def replace_citation(match):
+        orig_content = match.group(1)
+        orig_nums = re.findall(r'\d+', orig_content)
+        new_nums = []
+        for n in orig_nums:
+            n_int = int(n)
+            if n_int in orig_to_new_map:
+                new_nums.append(str(orig_to_new_map[n_int]))
+        
+        if not new_nums:
+            return f"[{orig_content}]" # Keep original if we can't map it
+            
+        return f"[{', '.join(sorted(new_nums, key=int))}]"
+        
+    reindexed_answer = re.sub(citation_pattern, replace_citation, answer)
     
-    return answer, citations
+    return reindexed_answer, citations
 
 
 def _build_context(items: List[Dict]) -> str:

@@ -119,8 +119,8 @@ async def ask_question(
     try:
         logger.info(f"Ask question request: '{request.question[:50]}...', user={current_user.id}")
         
-        # Perform vector search to get relevant chunks (K=8 for cost optimization)
-        chunks = await vector_search(request.question, current_user.id, k=8)
+        # Perform vector search to get relevant chunks (K=12 for better coverage)
+        chunks = await vector_search(request.question, current_user.id, k=12)
         
         if not chunks:
             logger.info("No relevant chunks found for question")
@@ -167,7 +167,7 @@ async def create_thread(
     db = get_database()
     
     # Use vector search to get relevant chunks
-    chunks = await vector_search(request.message, current_user.id, k=8)
+    chunks = await vector_search(request.message, current_user.id, k=12)
     
     # Generate answer using RAG with Gemini
     rag_result = await generate_answer(request.message, chunks)
@@ -390,7 +390,7 @@ async def add_message(
         )
     
     # Use vector search to get relevant chunks
-    chunks = await vector_search(request.message, current_user.id, k=8)
+    chunks = await vector_search(request.message, current_user.id, k=12)
     
     # Generate answer using RAG with Gemini
     rag_result = await generate_answer(request.message, chunks)
