@@ -24,7 +24,28 @@ async def connect_to_mongo():
             ("tags", "text"),
             ("archived_text", "text")
         ], name="text_search_index")
-        print("✅ Text search index created/verified on saved_items collection")
+        
+        # Performance indexes for library listing and pagination
+        # We sort by created_at DESC, _id DESC
+        await db.saved_items.create_index([
+            ("owner_id", 1),
+            ("archived_at", 1),
+            ("created_at", -1),
+            ("_id", -1)
+        ], name="library_list_index_v2")
+        
+        # Index for real-time status stream
+        await db.saved_items.create_index([
+            ("owner_id", 1),
+            ("processing_status", 1)
+        ], name="status_stream_index")
+        
+        # Index for chunk lookups in RAG
+        await db.item_chunks.create_index([
+            ("item_id", 1)
+        ], name="chunk_item_id_index")
+        
+        print("✅ Database indexes created/verified")
     except Exception as e:
         print(f"⚠️  Warning: Could not connect to MongoDB: {e}")
         print("⚠️  Server will start but database operations will fail")

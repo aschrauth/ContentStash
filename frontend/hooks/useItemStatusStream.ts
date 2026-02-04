@@ -13,6 +13,12 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
   const isConnectingRef = useRef(false);
   const lastActivityRef = useRef<number>(Date.now());
   const { onItemsUpdated } = options;
+  const onItemsUpdatedRef = useRef(onItemsUpdated);
+
+  // Keep ref in sync with latest handler to avoid useEffect dependencies
+  useEffect(() => {
+    onItemsUpdatedRef.current = onItemsUpdated;
+  }, [onItemsUpdated]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -63,8 +69,8 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
           const currentPendingCount = data.pending_count;
 
           if (lastPendingCount !== -1 && lastPendingCount !== currentPendingCount) {
-            if (onItemsUpdated) {
-              onItemsUpdated();
+            if (onItemsUpdatedRef.current) {
+              onItemsUpdatedRef.current();
             }
           }
 
@@ -75,10 +81,7 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
       };
 
       eventSource.onerror = (error) => {
-        // Log as warning rather than error for standard connection drops
-        // especially common on mobile when backgrounding
         console.warn('SSE: Connection interrupted or failed. Attempting to reconnect...', error);
-
         cleanup();
         scheduleReconnect();
       };
@@ -134,7 +137,6 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
     // Heartbeat check: Ensure we're receiving updates (backend sends every 5s)
     heartbeatCheckIntervalRef.current = setInterval(() => {
       const timeSinceLastActivity = Date.now() - lastActivityRef.current;
-      // If no activity for 45 seconds, the connection might be dead even if readyState is "open"
       if (timeSinceLastActivity > 45000 && !isConnectingRef.current) {
         console.warn('SSE: Heartbeat timeout (45s). Reconnecting...');
         reconnectDelayRef.current = 1000;
@@ -163,5 +165,5 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [onItemsUpdated]);
+  }, []); // Run only on mount
 }

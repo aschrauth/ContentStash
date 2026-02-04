@@ -411,9 +411,10 @@ async def list_items(
         query["$text"] = {"$search": search}
     
     # Add cursor-based pagination
+    pagination_query = query.copy()
     if cursor:
         try:
-            query["_id"] = {"$lt": ObjectId(cursor)}
+            pagination_query["_id"] = {"$lt": ObjectId(cursor)}
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -446,7 +447,7 @@ async def list_items(
         projection["score"] = {"$meta": "textScore"}
     
     # Fetch limit + 1 items to determine if there are more
-    find_cursor = db.saved_items.find(query, projection)
+    find_cursor = db.saved_items.find(pagination_query, projection)
     
     # Apply sorting
     for field, direction in sort_criteria:
