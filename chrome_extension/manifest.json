@@ -20,28 +20,36 @@
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+      "16": "stash16.png",
+      "48": "stash48.png",
+      "128": "stash128.png"
     }
   },
   "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "16": "stash16.png",
+    "48": "stash48.png",
+    "128": "stash128.png"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/content/content-script.ts"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content/content-script.ts"
+      ],
       "run_at": "document_idle",
       "world": "ISOLATED"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/content/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "src/content/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

@@ -18,6 +18,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Stash - Your Second Brain",
   description: "Organize, rediscover, and chat with your content.",
+  icons: {
+    icon: [
+      { url: '/icon.png', sizes: '128x128', type: 'image/png' },
+      { url: '/favicon-48x48.png', sizes: '48x48', type: 'image/png' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '128x128', type: 'image/png' },
+    ],
+  },
 };
 
 export default function RootLayout({
