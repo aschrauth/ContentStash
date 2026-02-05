@@ -8,7 +8,7 @@ const api = new ContentStashAPI();
 // Initialize on install
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('ContentStash extension installed');
-  
+
   // Set up polling alarm
   const settings = await Storage.getSettings();
   if (settings.pollingEnabled) {
@@ -36,17 +36,18 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 async function processPendingItems() {
   try {
     const authState = await Storage.getAuthState();
-    
+
     if (!authState.isAuthenticated || !authState.token) {
       console.log('Not authenticated, skipping polling');
       return;
     }
 
+    api.baseUrl = authState.serverUrl || api.baseUrl;
     api.setToken(authState.token);
     const pendingItems = await api.getPendingLocalItems();
-    
+
     console.log(`Found ${pendingItems.length} items pending local extraction`);
-    
+
     for (const item of pendingItems) {
       await processItem(item);
     }
@@ -64,7 +65,7 @@ async function processItem(item: SavedItem) {
 
   try {
     console.log(`Processing item ${item.id}: ${item.url}`);
-    
+
     // Check if this is a YouTube URL
     if (isYouTubeUrl(item.url)) {
       await processYouTubeItem(item);
@@ -80,36 +81,36 @@ async function processItem(item: SavedItem) {
 async function processYouTubeItem(item: SavedItem) {
   try {
     console.log(`[YouTube] Processing video: ${item.url}`);
-    
+
     // Extract video ID from URL
     const videoId = extractVideoId(item.url!);
     if (!videoId) {
       console.error(`[YouTube] Could not extract video ID from URL: ${item.url}`);
       return;
     }
-    
+
     console.log(`[YouTube] Extracted video ID: ${videoId}`);
-    
+
     // Extract transcript using the YouTube extractor
     const result = await extractYouTubeTranscript(videoId);
-    
+
     if (!result || !result.content || result.content.length < 100) {
       console.warn(`[YouTube] Insufficient transcript content for item ${item.id}`);
       return;
     }
-    
+
     console.log(`[YouTube] Successfully extracted transcript (${result.content.length} chars)`);
-    
+
     // Format source field as "YouTube | [Channel Name]"
     const source = result.channelName ? `YouTube | ${result.channelName}` : 'YouTube';
-    
+
     // Upload to server
     await api.uploadContent(item.id, {
       content: result.content,
       extraction_source: 'chrome_extension_youtube',
       source: source,
     });
-    
+
     console.log(`✓ [YouTube] Successfully uploaded transcript for item ${item.id} with source: ${source}`);
   } catch (error) {
     console.error(`[YouTube] Error processing item ${item.id}:`, error);
@@ -119,21 +120,21 @@ async function processYouTubeItem(item: SavedItem) {
 // Process a generic web page item
 async function processGenericItem(item: SavedItem) {
   let tab: chrome.tabs.Tab | undefined;
-  
+
   try {
     console.log(`[Generic] Processing page: ${item.url}`);
-    
+
     // Check if metadata is missing (title looks like a URL)
     const needsMetadata = !item.title ||
-                          item.title.startsWith('http://') ||
-                          item.title.startsWith('https://') ||
-                          !item.description ||
-                          !item.image_url;
-    
+      item.title.startsWith('http://') ||
+      item.title.startsWith('https://') ||
+      !item.description ||
+      !item.image_url;
+
     if (needsMetadata) {
       console.log(`[Generic] Item ${item.id} needs metadata extraction`);
     }
-    
+
     // Create a new tab in the background
     tab = await chrome.tabs.create({
       url: item.url,
@@ -150,7 +151,7 @@ async function processGenericItem(item: SavedItem) {
         }
       };
       chrome.tabs.onUpdated.addListener(listener);
-      
+
       // Timeout after 30 seconds
       setTimeout(() => {
         chrome.tabs.onUpdated.removeListener(listener);
@@ -174,10 +175,10 @@ async function processGenericItem(item: SavedItem) {
         });
 
         const metadata = metadataResults[0]?.result;
-        
+
         if (metadata && (metadata.title || metadata.description || metadata.image)) {
           console.log(`[Generic] Extracted metadata:`, metadata);
-          
+
           // Update item with extracted metadata
           const updateData: any = {};
           if (metadata.title && metadata.title !== item.title) {
@@ -189,7 +190,7 @@ async function processGenericItem(item: SavedItem) {
           if (metadata.image && !item.image_url) {
             updateData.image_url = metadata.image;
           }
-          
+
           if (Object.keys(updateData).length > 0) {
             await api.updateItemMetadata(item.id, updateData);
             console.log(`✓ [Generic] Updated metadata for item ${item.id}`);
@@ -222,7 +223,7 @@ async function processGenericItem(item: SavedItem) {
     } else {
       const errorMsg = `Insufficient content extracted (${content?.length || 0} chars, minimum 100 required)`;
       console.warn(`✗ [Generic] ${errorMsg} for item ${item.id}`);
-      
+
       // Report failure to server by uploading minimal content with error indicator
       // This allows the backend to mark the item as failed or retry with different method
       try {
@@ -242,7 +243,7 @@ async function processGenericItem(item: SavedItem) {
     }
   } catch (error) {
     console.error(`[Generic] Error processing item ${item.id}:`, error);
-    
+
     // Report the error to the server
     try {
       await api.uploadContent(item.id, {
@@ -253,7 +254,7 @@ async function processGenericItem(item: SavedItem) {
     } catch (uploadError) {
       console.error(`✗ [Generic] Failed to report extraction error for item ${item.id}:`, uploadError);
     }
-    
+
     // Ensure tab is closed even on error
     if (tab?.id) {
       try {
@@ -275,7 +276,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true; // Keep channel open for async response
   }
-  
+
   if (message.type === 'UPDATE_POLLING_SETTINGS') {
     const { enabled, intervalMinutes } = message.payload;
     if (enabled) {
@@ -289,7 +290,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     return true;
   }
-  
+
   // Handle YouTube extraction request from content script
   if (message.type === 'EXTRACT_YOUTUBE_FROM_TAB') {
     (async () => {
@@ -298,31 +299,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: false, error: 'No tab ID available' });
           return;
         }
-        
+
         // Extract metadata and caption URL from MAIN world
         const results = await chrome.scripting.executeScript({
           target: { tabId: sender.tab.id },
           world: 'MAIN',
           func: extractYouTubeTranscriptFromPage,
         });
-        
+
         const result = results[0]?.result;
-        
+
         if (!result || !result.success) {
           sendResponse({ success: false, error: result?.error || 'Metadata extraction failed' });
           return;
         }
-        
+
         const metadata = result.metadata;
-        
+
         if (!metadata) {
           sendResponse({ success: false, error: 'No metadata returned' });
           return;
         }
-        
+
         // Check if we got transcript XML from MAIN world
         const transcriptXml = result.transcriptXml;
-        
+
         if (transcriptXml) {
           sendResponse({
             success: true,
@@ -335,7 +336,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             metadata: metadata
           });
         }
-        
+
       } catch (error) {
         console.error('YouTube extraction error:', error);
         sendResponse({
@@ -346,7 +347,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true; // Keep channel open for async response
   }
-  
+
   // DEPRECATED: YouTube transcript extraction now happens via chrome.scripting.executeScript
   // with world: "MAIN" to avoid CSP violations
   // Keeping this code commented for reference
@@ -394,7 +395,7 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
 }> {
   try {
     const playerResponse = (window as any).ytInitialPlayerResponse;
-    
+
     if (!playerResponse?.videoDetails) {
       throw new Error('ytInitialPlayerResponse not found');
     }
@@ -406,19 +407,19 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
     // Step 1: Extract INNERTUBE_API_KEY from page HTML
     const html = document.documentElement.outerHTML;
     const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":\s*"([^"]+)"/);
-    
+
     if (!apiKeyMatch) {
       return {
         success: true,
         metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
       };
     }
-    
+
     const apiKey = apiKeyMatch[1];
 
     // Step 2: POST to InnerTube API with Android client context
     const innerTubeUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`;
-    
+
     const innerTubeResponse = await fetch(innerTubeUrl, {
       method: 'POST',
       headers: {
@@ -447,7 +448,7 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
 
     // Step 3: Extract caption tracks from InnerTube response
     const captionTracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    
+
     if (!captionTracks || captionTracks.length === 0) {
       return {
         success: true,

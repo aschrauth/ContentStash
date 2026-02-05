@@ -4,8 +4,13 @@ package-lock.json
 .next
 .env.local
 
+# NPM Cache
+npm_cache/
+.npm/
+
 # Build artifacts
 chrome_extension/dist/
+chrome_extension/public/
 
 # Python
 __pycache__/

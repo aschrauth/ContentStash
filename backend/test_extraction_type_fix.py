@@ -10,7 +10,7 @@ from datetime import datetime
 from bson import ObjectId
 
 # Add the backend directory to the path
-sys.path.insert(0, '/Users/anthonyschrauth/Documents/Dev/ContentStash/backend')
+sys.path.insert(0, '/Users/anthonyschrauth/Developer/ContentStash/backend')
 
 from app.database import get_database
 from app.services.background import process_item_background

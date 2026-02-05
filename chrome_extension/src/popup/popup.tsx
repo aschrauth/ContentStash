@@ -32,6 +32,7 @@ function App() {
     const authState = await Storage.getAuthState();
     setIsAuthenticated(authState.isAuthenticated);
     setServerUrl(authState.serverUrl);
+    api.baseUrl = authState.serverUrl;
     if (authState.token) {
       api.setToken(authState.token);
     }
@@ -42,6 +43,7 @@ function App() {
     try {
       const authState = await Storage.getAuthState();
       if (authState.isAuthenticated && authState.token) {
+        api.baseUrl = authState.serverUrl;
         api.setToken(authState.token);
         const items = await api.getPendingLocalItems();
         setPendingCount(items.length);
@@ -65,14 +67,14 @@ function App() {
   async function handleSaveSettings() {
     setMessage('');
     setIsProcessing(true);
-    
+
     try {
       await Storage.updateSettings({
         pollingEnabled,
         pollingIntervalMinutes: pollingInterval,
         popupCloseDelayMs: popupCloseDelay,
       });
-      
+
       // Notify service worker to update polling alarm
       await chrome.runtime.sendMessage({
         type: 'UPDATE_POLLING_SETTINGS',
@@ -81,7 +83,7 @@ function App() {
           intervalMinutes: pollingInterval,
         },
       });
-      
+
       setMessage('✓ Settings saved');
       setTimeout(() => {
         window.close();
@@ -95,7 +97,7 @@ function App() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setMessage('');
-    
+
     try {
       api.baseUrl = serverUrl;
       const result = await api.login(email, password);
@@ -120,10 +122,10 @@ function App() {
   async function handleSaveCurrentTab() {
     setMessage('');
     setIsProcessing(true);
-    
+
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      
+
       if (!tab.url || !tab.title || !tab.id) {
         setMessage('✗ Cannot save this page');
         setIsProcessing(false);
@@ -133,7 +135,7 @@ function App() {
       // For local extraction, extract content immediately
       if (extractionType === 'local') {
         setMessage('Extracting content...');
-        
+
         // Extract metadata using executeScript
         const metadataResults = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
@@ -144,11 +146,11 @@ function App() {
             };
 
             const description = getMetaContent('og:description') ||
-                              getMetaContent('description') ||
-                              getMetaContent('twitter:description') || '';
-            
+              getMetaContent('description') ||
+              getMetaContent('twitter:description') || '';
+
             const image = getMetaContent('og:image') ||
-                         getMetaContent('twitter:image') || '';
+              getMetaContent('twitter:image') || '';
 
             return {
               description,
@@ -196,7 +198,7 @@ function App() {
       } else {
         // For fast/complete, extract metadata and send to server
         setMessage('Extracting metadata...');
-        
+
         // Extract metadata using executeScript
         const metadataResults = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
@@ -207,11 +209,11 @@ function App() {
             };
 
             const description = getMetaContent('og:description') ||
-                              getMetaContent('description') ||
-                              getMetaContent('twitter:description') || '';
-            
+              getMetaContent('description') ||
+              getMetaContent('twitter:description') || '';
+
             const image = getMetaContent('og:image') ||
-                         getMetaContent('twitter:image') || '';
+              getMetaContent('twitter:image') || '';
 
             return {
               description,
@@ -233,7 +235,7 @@ function App() {
 
         setMessage('✓ Saved successfully!');
       }
-      
+
       setTimeout(() => {
         window.close();
       }, popupCloseDelay);
@@ -246,7 +248,7 @@ function App() {
   async function handleProcessPending() {
     setMessage('Processing pending items...');
     setIsProcessing(true);
-    
+
     try {
       await chrome.runtime.sendMessage({ type: 'PROCESS_PENDING_NOW' });
       setMessage('✓ Processing started');
@@ -317,7 +319,7 @@ function App() {
           {showSettings ? (
             <div className="settings-section">
               <h2>Settings</h2>
-              
+
               <div className="setting-group">
                 <label className="setting-label">
                   <input

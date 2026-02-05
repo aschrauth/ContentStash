@@ -14,7 +14,7 @@ from datetime import datetime
 from bson import ObjectId
 
 # Add parent directory to path
-sys.path.insert(0, '/Users/anthonyschrauth/Documents/Dev/ContentStash/backend')
+sys.path.insert(0, '/Users/anthonyschrauth/Developer/ContentStash/backend')
 
 from app.database import get_database, connect_to_mongo, close_mongo_connection
 from app.services.background import process_item_background

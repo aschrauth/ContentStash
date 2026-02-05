@@ -17,7 +17,7 @@ The extension has been successfully built and is ready to install.
 
 ### 3. Load the Extension
 - Click the **"Load unpacked"** button (appears after enabling Developer mode)
-- Navigate to: `/Users/anthonyschrauth/Documents/Dev/ContentStash/chrome_extension/dist`
+- Navigate to: `/Users/anthonyschrauth/Developer/ContentStash/chrome_extension/dist`
 - Click **"Select"** or **"Open"**
 
 ### 4. Verify Installation
