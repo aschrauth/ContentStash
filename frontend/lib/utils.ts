@@ -11,7 +11,7 @@ export function generateId() {
 
 export function formatDate(date: string | Date) {
   const dateObj = new Date(date);
-  
+
   // Use toLocaleString to automatically convert to user's browser timezone
   return dateObj.toLocaleString("en-US", {
     month: "short",
@@ -30,22 +30,30 @@ export function formatDate(date: string | Date) {
  */
 export function cleanMarkdown(text: string): string {
   if (!text) return '';
-  
+
   let cleaned = text;
-  
+
   // Fix bold colon spacing: Insert space after bold-colon if missing
   cleaned = cleaned.replace(/\*\*([^*]+):\*\*([^\s])/g, '**$1:** $2');
-  
+
   // Fix escaped asterisks if present
   cleaned = cleaned.replace(/\\\*\\\*/g, '**');
-  
+
   // Ensure blank line before lists (both ordered and unordered)
   // This regex looks for a non-list line followed immediately by a list item
   cleaned = cleaned.replace(/([^\n])\n((?:[-*+]|\d+\.)\s)/g, '$1\n\n$2');
-  
+
   // Ensure blank line after lists end
   // This regex looks for a list item followed by a non-list, non-blank line
   cleaned = cleaned.replace(/((?:[-*+]|\d+\.)\s[^\n]+)\n([^\n](?![-*+]|\d+\.))/g, '$1\n\n$2');
-  
+
   return cleaned;
+}
+
+export const READING_SPEED_WPM = 200;
+
+export function calculateReadTime(wordCount?: number): string | null {
+  if (!wordCount) return null;
+  const time = Math.ceil(wordCount / READING_SPEED_WPM);
+  return `${time} min read`;
 }

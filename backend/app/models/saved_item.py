@@ -16,6 +16,7 @@ class SavedItemBase(BaseModel):
     archived_text: Optional[str] = None
     extraction_type: Optional[str] = Field(default="fast", pattern="^(fast|complete|local)$")
     source: Optional[str] = Field(None, max_length=100)
+    word_count: Optional[int] = None
     
     @field_validator('tags')
     @classmethod
@@ -46,6 +47,7 @@ class SavedItemUpdate(BaseModel):
     archived_text: Optional[str] = None
     extraction_type: Optional[str] = Field(None, pattern="^(fast|complete|local)$")
     source: Optional[str] = Field(None, max_length=100)
+    word_count: Optional[int] = None
     
     @field_validator('tags')
     @classmethod
@@ -66,6 +68,7 @@ class SavedItem(SavedItemBase):
     suggested_tags: Optional[List[str]] = None
     suggested_topic: Optional[str] = None
     ai_summary: Optional[str] = None
+    word_count: Optional[int] = None
     processing_status: str = Field(default="pending", pattern="^(pending|processing|processed|failed|pending_local_extraction)$")
     processing_error: Optional[str] = None
     created_at: datetime

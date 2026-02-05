@@ -3,9 +3,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ExternalLink, FileText, Youtube, Image as ImageIcon } from 'lucide-react';
+import { ExternalLink, FileText, Youtube, Image as ImageIcon, Clock } from 'lucide-react';
 import { SavedItem } from '@/lib/store';
-import { formatDate, cn } from '@/lib/utils'; // Added cn import
+import { formatDate, cn, calculateReadTime } from '@/lib/utils'; // Added cn import
 
 interface ItemCardProps {
   item: SavedItem;
@@ -55,7 +55,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
               
               /* Mobile Styles */
               w-[116px] h-16 m-3 rounded-lg 
-
+ 
               /* Desktop Styles */
               md:w-[230px] md:h-full md:m-0 md:rounded-none
             `}>
@@ -82,39 +82,55 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
                 Desktop: flex-col to stack vertically in the right pane */}
             <div className="contents md:flex md:flex-col md:flex-1 md:justify-between md:min-w-0 md:p-4">
 
-              {/* Top Section: Title & Date */}
-              {/* Mobile: Fills remaining width next to image. Desktop: Top of column */}
-              <div className="flex flex-col justify-center gap-1 w-[calc(100%-116px-24px)] h-16 pt-3 pr-3 md:w-full md:h-auto md:p-0 md:mb-1">
-                {/* Desktop: Header Row */}
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
-                  <h3 className="font-semibold text-sm md:text-base leading-tight text-slate-100 line-clamp-2 truncate group-hover:text-violet-300 transition-colors">
+              {/* Title & Metadata Block (Right of thumbnail on mobile) */}
+              <div className="flex flex-col justify-center gap-1 w-[calc(100%-116px-24px)] pt-3 pr-3 md:w-full md:h-auto md:p-0 md:mb-1">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-semibold text-sm md:text-base leading-tight text-slate-100 line-clamp-2 truncate group-hover:text-violet-300 transition-colors md:flex-1">
                     {item.title}
                   </h3>
-                  <span className="text-xs text-slate-400 flex-shrink-0 flex items-center gap-2 md:gap-1">
-                    <span className="hidden md:inline">{formatDate(item.createdAt)}</span>
-                    {/* Mobile Date is below title, Desktop is right aligned */}
-                    <span className="md:hidden">{formatDate(item.createdAt)}</span>
 
-                    {/* Status Indicators */}
+                  {/* Status Indicators */}
+                  <div className="flex-shrink-0 flex items-center mt-1">
                     {item.processingStatus === 'pending' && (
                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-amber-500 animate-pulse" title="Processing" />
                     )}
                     {item.processingStatus === 'failed' && (
                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-red-500" title="Failed" />
                     )}
-                  </span>
+                  </div>
                 </div>
 
-                {/* Source */}
-                {item.source && (
-                  <p className="text-xs text-slate-500 truncate pb-0.5 md:mb-1">
-                    {item.source}
-                  </p>
-                )}
+                {/* Metadata: Read Time, Date and Source - Integrated into right column on Mobile */}
+                <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 text-[11px] md:text-xs text-slate-500 mt-1 md:mt-0">
+                  <div className="flex items-center gap-2">
+                    {/* Read Time */}
+                    {calculateReadTime(item.wordCount) && (
+                      <span className="text-slate-400 font-medium flex items-center gap-1 shrink-0">
+                        <Clock className="w-3 h-3" />
+                        {calculateReadTime(item.wordCount)}
+                      </span>
+                    )}
+
+                    {calculateReadTime(item.wordCount) && <span className="text-slate-600">•</span>}
+
+                    {/* Date */}
+                    <span className="text-slate-400 shrink-0">
+                      {formatDate(item.createdAt)}
+                    </span>
+
+                    {item.source && <span className="hidden md:inline text-slate-600 md:ml-1">•</span>}
+                  </div>
+
+                  {/* Source (Stacked on Mobile, Row on Desktop) */}
+                  {item.source && (
+                    <span className="truncate text-slate-500 max-w-[200px] md:max-w-none">
+                      {item.source}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* Description Section */}
-              {/* Mobile: Full width below image. Desktop: Middle of column */}
+              {/* Description Section (Mobile: Stacks below image/title row) */}
               <div className="w-full px-3 pb-2 md:p-0 md:mb-2 order-3 md:order-none">
                 <p className="text-xs md:text-sm text-slate-400 line-clamp-2 opacity-100">
                   {item.description || "No description available."}
@@ -143,7 +159,6 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
                   </div>
                 </div>
               )}
-
             </div>
           </div>
         </motion.div>
@@ -206,30 +221,41 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
         {/* Content */}
         <div className="flex-1 p-5 flex flex-col">
           {/* Header */}
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              {getIcon()}
-              {/* Source and date */}
-              {item.source ? (
-                <>
-                  <span>{item.source}</span>
-                  <span>•</span>
-                  <span>{formatDate(item.createdAt)}</span>
-                </>
-              ) : (
+          <div className="flex flex-col gap-2 mb-3">
+            {/* Metadata Part 1: Icon, Read Time, Date */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                {getIcon()}
+                {calculateReadTime(item.wordCount) && (
+                  <>
+                    <span className="text-slate-400 font-medium flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {calculateReadTime(item.wordCount)}
+                    </span>
+                    <span>•</span>
+                  </>
+                )}
                 <span>{formatDate(item.createdAt)}</span>
+              </div>
+
+              {/* Status Indicator (for items without images) */}
+              {!item.imageUrl && (
+                <div className="flex items-center gap-1">
+                  {item.processingStatus === 'pending' && (
+                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Processing" />
+                  )}
+                  {item.processingStatus === 'failed' && (
+                    <div className="w-2 h-2 rounded-full bg-red-500" title="Failed" />
+                  )}
+                </div>
               )}
             </div>
-            {/* Status indicator for items without images */}
-            {!item.imageUrl && (
-              <>
-                {item.processingStatus === 'pending' && (
-                  <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Processing" />
-                )}
-                {item.processingStatus === 'failed' && (
-                  <div className="w-2 h-2 rounded-full bg-red-500" title="Failed" />
-                )}
-              </>
+
+            {/* Metadata Part 2: Source (New Line) */}
+            {item.source && (
+              <div className="text-xs text-slate-500 truncate mt-0.5">
+                {item.source}
+              </div>
             )}
           </div>
 
@@ -266,4 +292,3 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
     </Link>
   );
 }
-

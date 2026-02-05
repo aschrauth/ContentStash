@@ -492,10 +492,13 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
             )
         
         # Step 5: Update item with results
+        word_count = len(archived_text.split()) if archived_text else 0
+        
         update_doc = {
             "processing_status": "processed",
             "updated_at": datetime.utcnow(),
             "archived_text": archived_text,
+            "word_count": word_count,
             "suggested_tags": ai_suggestions.get("tags"),
             "suggested_topic": ai_suggestions.get("topic"),
             "extraction_type": actual_extraction_method  # Update with actual method used

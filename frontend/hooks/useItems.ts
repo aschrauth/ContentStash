@@ -26,13 +26,13 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
       if (!token) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await getItems(token, search, tags, 20, pageParam as string | undefined);
-      
+
       // Handle both old format (array) and new format (object with pagination)
       let itemsData: any[];
       let pagination: { next_cursor: string | null; has_more: boolean; limit: number; total: number };
-      
+
       if (Array.isArray(response)) {
         // Old format - backward compatibility
         itemsData = response;
@@ -42,7 +42,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
         itemsData = response.items;
         pagination = response.pagination;
       }
-      
+
       // Convert snake_case to camelCase for all items
       const formattedItems: SavedItem[] = itemsData.map((item: Record<string, unknown>) => ({
         id: item.id as string,
@@ -58,13 +58,14 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
         suggestedTopic: item.suggested_topic as string | undefined,
         archivedText: item.archived_text as string | undefined,
         source: item.source as string | undefined,
+        wordCount: item.word_count as number | undefined,
         extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
         processingStatus: item.processing_status as 'pending' | 'processed' | 'failed',
         createdAt: item.created_at as string,
         updatedAt: item.updated_at as string,
         archivedAt: item.archived_at as string | undefined,
       }));
-      
+
       return {
         items: formattedItems,
         pagination,
@@ -86,7 +87,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
  */
 export function useInvalidateItems() {
   const queryClient = useQueryClient();
-  
+
   return () => {
     queryClient.invalidateQueries({ queryKey: ['items'] });
   };
@@ -97,14 +98,14 @@ export function useInvalidateItems() {
  */
 export function useUpdateItemsCache() {
   const queryClient = useQueryClient();
-  
+
   return {
     addItem: (newItem: SavedItem) => {
       queryClient.setQueriesData<{ pages: PaginatedResponse<SavedItem>[]; pageParams: any[] }>(
         { queryKey: ['items'] },
         (oldData) => {
           if (!oldData || !oldData.pages || oldData.pages.length === 0) return oldData;
-          
+
           // Add to the first page
           const newPages = [...oldData.pages];
           newPages[0] = {
@@ -115,7 +116,7 @@ export function useUpdateItemsCache() {
               total: newPages[0].pagination.total + 1,
             },
           };
-          
+
           return {
             ...oldData,
             pages: newPages,
@@ -123,20 +124,20 @@ export function useUpdateItemsCache() {
         }
       );
     },
-    
+
     updateItem: (itemId: string, updates: Partial<SavedItem>) => {
       queryClient.setQueriesData<{ pages: PaginatedResponse<SavedItem>[]; pageParams: any[] }>(
         { queryKey: ['items'] },
         (oldData) => {
           if (!oldData || !oldData.pages) return oldData;
-          
+
           const newPages = oldData.pages.map((page) => ({
             ...page,
             items: page.items.map((item) =>
               item.id === itemId ? { ...item, ...updates } : item
             ),
           }));
-          
+
           return {
             ...oldData,
             pages: newPages,
@@ -144,13 +145,13 @@ export function useUpdateItemsCache() {
         }
       );
     },
-    
+
     removeItem: (itemId: string) => {
       queryClient.setQueriesData<{ pages: PaginatedResponse<SavedItem>[]; pageParams: any[] }>(
         { queryKey: ['items'] },
         (oldData) => {
           if (!oldData || !oldData.pages) return oldData;
-          
+
           const newPages = oldData.pages.map((page) => ({
             ...page,
             items: page.items.filter((item) => item.id !== itemId),
@@ -159,7 +160,7 @@ export function useUpdateItemsCache() {
               total: Math.max(0, page.pagination.total - 1),
             },
           }));
-          
+
           return {
             ...oldData,
             pages: newPages,

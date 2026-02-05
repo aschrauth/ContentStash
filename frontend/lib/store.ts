@@ -31,6 +31,7 @@ export type SavedItem = {
   suggestedTopic?: string;
   archivedText?: string;
   source?: string;
+  wordCount?: number;
   extractionType?: 'fast' | 'complete' | 'local';
   processingStatus: 'pending' | 'processing' | 'processed' | 'failed' | 'pending_local_extraction';
   createdAt: string;
@@ -283,24 +284,25 @@ export const useStore = create<AppState>()(
 
           // Convert snake_case to camelCase for all items
           const formattedItems: SavedItem[] = itemsData.map((item: Record<string, unknown>) => ({
-            id: item.id,
-            ownerId: item.owner_id,
-            url: item.url,
-            title: item.title,
-            description: item.description,
-            imageUrl: item.image_url,
-            faviconUrl: item.favicon_url,
-            notesMarkdown: item.notes_markdown,
-            tags: item.tags || [],
-            suggestedTags: item.suggested_tags,
-            suggestedTopic: item.suggested_topic,
-            archivedText: item.archived_text,
-            source: item.source,
+            id: item.id as string,
+            ownerId: item.owner_id as string,
+            url: item.url as string | undefined,
+            title: item.title as string,
+            description: item.description as string | undefined,
+            imageUrl: item.image_url as string | undefined,
+            faviconUrl: item.favicon_url as string | undefined,
+            notesMarkdown: item.notes_markdown as string | undefined,
+            tags: (item.tags as string[]) || [],
+            suggestedTags: item.suggested_tags as string[] | undefined,
+            suggestedTopic: item.suggested_topic as string | undefined,
+            archivedText: item.archived_text as string | undefined,
+            source: item.source as string | undefined,
+            wordCount: item.word_count as number | undefined,
             extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
-            processingStatus: item.processing_status,
-            createdAt: item.created_at,
-            updatedAt: item.updated_at,
-            archivedAt: item.archived_at,
+            processingStatus: item.processing_status as 'pending' | 'processing' | 'processed' | 'failed' | 'pending_local_extraction',
+            createdAt: item.created_at as string,
+            updatedAt: item.updated_at as string,
+            archivedAt: item.archived_at as string | undefined
           }));
 
           // If loading more, append to existing items; otherwise replace
@@ -398,6 +400,7 @@ export const useStore = create<AppState>()(
             suggestedTopic: newItem.suggested_topic,
             archivedText: newItem.archived_text,
             source: newItem.source,
+            wordCount: newItem.word_count,
             extractionType: newItem.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: newItem.processing_status,
             createdAt: newItem.created_at,
@@ -463,6 +466,7 @@ export const useStore = create<AppState>()(
             suggestedTopic: updatedItem.suggested_topic,
             archivedText: updatedItem.archived_text,
             source: updatedItem.source,
+            wordCount: updatedItem.word_count,
             extractionType: updatedItem.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: updatedItem.processing_status,
             createdAt: updatedItem.created_at,

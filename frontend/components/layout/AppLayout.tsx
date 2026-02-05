@@ -48,7 +48,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         onChatClick={() => setIsChatOpen(true)}
       />
 
-      <main className="flex-1 container mx-auto px-4 py-8 relative z-10">
+      <main className="flex-1 container mx-auto px-2 md:px-4 py-4 md:py-8 relative z-10">
         {children}
       </main>
 

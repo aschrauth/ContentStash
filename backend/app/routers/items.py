@@ -367,6 +367,7 @@ async def create_item(
         source=source,
         suggested_tags=None,
         suggested_topic=None,
+        word_count=len(archived_text.split()) if archived_text else 0,
         processing_status="pending",
         processing_error=None,
         created_at=now,
@@ -484,6 +485,7 @@ async def list_items(
             source=doc.get("source"),
             suggested_tags=doc.get("suggested_tags"),
             suggested_topic=doc.get("suggested_topic"),
+            word_count=doc.get("word_count"),
             processing_status=doc.get("processing_status", "pending"),
             processing_error=doc.get("processing_error"),
             created_at=doc["created_at"],
@@ -556,6 +558,7 @@ async def get_pending_local_extraction(
             source=doc.get("source"),
             suggested_tags=doc.get("suggested_tags"),
             suggested_topic=doc.get("suggested_topic"),
+            word_count=doc.get("word_count"),
             processing_status=doc.get("processing_status", "pending"),
             processing_error=doc.get("processing_error"),
             created_at=doc["created_at"],
@@ -621,6 +624,7 @@ async def get_item(
         source=item_doc.get("source"),
         suggested_tags=item_doc.get("suggested_tags"),
         suggested_topic=item_doc.get("suggested_topic"),
+        word_count=item_doc.get("word_count"),
         processing_status=item_doc.get("processing_status", "pending"),
         processing_error=item_doc.get("processing_error"),
         created_at=item_doc["created_at"],
@@ -762,6 +766,7 @@ async def update_item(
         source=updated_item_doc.get("source"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
+        word_count=updated_item_doc.get("word_count"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
         created_at=updated_item_doc["created_at"],
@@ -911,6 +916,7 @@ async def reprocess_item(
         source=updated_item_doc.get("source"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
+        word_count=updated_item_doc.get("word_count"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
         created_at=updated_item_doc["created_at"],
@@ -1047,8 +1053,11 @@ async def upload_extracted_content(
             
             # Update item with extracted content and mark as processing
             # Use "processing" instead of "pending" to avoid infinite loop in local extraction queue
+            word_count = len(cleaned_content.split()) if cleaned_content else 0
+            
             update_fields = {
                 "archived_text": cleaned_content,
+                "word_count": word_count,
                 "processing_status": "processing",
                 "processing_error": None,
                 "updated_at": datetime.utcnow()
@@ -1091,6 +1100,7 @@ async def upload_extracted_content(
         source=updated_item_doc.get("source"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
+        word_count=updated_item_doc.get("word_count"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
         created_at=updated_item_doc["created_at"],

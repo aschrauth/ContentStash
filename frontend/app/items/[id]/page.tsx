@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useStore, SavedItem } from '@/lib/store';
-import { formatDate, cn, cleanMarkdown } from '@/lib/utils';
+import { formatDate, cn, cleanMarkdown, calculateReadTime } from '@/lib/utils';
 import { API_ENDPOINTS } from '@/lib/api';
 import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
@@ -24,7 +24,7 @@ export default function ItemDetailPage() {
   const router = useRouter();
   const { items, updateItem, deleteItem, token, _hasHydrated } = useStore();
   const queryClient = useQueryClient();
-  
+
   const [itemId, setItemId] = useState<string | null>(null);
   const [item, setItem] = useState<SavedItem | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -50,16 +50,16 @@ export default function ItemDetailPage() {
   useEffect(() => {
     // Wait for Zustand hydration to complete
     if (!_hasHydrated) return;
-    
+
     // Check both Zustand state and localStorage for token
     const storedToken = localStorage.getItem('token');
     if (!token && !storedToken) {
       router.push('/login');
       return;
     }
-    
+
     if (!itemId) return;
-    
+
     // ALWAYS fetch from API to get full item including archived_text
     // The list endpoint excludes archived_text for performance, so we need a fresh fetch
     const fetchItem = async () => {
@@ -76,10 +76,10 @@ export default function ItemDetailPage() {
             'Authorization': `Bearer ${authToken}`,
           },
         });
-        
+
         if (response.ok) {
           const data = await response.json();
-          
+
           // Convert snake_case to camelCase
           const formattedItem = {
             id: data.id,
@@ -95,20 +95,21 @@ export default function ItemDetailPage() {
             suggestedTopic: data.suggested_topic,
             archivedText: data.archived_text,  // THIS IS THE KEY LINE
             source: data.source,
+            wordCount: data.word_count,
             extractionType: data.extraction_type,
             processingStatus: data.processing_status,
             createdAt: data.created_at,
             updatedAt: data.updated_at,
             archivedAt: data.archived_at
           };
-          
+
           setItem(formattedItem);
           setEditTitle(formattedItem.title);
           setEditDescription(formattedItem.description || '');
           setEditSource(formattedItem.source || '');
           setNoteContent(formattedItem.notesMarkdown || '');
           setIsLoading(false);
-          
+
         } else if (response.status === 404) {
           console.error('[Detail View] Item not found (404)');
           toast.error("Item not found");
@@ -124,21 +125,21 @@ export default function ItemDetailPage() {
         setIsLoading(false);
       }
     };
-    
+
     fetchItem();
   }, [itemId, token, router, _hasHydrated]);
 
   // Polling effect for pending items
   useEffect(() => {
     if (!itemId || !token || !item) return;
-    
+
     // Only poll if status is pending, processing, or pending_local_extraction
     const shouldPoll = item.processingStatus === 'pending' ||
-                       item.processingStatus === 'processing' ||
-                       item.processingStatus === 'pending_local_extraction';
-    
+      item.processingStatus === 'processing' ||
+      item.processingStatus === 'pending_local_extraction';
+
     if (!shouldPoll) return;
-    
+
     const pollInterval = setInterval(async () => {
       try {
         const response = await fetch(API_ENDPOINTS.itemById(itemId), {
@@ -146,10 +147,10 @@ export default function ItemDetailPage() {
             'Authorization': `Bearer ${token}`,
           },
         });
-        
+
         if (response.ok) {
           const updatedData = await response.json();
-          
+
           // Convert snake_case to camelCase
           const formattedItem: SavedItem = {
             id: updatedData.id,
@@ -165,24 +166,25 @@ export default function ItemDetailPage() {
             suggestedTopic: updatedData.suggested_topic,
             archivedText: updatedData.archived_text,
             source: updatedData.source,
+            wordCount: updatedData.word_count,
             extractionType: updatedData.extraction_type,
             processingStatus: updatedData.processing_status,
             createdAt: updatedData.created_at,
             updatedAt: updatedData.updated_at,
             archivedAt: updatedData.archived_at
           };
-          
+
           // Update both the Zustand store AND local state
           updateItem(itemId, updatedData);
           setItem(formattedItem);
-          
+
           // If processing is complete, stop polling and show notification
           const isComplete = updatedData.processing_status === 'processed' ||
-                            updatedData.processing_status === 'failed';
-          
+            updatedData.processing_status === 'failed';
+
           if (isComplete) {
             clearInterval(pollInterval);
-            
+
             if (updatedData.processing_status === 'processed') {
               toast.success('Content processed successfully!');
             } else if (updatedData.processing_status === 'failed') {
@@ -194,7 +196,7 @@ export default function ItemDetailPage() {
         console.error('Error polling item status:', error);
       }
     }, 2000); // Poll every 2 seconds
-    
+
     return () => clearInterval(pollInterval);
   }, [itemId, token, item?.processingStatus, updateItem]);
 
@@ -231,7 +233,7 @@ export default function ItemDetailPage() {
         return () => clearTimeout(timer);
       }
     }
-    
+
     setShowAutocomplete(false);
   }, [newTag, token]);
 
@@ -302,10 +304,10 @@ export default function ItemDetailPage() {
   const handleConfirmDelete = async () => {
     try {
       await deleteItem(item.id);
-      
+
       // Invalidate React Query cache to refresh the library immediately
       queryClient.invalidateQueries({ queryKey: ['items'] });
-      
+
       toast.success("Item deleted");
       router.push('/library');
     } catch (error) {
@@ -325,7 +327,7 @@ export default function ItemDetailPage() {
           'Content-Type': 'application/json',
         },
       });
-      
+
       if (response.ok) {
         const updatedItem = await response.json();
         updateItem(item.id, updatedItem);
@@ -346,7 +348,7 @@ export default function ItemDetailPage() {
     <AppLayout>
       <div className="max-w-5xl mx-auto pb-20">
         {/* Back Button */}
-        <button 
+        <button
           onClick={() => router.back()}
           className="flex items-center text-slate-400 hover:text-white mb-6 transition-colors"
         >
@@ -354,19 +356,19 @@ export default function ItemDetailPage() {
           Back to Library
         </button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-8">
-            
+          <div className="lg:col-span-2 space-y-4 md:space-y-8">
+
             {/* Summary Panel - Header Section */}
-            <div className="glass-panel p-8 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="glass-panel p-4 md:p-8 rounded-2xl border border-white/10 relative overflow-hidden">
               {/* Background Image Blur */}
               {item.imageUrl && (
                 <div className="absolute inset-0 z-0 opacity-10">
                   <img src={item.imageUrl} alt="" className="w-full h-full object-cover blur-xl" />
                 </div>
               )}
-              
+
               <div className="relative z-10">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-2">
@@ -390,9 +392,7 @@ export default function ItemDetailPage() {
                         <Check className="w-3 h-3" /> Processed
                       </span>
                     )}
-                    <span className="text-slate-400 text-xs flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> {formatDate(item.createdAt)}
-                    </span>
+
                   </div>
 
                   <div className="flex gap-2">
@@ -432,34 +432,51 @@ export default function ItemDetailPage() {
                 ) : (
                   <div className="clearfix">
                     <h1 className="text-3xl font-bold text-white mb-4 leading-tight">{item.title}</h1>
-                    
-                    {/* Source field - Detail View */}
-                    {item.source && (
-                      <p className="text-sm text-slate-400 mb-4">
-                        {item.source}
-                      </p>
-                    )}
-                    
+
+                    {/* Date and Read Time - Detail View */}
+                    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 mb-4 text-sm text-slate-400">
+                      <div className="flex items-center gap-2">
+                        {calculateReadTime(item.wordCount) && (
+                          <>
+                            <span className="text-slate-400 font-medium flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {calculateReadTime(item.wordCount)}
+                            </span>
+                            <span className="text-slate-600">•</span>
+                          </>
+                        )}
+
+                        <span>{formatDate(item.createdAt)}</span>
+                      </div>
+
+                      {item.source && (
+                        <div className="flex items-center gap-2">
+                          <span className="hidden md:inline text-slate-600">•</span>
+                          <span className="truncate">{item.source}</span>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Preview Image - Floated Left */}
                     {item.imageUrl && (
                       <div className="float-left mr-6 mb-4 w-[250px] rounded-xl overflow-hidden border border-white/10 shadow-lg">
-                        <img 
-                          src={item.imageUrl} 
-                          alt={item.title} 
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
                           className="w-full h-auto object-cover"
                         />
                       </div>
                     )}
-                    
+
                     <p className="text-slate-300 text-lg leading-relaxed mb-6">{item.description}</p>
                   </div>
                 )}
 
                 {item.url && (
                   <div className="clear-both pt-4">
-                    <a 
-                      href={item.url} 
-                      target="_blank" 
+                    <a
+                      href={item.url}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center text-violet-400 hover:text-violet-300 transition-colors font-medium"
                     >
@@ -471,7 +488,7 @@ export default function ItemDetailPage() {
             </div>
 
             {/* Personal Notes Panel */}
-            <div className="glass-panel p-8 rounded-2xl border border-white/10">
+            <div className="glass-panel p-4 md:p-8 rounded-2xl border border-white/10">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
                   <Edit3 className="w-5 h-5 text-violet-400" /> Personal Notes
@@ -480,7 +497,7 @@ export default function ItemDetailPage() {
                   <Save className="w-4 h-4 mr-2" /> Save Notes
                 </Button>
               </div>
-              
+
               <RichTextEditor
                 value={noteContent}
                 onChange={setNoteContent}
@@ -490,7 +507,7 @@ export default function ItemDetailPage() {
 
             {/* Archived Content Panel */}
             {item.archivedText && (
-              <div className="glass-panel p-8 rounded-2xl border border-white/10">
+              <div className="glass-panel p-4 md:p-8 rounded-2xl border border-white/10">
                 <h2 className="text-xl font-bold text-white mb-4">Archived Content</h2>
                 <div className="prose-archived max-w-none text-slate-300">
                   <ReactMarkdown
@@ -533,14 +550,14 @@ export default function ItemDetailPage() {
           </div>
 
           {/* Right Rail - Sidebar */}
-          <div className="space-y-6">
-            
+          <div className="space-y-4 md:space-y-6">
+
             {/* Tags Panel */}
-            <div className="glass-panel p-6 rounded-2xl border border-white/10">
+            <div className="glass-panel p-3 md:p-6 rounded-2xl border border-white/10">
               <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
                 <Tag className="w-4 h-4 text-violet-400" /> Tags
               </h3>
-              
+
               <div className="flex flex-wrap gap-2 mb-4">
                 {item.tags.map(tag => (
                   <span
@@ -593,7 +610,7 @@ export default function ItemDetailPage() {
                 <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-violet-900/20 to-transparent border border-violet-500/20">
                   <h4 className="font-semibold text-white mb-2 text-sm">AI Suggestions</h4>
                   <p className="text-xs text-slate-400 mb-3">Based on content analysis</p>
-                  
+
                   <div className="flex flex-wrap gap-2">
                     {item.suggestedTags.map(tag => (
                       <button
@@ -611,7 +628,7 @@ export default function ItemDetailPage() {
 
             {/* Extraction Type Panel */}
             {item.url && (
-              <div className="glass-panel p-6 rounded-2xl border border-white/10">
+              <div className="glass-panel p-3 md:p-6 rounded-2xl border border-white/10">
                 <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                   <Zap className="w-4 h-4 text-violet-400" /> Extraction Type
                 </h3>
@@ -628,17 +645,17 @@ export default function ItemDetailPage() {
                       try {
                         // Update via Zustand store
                         await updateItem(item.id, { extractionType: newType });
-                        
+
                         // Fetch the updated item from the API to get the new processing status
                         const response = await fetch(API_ENDPOINTS.itemById(item.id), {
                           headers: {
                             'Authorization': `Bearer ${token}`,
                           },
                         });
-                        
+
                         if (response.ok) {
                           const updatedData = await response.json();
-                          
+
                           // Update local state with the fresh data from API including new processing status
                           const formattedItem: SavedItem = {
                             id: updatedData.id,
@@ -660,7 +677,7 @@ export default function ItemDetailPage() {
                             updatedAt: updatedData.updated_at,
                             archivedAt: updatedData.archived_at
                           };
-                          
+
                           // This will trigger the polling effect to start monitoring
                           setItem(formattedItem);
                           toast.success(`Extraction type changed to ${newType}. Reprocessing...`);
@@ -688,7 +705,7 @@ export default function ItemDetailPage() {
             )}
 
             {/* Actions Panel */}
-            <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
+            <div className="glass-panel p-3 md:p-6 rounded-2xl border border-white/10 space-y-3">
               <h3 className="font-semibold text-white mb-2">Actions</h3>
               {(item.processingStatus === 'failed' || item.processingStatus === 'processed') && item.url && (
                 <Button
@@ -713,7 +730,7 @@ export default function ItemDetailPage() {
 
             {/* Topic Panel */}
             {item.suggestedTopic && (
-              <div className="glass-panel p-6 rounded-2xl border border-white/10">
+              <div className="glass-panel p-3 md:p-6 rounded-2xl border border-white/10">
                 <h3 className="font-semibold text-white mb-2">Topic</h3>
                 <span className="px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-sm border border-cyan-500/30 inline-block">
                   {item.suggestedTopic}
