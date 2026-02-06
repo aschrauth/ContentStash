@@ -389,70 +389,107 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
     lengthSeconds: number;
     captionUrl: string | null;
     channelName?: string;
+    description?: string;
   };
   transcriptXml?: string;
   error?: string;
 }> {
   try {
-    const playerResponse = (window as any).ytInitialPlayerResponse;
+    // Step 1: Extract Video ID from URL (Primary Source for correct navigation)
+    const url = window.location.href;
+    const videoIdMatch = url.match(/[?&]v=([^&]+)/);
+    const videoId = videoIdMatch ? videoIdMatch[1] : null;
 
-    if (!playerResponse?.videoDetails) {
-      throw new Error('ytInitialPlayerResponse not found');
+    if (!videoId) {
+      throw new Error('Could not extract video ID from URL');
     }
 
-    // Extract metadata
-    const { title, author, videoId, lengthSeconds } = playerResponse.videoDetails;
-    const channelName = author; // Channel name is stored in the author field
-
-    // Step 1: Extract INNERTUBE_API_KEY from page HTML
+    // Step 2: Extract INNERTUBE_API_KEY from page HTML
     const html = document.documentElement.outerHTML;
     const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":\s*"([^"]+)"/);
 
     if (!apiKeyMatch) {
-      return {
-        success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
-      };
+      throw new Error('Could not extract INNERTUBE_API_KEY');
     }
 
     const apiKey = apiKeyMatch[1];
+    let playerData;
 
-    // Step 2: POST to InnerTube API with Android client context
-    const innerTubeUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`;
 
-    const innerTubeResponse = await fetch(innerTubeUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept-Language': 'en-US'
-      },
-      body: JSON.stringify({
-        context: {
-          client: {
-            clientName: 'ANDROID',
-            clientVersion: '20.10.38'
-          }
-        },
-        videoId: videoId
-      })
-    });
 
-    if (!innerTubeResponse.ok) {
-      return {
-        success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
-      };
+    // HYBRID APPROACH: Check if global player response matches current URL
+    // If it matches, use it (it's often better quality/web client version).
+    // If it doesn't match (SPA navigation) OR if it lacks captions, fetch fresh from API.
+    const globalResponse = (window as any).ytInitialPlayerResponse;
+    const globalVideoId = globalResponse?.videoDetails?.videoId;
+
+    let useGlobal = false;
+    if (globalVideoId && globalVideoId === videoId) {
+      // Check if global response actually has captions
+      const globalCaptions = globalResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+      if (globalCaptions && globalCaptions.length > 0) {
+        console.log('[ContentStash] Using global ytInitialPlayerResponse (Matches URL & Has Captions)');
+        playerData = globalResponse;
+        useGlobal = true;
+      } else {
+        console.log('[ContentStash] Global response matches URL but lacks captions. Falling back to API.');
+      }
     }
 
-    const playerData = await innerTubeResponse.json();
+    if (!useGlobal) {
+      console.log('[ContentStash] Fetching fresh metadata/captions from InnerTube API');
+      // Step 3: POST to InnerTube API with Android client context
+      // (Only done if global response is stale, invalid, or missing captions)
+      const innerTubeUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`;
 
-    // Step 3: Extract caption tracks from InnerTube response
+      const innerTubeResponse = await fetch(innerTubeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept-Language': 'en-US'
+        },
+        body: JSON.stringify({
+          context: {
+            client: {
+              clientName: 'ANDROID',
+              clientVersion: '20.10.38'
+            }
+          },
+          videoId: videoId
+        })
+      });
+
+      if (!innerTubeResponse.ok) {
+        throw new Error('InnerTube API request failed');
+      }
+
+      playerData = await innerTubeResponse.json();
+    }
+
+    // Extract metadata from player data (whether global or API)
+    const videoDetails = playerData?.videoDetails;
+    if (!videoDetails) {
+      throw new Error('No videoDetails in player response');
+    }
+
+    const { title, author, lengthSeconds, shortDescription } = videoDetails;
+    const channelName = author; // Channel name is stored in the author field
+
+    // Extract caption tracks
     const captionTracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
 
     if (!captionTracks || captionTracks.length === 0) {
       return {
         success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
+        metadata: {
+          title,
+          author,
+          videoId,
+          lengthSeconds: parseInt(lengthSeconds),
+          captionUrl: null,
+          channelName,
+          description: shortDescription
+        }
       };
     }
 
@@ -501,7 +538,15 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
 
     return {
       success: true,
-      metadata: { title, author, videoId, lengthSeconds, captionUrl, channelName },
+      metadata: {
+        title,
+        author,
+        videoId,
+        lengthSeconds: parseInt(lengthSeconds),
+        captionUrl,
+        channelName,
+        description: shortDescription
+      },
       transcriptXml: xml
     };
 

@@ -140,11 +140,63 @@ function App() {
         const metadataResults = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           func: () => {
+            const url = window.location.href;
+            const isYouTube = url.includes('youtube.com/watch');
+
             const getMetaContent = (name: string): string | null => {
               const meta = document.querySelector(`meta[property="${name}"], meta[name="${name}"]`);
               return meta?.getAttribute('content') || null;
             };
 
+            // Enhanced YouTube Extraction
+            if (isYouTube) {
+              let videoId = null;
+              const videoIdMatch = url.match(/[?&]v=([^&]+)/);
+              if (videoIdMatch) {
+                videoId = videoIdMatch[1];
+              }
+
+              // 1. Image: Construction from ID is most reliable for navigation
+              let image = '';
+              if (videoId) {
+                image = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+              } else {
+                image = getMetaContent('og:image') || '';
+              }
+
+              // 2. Description: Try DOM first (updates on nav), then meta
+              let description = '';
+
+              // Try to find the description text in the DOM
+              // These selectors target the expandable description box
+              const descSelectors = [
+                '#description-inline-expander .ytd-text-inline-expander',
+                '#description-text',
+                '#description .content'
+              ];
+
+              for (const selector of descSelectors) {
+                const el = document.querySelector(selector);
+                if (el && el.textContent) {
+                  description = el.textContent.trim();
+                  // Break if we found a good description
+                  if (description.length > 20) break;
+                }
+              }
+
+              // Fallback to meta if DOM failed
+              if (!description) {
+                description = getMetaContent('og:description') ||
+                  getMetaContent('description') || '';
+              }
+
+              return {
+                description,
+                image_url: image
+              };
+            }
+
+            // Standard Extraction for other sites
             const description = getMetaContent('og:description') ||
               getMetaContent('description') ||
               getMetaContent('twitter:description') || '';
@@ -192,6 +244,13 @@ function App() {
             content: contentResponse.content,
             extraction_source: 'chrome_extension_content_script',
           });
+
+          // If we got fresh metadata (e.g. from YouTube API), update the item
+          if (contentResponse.metadata?.description) {
+            await api.updateItemMetadata(item.id, {
+              description: contentResponse.metadata.description
+            });
+          }
         }
 
         setMessage('✓ Saved with local extraction!');
@@ -203,11 +262,63 @@ function App() {
         const metadataResults = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           func: () => {
+            const url = window.location.href;
+            const isYouTube = url.includes('youtube.com/watch');
+
             const getMetaContent = (name: string): string | null => {
               const meta = document.querySelector(`meta[property="${name}"], meta[name="${name}"]`);
               return meta?.getAttribute('content') || null;
             };
 
+            // Enhanced YouTube Extraction
+            if (isYouTube) {
+              let videoId = null;
+              const videoIdMatch = url.match(/[?&]v=([^&]+)/);
+              if (videoIdMatch) {
+                videoId = videoIdMatch[1];
+              }
+
+              // 1. Image: Construction from ID is most reliable for navigation
+              let image = '';
+              if (videoId) {
+                image = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+              } else {
+                image = getMetaContent('og:image') || '';
+              }
+
+              // 2. Description: Try DOM first (updates on nav), then meta
+              let description = '';
+
+              // Try to find the description text in the DOM
+              // These selectors target the expandable description box
+              const descSelectors = [
+                '#description-inline-expander .ytd-text-inline-expander',
+                '#description-text',
+                '#description .content'
+              ];
+
+              for (const selector of descSelectors) {
+                const el = document.querySelector(selector);
+                if (el && el.textContent) {
+                  description = el.textContent.trim();
+                  // Break if we found a good description
+                  if (description.length > 20) break;
+                }
+              }
+
+              // Fallback to meta if DOM failed
+              if (!description) {
+                description = getMetaContent('og:description') ||
+                  getMetaContent('description') || '';
+              }
+
+              return {
+                description,
+                image_url: image
+              };
+            }
+
+            // Standard Extraction for other sites
             const description = getMetaContent('og:description') ||
               getMetaContent('description') ||
               getMetaContent('twitter:description') || '';

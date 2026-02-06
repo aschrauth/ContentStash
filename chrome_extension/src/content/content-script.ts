@@ -11,8 +11,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // Handle async extraction
     (async () => {
       try {
-        const content = await extractPageContent();
-        sendResponse({ success: true, content });
+        const result = await extractPageContent();
+        sendResponse({ success: true, content: result.content, metadata: result.metadata });
       } catch (error) {
         sendResponse({ success: false, error: (error as Error).message });
       }
@@ -479,7 +479,7 @@ function isVisible(el: HTMLElement): boolean {
   );
 }
 
-async function extractPageContent(): Promise<string> {
+async function extractPageContent(): Promise<{ content: string; metadata?: any }> {
   // Check if this is a YouTube page
   if (isYouTubeUrl(window.location.href)) {
     return await extractYouTubeContent();
@@ -490,10 +490,12 @@ async function extractPageContent(): Promise<string> {
 
   // Detect if this is a Substack article
   const isSubstack = isSubstackUrl();
+  let content = '';
 
   // For Substack, use a specialized extraction approach
   if (isSubstack) {
-    return await extractSubstackContent();
+    content = await extractSubstackContent();
+    return { content };
   }
 
   // Use Readability for general pages with hybrid References extraction
@@ -543,7 +545,7 @@ async function extractPageContent(): Promise<string> {
       }
 
       // Add title and byline header
-      let content = `# ${article.title}\n\n`;
+      content = `# ${article.title}\n\n`;
       if (article.byline) {
         content += `**By:** ${article.byline}\n\n`;
       }
@@ -554,14 +556,15 @@ async function extractPageContent(): Promise<string> {
         content += '\n\n' + referencesMarkdown;
       }
 
-      return content;
+      return { content };
     }
   } catch (error) {
     console.error('Readability extraction failed:', error);
   }
 
   // Fallback to simple extraction
-  return extractSimpleContent();
+  content = await extractSimpleContent();
+  return { content };
 }
 
 async function extractSubstackContent(): Promise<string> {
@@ -764,7 +767,7 @@ function formatTranscriptMarkdown(_metadata: any, segments: Array<{ time: string
   return markdown;
 }
 
-async function extractYouTubeContent(): Promise<string> {
+async function extractYouTubeContent(): Promise<{ content: string; metadata: any }> {
   try {
     console.log('='.repeat(80));
     console.log('[Content Script] EXTRACTION PATH: content-script.ts');
@@ -801,68 +804,35 @@ async function extractYouTubeContent(): Promise<string> {
           const duration = element.getAttribute('d'); // duration in milliseconds
           const text = element.textContent;
 
-          if (start && text) {
-            const seconds = parseFloat(start) / 1000; // Convert ms to seconds
-            const durationSeconds = duration ? parseFloat(duration) / 1000 : 0; // Convert ms to seconds
-            const time = formatTimestamp(seconds);
-            // Replace internal newlines and multiple spaces with single space, then trim
-            // This matches server-side .strip() behavior
-            const cleanText = text.replace(/\s+/g, ' ').trim();
-
-            // Store the CLEANED text in the segment
-            transcriptLines.push({ time, text: cleanText, seconds, durationSeconds });
+          if (start !== null && text) {
+            transcriptLines.push({
+              time: formatTimestamp(parseInt(start) / 1000),
+              text: text.replace(/&#39;/g, "'").replace(/&quot;/g, '"'),
+              seconds: parseInt(start) / 1000,
+              durationSeconds: duration ? parseInt(duration) / 1000 : 0
+            });
           }
         }
 
-        if (transcriptLines.length > 0) {
-          const content = formatTranscriptMarkdown(metadata, transcriptLines);
-          return content;
-        }
+        // Format transcript into paragraphs
+        const content = formatTranscriptMarkdown(metadata, transcriptLines);
+        return { content, metadata };
       }
     }
 
-    // Fallback to metadata only
-    const content = formatMetadataOnly(metadata);
-    return content;
-
+    // Fallback if no transcript found
+    return {
+      content: formatMetadataOnly(metadata),
+      metadata
+    };
   } catch (error) {
-    console.error('YouTube extraction error:', error);
-    return extractYouTubeMetadataOnly();
+    console.error('YouTube extraction failed:', error);
+    throw error;
   }
 }
 
-function extractYouTubeMetadataOnly(): string {
-  try {
-    // Get video title
-    const titleElement = document.querySelector('h1.ytd-video-primary-info-renderer, h1.title');
-    const title = titleElement?.textContent?.trim() || 'YouTube Video';
 
-    // Get channel name
-    const channelElement = document.querySelector('#channel-name a, ytd-channel-name a');
-    const channel = channelElement?.textContent?.trim() || '';
 
-    // Get description
-    const descriptionElement = document.querySelector('#description, #description-text');
-    const description = descriptionElement?.textContent?.trim() || '';
-
-    // Build content with metadata only
-    let content = `# ${title}\n\n`;
-    if (channel) {
-      content += `**Channel:** ${channel}\n\n`;
-    }
-    if (description) {
-      content += `## Description\n\n${description}\n\n`;
-    }
-
-    // Add note that transcript extraction failed
-    content += `## Transcript\n\n[Transcript extraction failed - will be attempted by backend]`;
-
-    return content;
-  } catch (error) {
-    console.error('YouTube metadata extraction failed:', error);
-    return extractSimpleContent();
-  }
-}
 
 function extractSimpleContent(): string {
   // Try to find main content area using semantic HTML5 and CMS patterns
