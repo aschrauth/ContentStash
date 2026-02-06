@@ -198,7 +198,7 @@ When a user saves content, the system automatically:
 
 **How It Works:**
 
-The system uses Gemini 2.0 Flash-Lite to automatically generate:
+The system uses Gemini 2.5 Flash-Lite to automatically generate:
 
 - **Suggested Tags**: 3-5 relevant tags for the content
 - **Topic**: Main topic or category
@@ -261,7 +261,7 @@ Ask questions and get AI-generated answers with proper citations:
 
 1. **Retrieval**: Vector search finds relevant chunks (K=8)
 2. **Context Building**: Chunks formatted as evidence
-3. **Generation**: Gemini 2.0 Flash-Lite generates answer
+3. **Generation**: Gemini 2.5 Flash-Lite generates answer
 4. **Citation Extraction**: Identifies which chunks were used
 5. **Response**: Answer with quoted excerpts and source links
 
@@ -519,7 +519,7 @@ The system is designed to minimize API costs while maintaining quality.
 - Dimensions: 768 (good balance of quality and size)
 - Speed: Fast batch processing
 
-**Generation Model: `gemini-2.0-flash-lite-preview-02-05`**
+**Generation Model: `gemini-2.5-flash-lite`**
 - Cost: Significantly cheaper than full Gemini models
 - Quality: Excellent for RAG tasks
 - Speed: Very fast response times

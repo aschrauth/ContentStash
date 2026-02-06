@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 def generate_auto_categorization(archived_text: str) -> Optional[Dict[str, Any]]:
     """
-    Generate auto-categorization using Gemini 2.0 Flash-Lite.
+    Generate auto-categorization using Gemini 2.5 Flash-Lite.
     
     Uses a concise prompt to generate:
     - suggested_tags: List of 3-5 relevant tags
