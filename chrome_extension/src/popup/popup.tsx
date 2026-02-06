@@ -233,7 +233,7 @@ function App() {
         const item = await api.createItem({
           url: tab.url,
           title: tab.title,
-          description: metadata?.description || undefined,
+          description: contentResponse?.metadata?.description || metadata?.description || undefined,
           image_url: metadata?.image_url || undefined,
           extraction_type: 'local',
         });
@@ -244,13 +244,6 @@ function App() {
             content: contentResponse.content,
             extraction_source: 'chrome_extension_content_script',
           });
-
-          // If we got fresh metadata (e.g. from YouTube API), update the item
-          if (contentResponse.metadata?.description) {
-            await api.updateItemMetadata(item.id, {
-              description: contentResponse.metadata.description
-            });
-          }
         }
 
         setMessage('✓ Saved with local extraction!');

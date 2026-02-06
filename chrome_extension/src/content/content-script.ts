@@ -789,32 +789,48 @@ async function extractYouTubeContent(): Promise<{ content: string; metadata: any
     // The channel name will be used by the background script when uploading
     (window as any).__youtubeChannelName = metadata.channelName || metadata.author;
 
+    // Check if we got pre-formatted content from background (Fallback path)
+    if (response.content) {
+      console.log('[Content Script] Using pre-formatted content from background script (Fallback)');
+      return { content: response.content, metadata };
+    }
+
     // Check if we got transcript XML from MAIN world
     if (response.transcriptXml && response.transcriptXml.length > 0) {
-      // Parse the XML - YouTube uses <p> tags with t (time) and d (duration) attributes
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(response.transcriptXml, 'text/xml');
-      const textElements = xmlDoc.querySelectorAll('p');
+      const { parseTranscriptXml } = (window as any).ContentStashLib || {};
 
-      if (textElements.length > 0) {
-        const transcriptLines: Array<{ time: string; text: string; seconds: number; durationSeconds: number }> = [];
+      let segments: Array<{ start: number; duration: number; text: string }> = [];
 
-        for (const element of Array.from(textElements)) {
-          const start = element.getAttribute('t'); // time in milliseconds
-          const duration = element.getAttribute('d'); // duration in milliseconds
-          const text = element.textContent;
-
-          if (start !== null && text) {
-            transcriptLines.push({
-              time: formatTimestamp(parseInt(start) / 1000),
-              text: text.replace(/&#39;/g, "'").replace(/&quot;/g, '"'),
-              seconds: parseInt(start) / 1000,
-              durationSeconds: duration ? parseInt(duration) / 1000 : 0
+      if (parseTranscriptXml) {
+        segments = parseTranscriptXml(response.transcriptXml);
+      } else {
+        // Fallback if lib is not available (should not happen in production)
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(response.transcriptXml, 'text/xml');
+        const nodes = xmlDoc.querySelectorAll('text, p');
+        nodes.forEach(node => {
+          const s = node.getAttribute('start') || node.getAttribute('t');
+          const d = node.getAttribute('dur') || node.getAttribute('d');
+          const isMs = node.hasAttribute('t');
+          if (s && node.textContent) {
+            segments.push({
+              start: parseFloat(s) / (isMs ? 1000 : 1),
+              duration: d ? parseFloat(d) / (isMs ? 1000 : 1) : 0,
+              text: node.textContent.replace(/\s+/g, ' ').trim()
             });
           }
-        }
+        });
+      }
 
-        // Format transcript into paragraphs
+      if (segments.length > 0) {
+        // Map to expected internal format for formatTranscriptMarkdown
+        const transcriptLines = segments.map(s => ({
+          time: formatTimestamp(s.start),
+          text: s.text,
+          seconds: s.start,
+          durationSeconds: s.duration
+        }));
+
         const content = formatTranscriptMarkdown(metadata, transcriptLines);
         return { content, metadata };
       }

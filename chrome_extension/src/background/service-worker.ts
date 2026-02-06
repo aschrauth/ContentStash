@@ -1,6 +1,6 @@
 import { ContentStashAPI } from '../lib/api';
 import { Storage } from '../lib/storage';
-import { extractYouTubeTranscript, extractVideoId, isYouTubeUrl } from '../lib/youtube-extractor';
+import { extractYouTubeTranscript, fetchYouTubeTranscriptXml, extractVideoId, isYouTubeUrl } from '../lib/youtube-extractor';
 import type { SavedItem } from '../types';
 
 const api = new ContentStashAPI();
@@ -322,7 +322,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         // Check if we got transcript XML from MAIN world
-        const transcriptXml = result.transcriptXml;
+        let transcriptXml = result.transcriptXml;
+
+        // Fallback: If in-page extraction returned no transcript, try legacy background fetch (XML Only)
+        if (!transcriptXml || transcriptXml.trim().length === 0) {
+          console.log(`[Service Worker] In-page transcript empty for ${metadata.videoId}. Triggering legacy background fallback (Safe Fetch)...`);
+          try {
+            // Use the XML-only fetcher that doesn't use DOMParser (safe for Service Worker)
+            const legacyResult = await fetchYouTubeTranscriptXml(metadata.videoId);
+            if (legacyResult && legacyResult.transcriptXml) {
+              console.log('[Service Worker] Legacy background extraction successful');
+              transcriptXml = legacyResult.transcriptXml;
+              // We can also update channel name if available
+              if (legacyResult.channelName) {
+                metadata.channelName = legacyResult.channelName;
+              }
+            }
+          } catch (err) {
+            console.error('[Service Worker] Legacy background fallback failed:', err);
+          }
+        }
 
         if (transcriptXml) {
           sendResponse({
@@ -417,31 +436,16 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
 
 
 
-    // HYBRID APPROACH: Check if global player response matches current URL
-    // If it matches, use it (it's often better quality/web client version).
-    // If it doesn't match (SPA navigation) OR if it lacks captions, fetch fresh from API.
+    // HYBRID APPROACH: Prioritize InnerTube API for robust transcripts
+    // We only use Global data as a fallback if InnerTube fails.
     const globalResponse = (window as any).ytInitialPlayerResponse;
     const globalVideoId = globalResponse?.videoDetails?.videoId;
 
-    let useGlobal = false;
-    if (globalVideoId && globalVideoId === videoId) {
-      // Check if global response actually has captions
-      const globalCaptions = globalResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-      if (globalCaptions && globalCaptions.length > 0) {
-        console.log('[ContentStash] Using global ytInitialPlayerResponse (Matches URL & Has Captions)');
-        playerData = globalResponse;
-        useGlobal = true;
-      } else {
-        console.log('[ContentStash] Global response matches URL but lacks captions. Falling back to API.');
-      }
-    }
+    console.log('[ContentStash] Fetching fresh metadata/captions from InnerTube API (Robust Path)');
 
-    if (!useGlobal) {
-      console.log('[ContentStash] Fetching fresh metadata/captions from InnerTube API');
-      // Step 3: POST to InnerTube API with Android client context
-      // (Only done if global response is stale, invalid, or missing captions)
+    try {
+      // Step 3: POST to InnerTube API with Android client context (Android provides most robust URLs)
       const innerTubeUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`;
-
       const innerTubeResponse = await fetch(innerTubeUrl, {
         method: 'POST',
         headers: {
@@ -459,81 +463,124 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
         })
       });
 
-      if (!innerTubeResponse.ok) {
-        throw new Error('InnerTube API request failed');
+      if (innerTubeResponse.ok) {
+        playerData = await innerTubeResponse.json();
+        console.log('[ContentStash] Successfully fetched fresh data from InnerTube API');
+      } else {
+        console.warn(`[ContentStash] InnerTube API failed (Status: ${innerTubeResponse.status}). Falling back to Global.`);
       }
-
-      playerData = await innerTubeResponse.json();
+    } catch (e) {
+      console.warn('[ContentStash] Error fetching from InnerTube API. Falling back to Global.', e);
     }
 
-    // Extract metadata from player data (whether global or API)
+    // Fallback to Global if InnerTube failed but Global matches
+    if (!playerData && globalVideoId === videoId) {
+      console.log('[ContentStash] Using global ytInitialPlayerResponse as fallback source');
+      playerData = globalResponse;
+    }
+
+    // Extract metadata from player data
     const videoDetails = playerData?.videoDetails;
     if (!videoDetails) {
-      throw new Error('No videoDetails in player response');
+      throw new Error('No videoDetails found in any source (InnerTube or Global)');
     }
 
     const { title, author, lengthSeconds, shortDescription } = videoDetails;
-    const channelName = author; // Channel name is stored in the author field
+    const channelName = author;
 
-    // Extract caption tracks
-    const captionTracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-
-    if (!captionTracks || captionTracks.length === 0) {
-      return {
-        success: true,
-        metadata: {
-          title,
-          author,
-          videoId,
-          lengthSeconds: parseInt(lengthSeconds),
-          captionUrl: null,
-          channelName,
-          description: shortDescription
-        }
-      };
-    }
-
-    // Select best English track (prefer manual over auto-generated)
+    // Initialize transcript variables
+    let transcriptXml: string | null = null;
     let selectedTrack = null;
-    for (const track of captionTracks) {
-      if (track.languageCode === 'en') {
-        if (!track.kind) {
-          // Manual track (no kind property)
-          selectedTrack = track;
-          break;
-        } else if (!selectedTrack) {
-          // Auto-generated track (has kind property)
-          selectedTrack = track;
+
+    // Helper for fetching transcript with unsigned fallback
+    const fetchTranscriptWithFallback = async (baseUrl: string, videoId: string) => {
+      console.log(`[ContentStash] Fetching transcript from: ${baseUrl.substring(0, 150)}...`);
+      try {
+        const resp = await fetch(baseUrl);
+        const status = resp.status;
+        const contentType = resp.headers.get('content-type') || '';
+        const finalUrl = resp.url;
+        console.log(`[ContentStash] Response: ${status}, Content-Type: ${contentType}`);
+
+        // Check if we were redirected to an error page or got HTML instead of XML
+        const isErrorPage = finalUrl.includes('/error') || finalUrl.includes('/upsell');
+        const isHtml = contentType.includes('text/html');
+
+        if (resp.ok && !isErrorPage && !isHtml) {
+          let text = await resp.text();
+          // Check if it's actually XML (should start with <)
+          if (text && text.trim().startsWith('<')) {
+            console.log(`[ContentStash] Fetched valid XML. Length: ${text.length} chars.`);
+            return text;
+          }
+          console.warn(`[ContentStash] Response body is empty or not XML (Length: ${text?.length || 0}).`);
+        } else {
+          console.warn(`[ContentStash] Signed URL failed (Status: ${status}, Type: ${contentType}, ErrorPage: ${isErrorPage}).`);
+        }
+
+        // Try unsigned fallback
+        console.log(`[ContentStash] Trying unsigned fallback for video: ${videoId}`);
+        const fallbacks = [
+          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=srv3`,
+          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`
+        ];
+
+        for (const url of fallbacks) {
+          try {
+            console.log(`[ContentStash] Fetching fallback: ${url}`);
+            const fallbackResp = await fetch(url);
+            const fbStatus = fallbackResp.status;
+            const fbContentType = fallbackResp.headers.get('content-type') || '';
+            console.log(`[ContentStash] Fallback response: ${fbStatus}, Content-Type: ${fbContentType}`);
+
+            if (fallbackResp.ok && !fbContentType.includes('html')) {
+              const fallbackText = await fallbackResp.text();
+              if (fallbackText && fallbackText.trim().startsWith('<')) {
+                console.log(`[ContentStash] Fallback successful: ${fallbackText.length} chars.`);
+                return fallbackText;
+              } else {
+                console.warn(`[ContentStash] Fallback returned invalid XML or empty body`);
+              }
+            } else {
+              console.warn(`[ContentStash] Fallback failed validation (Status: ${fbStatus}, HTML: ${fbContentType.includes('html')})`);
+            }
+          } catch (e) {
+            console.warn('[ContentStash] Fallback attempt error:', e);
+          }
+        }
+      } catch (e) {
+        console.warn('[ContentStash] Fetch error:', e);
+      }
+      return null;
+    };
+
+    // Try to get transcript from available tracks (Global or API)
+    if (!transcriptXml) {
+      const captionTracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+      if (captionTracks && captionTracks.length > 0) {
+        // Filter and sort English tracks (Manual first, then ASR)
+        const englishTracks = captionTracks.filter((t: any) => t.languageCode === 'en')
+          .sort((a: any, b: any) => {
+            const aIsAsr = a.kind === 'asr';
+            const bIsAsr = b.kind === 'asr';
+            if (aIsAsr && !bIsAsr) return 1;
+            if (!aIsAsr && bIsAsr) return -1;
+            return 0;
+          });
+
+        for (const track of englishTracks) {
+          const trackName = track.name?.simpleText || track.vssId || 'English';
+          console.log(`[ContentStash] (API/Global) Trying track: ${trackName} (Kind: ${track.kind || 'manual'})`);
+          if (track.baseUrl) {
+            const text = await fetchTranscriptWithFallback(track.baseUrl, videoId);
+            if (text) {
+              transcriptXml = text;
+              selectedTrack = track;
+              break; // Found working transcript
+            }
+          }
         }
       }
-    }
-
-    if (!selectedTrack?.baseUrl) {
-      return {
-        success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
-      };
-    }
-
-    const captionUrl = selectedTrack.baseUrl;
-
-    // Step 4: Fetch transcript XML
-    const transcriptResponse = await fetch(captionUrl);
-
-    if (!transcriptResponse.ok) {
-      return {
-        success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
-      };
-    }
-
-    const xml = await transcriptResponse.text();
-
-    if (!xml || xml.length === 0) {
-      return {
-        success: true,
-        metadata: { title, author, videoId, lengthSeconds, captionUrl: null, channelName }
-      };
     }
 
     return {
@@ -543,11 +590,11 @@ async function extractYouTubeTranscriptFromPage(): Promise<{
         author,
         videoId,
         lengthSeconds: parseInt(lengthSeconds),
-        captionUrl,
+        captionUrl: selectedTrack?.baseUrl || null,
         channelName,
         description: shortDescription
       },
-      transcriptXml: xml
+      transcriptXml: transcriptXml || undefined
     };
 
   } catch (error) {

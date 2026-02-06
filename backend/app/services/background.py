@@ -494,6 +494,29 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
         # Step 5: Update item with results
         word_count = len(archived_text.split()) if archived_text else 0
         
+        # RACE CONDITION FIX: Look-Before-Write strategy for archived_text field
+        # Re-fetch item to see if valid content was uploaded by extension during our processing
+        # This prevents a slow failing background task from overwriting good extension-provided content.
+        logger.info(f"🔍 [RACE CHECK] Checking for race condition on archived_text for item {item_id}")
+        current_item_dict = await db.saved_items.find_one({"_id": ObjectId(item_id)})
+        existing_archived_text = current_item_dict.get("archived_text") if current_item_dict else None
+        
+        # Determine if we should keep existing content
+        # We prefer existing content if:
+        # 1. It already exists AND is longer than 100 chars
+        # 2. AND our new content is empty OR is just a placeholder error message
+        should_keep_existing = False
+        is_placeholder = archived_text and "[Transcript not available" in archived_text
+        
+        if existing_archived_text and len(existing_archived_text.strip()) > 100:
+            if not archived_text or len(archived_text.strip()) < 100 or is_placeholder:
+                should_keep_existing = True
+                logger.info(f"🛑 [RACE CHECK] Keeping existing valid content (len={len(existing_archived_text)}) over new failed/placeholder content")
+        
+        if should_keep_existing:
+            archived_text = existing_archived_text
+            word_count = current_item_dict.get("word_count", word_count)
+
         update_doc = {
             "processing_status": "processed",
             "updated_at": datetime.utcnow(),
