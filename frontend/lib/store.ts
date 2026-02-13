@@ -36,7 +36,6 @@ export type SavedItem = {
   processingStatus: 'pending' | 'processing' | 'processed' | 'failed' | 'pending_local_extraction';
   createdAt: string;
   updatedAt: string;
-  archivedAt?: string; // For soft delete
 };
 
 export type ChatMessage = {
@@ -92,9 +91,7 @@ interface AppState {
   fetchTags: () => Promise<void>;
   addItem: (item: Omit<SavedItem, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>) => Promise<string>;
   updateItem: (id: string, updates: Partial<SavedItem>) => Promise<void>;
-  deleteItem: (id: string) => Promise<void>; // Soft delete
-  restoreItem: (id: string) => void;
-  permanentlyDeleteItem: (id: string) => void;
+  deleteItem: (id: string) => Promise<void>;
 
   fetchChatThreads: () => Promise<void>;
   fetchChatThread: (threadId: string) => Promise<ChatThread | null>;
@@ -301,8 +298,7 @@ export const useStore = create<AppState>()(
             extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: item.processing_status as 'pending' | 'processing' | 'processed' | 'failed' | 'pending_local_extraction',
             createdAt: item.created_at as string,
-            updatedAt: item.updated_at as string,
-            archivedAt: item.archived_at as string | undefined
+            updatedAt: item.updated_at as string
           }));
 
           // If loading more, append to existing items; otherwise replace
@@ -405,7 +401,6 @@ export const useStore = create<AppState>()(
             processingStatus: newItem.processing_status,
             createdAt: newItem.created_at,
             updatedAt: newItem.updated_at,
-            archivedAt: newItem.archived_at,
           };
 
           // Add to local state
@@ -471,7 +466,6 @@ export const useStore = create<AppState>()(
             processingStatus: updatedItem.processing_status,
             createdAt: updatedItem.created_at,
             updatedAt: updatedItem.updated_at,
-            archivedAt: updatedItem.archived_at,
           };
 
           // Update local state
@@ -504,7 +498,7 @@ export const useStore = create<AppState>()(
             throw new Error(error.detail || 'Failed to delete item');
           }
 
-          // Remove from local state (soft delete - filter out)
+          // Remove from local state after successful hard delete.
           const { items } = get();
           set({
             items: items.filter(item => item.id !== id)
@@ -513,22 +507,6 @@ export const useStore = create<AppState>()(
           console.error('Failed to delete item:', error);
           throw error;
         }
-      },
-
-      restoreItem: (id) => {
-        const { items } = get();
-        set({
-          items: items.map(item =>
-            item.id === id
-              ? { ...item, archivedAt: undefined }
-              : item
-          )
-        });
-      },
-
-      permanentlyDeleteItem: (id) => {
-        const { items } = get();
-        set({ items: items.filter(item => item.id !== id) });
       },
 
       fetchChatThreads: async () => {

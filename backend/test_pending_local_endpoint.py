@@ -39,7 +39,6 @@ async def test_pending_local_endpoint():
         "owner_id": user_id,
         "extraction_type": "local",
         "processing_status": "pending",
-        "archived_at": None
     }
     
     print(f"\n📋 Query: {query}")
@@ -67,7 +66,6 @@ async def test_pending_local_endpoint():
     old_query = {
         "owner_id": user_id,
         "processing_status": "pending_local_extraction",
-        "archived_at": None
     }
     
     old_cursor = db.saved_items.find(old_query)

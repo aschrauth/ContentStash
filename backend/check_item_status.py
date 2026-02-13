@@ -33,8 +33,7 @@ async def check_item():
     print("\n--- Checking pending-local query ---")
     pending_items = await db.saved_items.find({
         "extraction_type": "local",
-        "processing_status": {"$in": ["pending", "pending_local_extraction"]},
-        "archived_at": None
+        "processing_status": {"$in": ["pending", "pending_local_extraction"]}
     }).to_list(length=None)
     
     print(f"Total pending local items: {len(pending_items)}")

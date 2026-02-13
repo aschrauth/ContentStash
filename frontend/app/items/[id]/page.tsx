@@ -93,14 +93,13 @@ export default function ItemDetailPage() {
             tags: data.tags,
             suggestedTags: data.suggested_tags,
             suggestedTopic: data.suggested_topic,
-            archivedText: data.archived_text,  // THIS IS THE KEY LINE
+            archivedText: data.archived_text,
             source: data.source,
             wordCount: data.word_count,
             extractionType: data.extraction_type,
             processingStatus: data.processing_status,
             createdAt: data.created_at,
-            updatedAt: data.updated_at,
-            archivedAt: data.archived_at
+            updatedAt: data.updated_at
           };
 
           setItem(formattedItem);
@@ -170,8 +169,7 @@ export default function ItemDetailPage() {
             extractionType: updatedData.extraction_type,
             processingStatus: updatedData.processing_status,
             createdAt: updatedData.created_at,
-            updatedAt: updatedData.updated_at,
-            archivedAt: updatedData.archived_at
+            updatedAt: updatedData.updated_at
           };
 
           // Update both the Zustand store AND local state
@@ -674,8 +672,7 @@ export default function ItemDetailPage() {
                             extractionType: updatedData.extraction_type,
                             processingStatus: updatedData.processing_status,
                             createdAt: updatedData.created_at,
-                            updatedAt: updatedData.updated_at,
-                            archivedAt: updatedData.archived_at
+                            updatedAt: updatedData.updated_at
                           };
 
                           // This will trigger the polling effect to start monitoring
@@ -747,11 +744,10 @@ export default function ItemDetailPage() {
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleConfirmDelete}
         title="Delete Item"
-        description="Are you sure you want to delete this item? This action cannot be undone immediately, but you can recover it from the archive within 30 days."
+        description="Are you sure you want to permanently delete this item? This action cannot be undone."
         confirmText="Delete"
         variant="danger"
       />
     </AppLayout>
   );
 }
-

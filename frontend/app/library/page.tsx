@@ -98,10 +98,7 @@ function LibraryContent() {
     updatePreferences({ viewMode: mode });
   };
 
-  // Filter items to show only non-archived items
-  const displayItems = useMemo(() => {
-    return allItems.filter((item: any) => !item.archivedAt);
-  }, [allItems]);
+  const displayItems = allItems;
 
   // Get all unique tags for filter - use tags from store (with counts) or fallback to local computation
   const allTags = useMemo(() => {

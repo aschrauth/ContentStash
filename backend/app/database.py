@@ -25,14 +25,20 @@ async def connect_to_mongo():
             ("archived_text", "text")
         ], name="text_search_index")
         
-        # Performance indexes for library listing and pagination
-        # We sort by created_at DESC, _id DESC
+        # Performance index for library listing and pagination.
+        # We sort by created_at DESC, _id DESC.
         await db.saved_items.create_index([
             ("owner_id", 1),
-            ("archived_at", 1),
             ("created_at", -1),
             ("_id", -1)
-        ], name="library_list_index_v2")
+        ], name="library_list_index_v3")
+
+        # Remove legacy index from archived-item filtering era.
+        try:
+            await db.saved_items.drop_index("library_list_index_v2")
+        except Exception:
+            # Index may not exist in all environments.
+            pass
         
         # Index for real-time status stream
         await db.saved_items.create_index([

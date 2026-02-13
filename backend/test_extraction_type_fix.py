@@ -49,7 +49,6 @@ async def test_extraction_type_change():
         "processing_status": "pending",
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
-        "archived_at": None
     }
     
     result = await db.saved_items.insert_one(item_doc)

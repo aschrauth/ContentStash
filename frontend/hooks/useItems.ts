@@ -63,7 +63,6 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
         processingStatus: item.processing_status as 'pending' | 'processed' | 'failed',
         createdAt: item.created_at as string,
         updatedAt: item.updated_at as string,
-        archivedAt: item.archived_at as string | undefined,
       }));
 
       return {

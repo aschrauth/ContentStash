@@ -33,8 +33,7 @@ async def investigate_stuck_item():
         
         query = {
             "extraction_type": "local",
-            "processing_status": {"$in": ["pending", "pending_local_extraction"]},
-            "archived_at": None
+            "processing_status": {"$in": ["pending", "pending_local_extraction"]}
         }
         
         cursor = collection.find(query).sort("created_at", -1)

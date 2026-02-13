@@ -54,7 +54,6 @@ async def test_youtube_source():
         "processing_error": None,
         "created_at": now,
         "updated_at": now,
-        "archived_at": None
     }
     
     print("\n📝 Creating test item with source=None (as per current logic)...")

@@ -334,8 +334,7 @@ async def create_item(
         "processing_status": "pending",
         "processing_error": None,
         "created_at": now,
-        "updated_at": now,
-        "archived_at": None
+        "updated_at": now
     }
     
     # Insert into database
@@ -371,8 +370,7 @@ async def create_item(
         processing_status="pending",
         processing_error=None,
         created_at=now,
-        updated_at=now,
-        archived_at=None
+        updated_at=now
     )
 
 
@@ -389,7 +387,6 @@ async def list_items(
     List user's saved items with cursor-based pagination.
     
     - Filters by owner_id (from JWT)
-    - Excludes soft-deleted items
     - Supports full-text search using MongoDB text index
     - Supports tag filtering with AND logic
     - Returns paginated results with next_cursor, has_more, and total count
@@ -398,8 +395,7 @@ async def list_items(
     
     # Build query
     query = {
-        "owner_id": ObjectId(current_user.id),
-        "archived_at": None  # Exclude soft-deleted items
+        "owner_id": ObjectId(current_user.id)
     }
     
     # Add tag filtering (AND logic)
@@ -489,8 +485,7 @@ async def list_items(
             processing_status=doc.get("processing_status", "pending"),
             processing_error=doc.get("processing_error"),
             created_at=doc["created_at"],
-            updated_at=doc["updated_at"],
-            archived_at=doc.get("archived_at")
+            updated_at=doc["updated_at"]
         ))
     
     # Get total count for the query (without cursor pagination)
@@ -527,13 +522,12 @@ async def get_pending_local_extraction(
     # Items appear in queue when:
     # 1. extraction_type="local" (explicitly marked for local extraction)
     # 2. processing_status in ["pending", "pending_local_extraction"]
-    # 3. Not soft-deleted
+    # 3. Item belongs to current user
     # Note: archived_text filter removed to allow re-extraction when user changes extraction_type
     query = {
         "owner_id": ObjectId(current_user.id),
         "extraction_type": "local",
-        "processing_status": {"$in": ["pending", "pending_local_extraction"]},
-        "archived_at": None  # Exclude soft-deleted items
+        "processing_status": {"$in": ["pending", "pending_local_extraction"]}
     }
     
     # Fetch items
@@ -562,8 +556,7 @@ async def get_pending_local_extraction(
             processing_status=doc.get("processing_status", "pending"),
             processing_error=doc.get("processing_error"),
             created_at=doc["created_at"],
-            updated_at=doc["updated_at"],
-            archived_at=doc.get("archived_at")
+            updated_at=doc["updated_at"]
         ))
     
     return items
@@ -628,8 +621,7 @@ async def get_item(
         processing_status=item_doc.get("processing_status", "pending"),
         processing_error=item_doc.get("processing_error"),
         created_at=item_doc["created_at"],
-        updated_at=item_doc["updated_at"],
-        archived_at=item_doc.get("archived_at")
+        updated_at=item_doc["updated_at"]
     )
     
     return saved_item
@@ -770,8 +762,7 @@ async def update_item(
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
         created_at=updated_item_doc["created_at"],
-        updated_at=updated_item_doc["updated_at"],
-        archived_at=updated_item_doc.get("archived_at")
+        updated_at=updated_item_doc["updated_at"]
     )
 
 
@@ -781,9 +772,9 @@ async def delete_item(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Soft delete a saved item and remove its chunks from vector search.
-    
-    - Sets archived_at to current timestamp
+    Permanently delete a saved item and remove its chunks from vector search.
+
+    - Deletes item from saved_items collection
     - Deletes all associated chunks from item_chunks collection
     - Verifies ownership
     - Returns success message
@@ -813,15 +804,17 @@ async def delete_item(
             detail="Not authorized to delete this item"
         )
     
-    # Soft delete: set archived_at to current time
-    await db.saved_items.update_one(
-        {"_id": ObjectId(item_id)},
-        {"$set": {"archived_at": datetime.utcnow()}}
-    )
-    
     # Delete all associated chunks from vector search index
-    # This ensures deleted items don't appear in AI search results
+    # This ensures deleted items don't appear in AI search results.
     chunks_deleted = await db.item_chunks.delete_many({"item_id": item_id})
+
+    # Hard delete: permanently remove item from database
+    delete_result = await db.saved_items.delete_one({"_id": ObjectId(item_id)})
+    if delete_result.deleted_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete item"
+        )
     
     import logging
     logger = logging.getLogger(__name__)
@@ -829,8 +822,8 @@ async def delete_item(
         f"Deleted item {item_id} and removed {chunks_deleted.deleted_count} "
         f"associated chunks from vector search index"
     )
-    
-    return {"message": "Item archived"}
+
+    return {"message": "Item deleted"}
 
 
 @router.post("/{item_id}/reprocess", response_model=SavedItem)
@@ -920,8 +913,7 @@ async def reprocess_item(
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
         created_at=updated_item_doc["created_at"],
-        updated_at=updated_item_doc["updated_at"],
-        archived_at=updated_item_doc.get("archived_at")
+        updated_at=updated_item_doc["updated_at"]
     )
 
 
@@ -1104,6 +1096,5 @@ async def upload_extracted_content(
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
         created_at=updated_item_doc["created_at"],
-        updated_at=updated_item_doc["updated_at"],
-        archived_at=updated_item_doc.get("archived_at")
+        updated_at=updated_item_doc["updated_at"]
     )

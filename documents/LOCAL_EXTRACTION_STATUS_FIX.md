@@ -30,7 +30,6 @@ query = {
         {"archived_text": ""},
         {"archived_text": None}
     ],
-    "archived_at": None
 }
 ```
 

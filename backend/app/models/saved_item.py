@@ -73,7 +73,6 @@ class SavedItem(SavedItemBase):
     processing_error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-    archived_at: Optional[datetime] = None
 
     model_config = ConfigDict(
         populate_by_name=True,

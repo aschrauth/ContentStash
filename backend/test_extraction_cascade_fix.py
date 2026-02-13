@@ -95,7 +95,6 @@ async def _run_test():
         "processing_error": None,
         "created_at": now,
         "updated_at": now,
-        "archived_at": None
     }
     
     result = await db.saved_items.insert_one(item_doc)

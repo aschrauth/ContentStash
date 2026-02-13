@@ -43,7 +43,7 @@
 - Content extraction from URLs
 - Chat-based search with citations (RAG)
 - User preferences (view mode, sort order)
-- Soft delete with 30-day archive
+- Hard delete after user confirmation
 
 **Success Criteria:**
 - All frontend features functional end-to-end
@@ -115,8 +115,8 @@
 - Response: Updated item
 
 - **DELETE /api/v1/items/:id**
-- Purpose: Soft delete item
-- Response: `{ "message": "Item archived" }`
+- Purpose: Permanently delete item
+- Response: `{ "message": "Item deleted" }`
 
 - **POST /api/v1/items/:id/reprocess**
 - Purpose: Retry content extraction
@@ -193,7 +193,6 @@ Example:
 - `processing_error`: string (optional)
 - `created_at`: datetime (indexed)
 - `updated_at`: datetime
-- `archived_at`: datetime (optional, for soft delete)
 
 ### chat_threads Collection
 - `_id`: ObjectId
@@ -454,7 +453,7 @@ Example:
 **Objectives:**
 - Implement CRUD operations for saved items
 - Support URL and pasted content
-- Soft delete with 30-day archive
+- Hard delete after user confirmation
 
 **Tasks:**
 
@@ -475,7 +474,7 @@ Example:
 ### Task 3: Implement List Items Endpoint
 - Implement `GET /api/v1/items`
 - Filter by `owner_id` (from JWT)
-- Exclude soft-deleted items
+- Return all items owned by the user
 - Support query params: `?tags=tag1,tag2&search=query&sort=newest`
 - **Manual Test Step:** Open library page → saved items display
 - **User Test Prompt:** "Open /library and confirm your saved items appear."
@@ -496,7 +495,7 @@ Example:
 
 ### Task 6: Implement Delete Item Endpoint
 - Implement `DELETE /api/v1/items/:id`
-- Soft delete: set `archived_at` to current timestamp
+- Hard delete: remove document from `saved_items` and related chunks from `item_chunks`
 - **Manual Test Step:** Click delete button → confirmation modal → item removed from library
 - **User Test Prompt:** "Delete an item and confirm it disappears from the library."
 

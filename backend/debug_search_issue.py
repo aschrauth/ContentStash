@@ -43,7 +43,6 @@ async def debug_search_issue():
             print(f"  {i}. {item.get('title', 'Untitled')}")
             print(f"     ID: {item['_id']}")
             print(f"     owner_id: {item.get('owner_id')} (type: {type(item.get('owner_id'))})")
-            print(f"     archived_at: {item.get('archived_at')}")
     
     # Step 3: Check item_chunks collection
     print("\n3. Checking item_chunks collection...")

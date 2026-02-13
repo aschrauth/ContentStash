@@ -67,8 +67,7 @@ async def test_search_sync():
         "processing_status": "pending",
         "processing_error": None,
         "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
-        "archived_at": None
+        "updated_at": datetime.utcnow()
     }
     
     result = await db.saved_items.insert_one(item_doc)
@@ -124,12 +123,9 @@ async def test_search_sync():
     print("Step 4: Deleting the test item")
     print("=" * 80)
     
-    # Soft delete the item
-    await db.saved_items.update_one(
-        {"_id": ObjectId(test_item_id)},
-        {"$set": {"archived_at": datetime.utcnow()}}
-    )
-    print("✓ Soft deleted test item (set archived_at)")
+    # Hard delete the item
+    await db.saved_items.delete_one({"_id": ObjectId(test_item_id)})
+    print("✓ Hard deleted test item")
     
     # Delete associated chunks (this is what our fix does)
     delete_result = await db.item_chunks.delete_many({"item_id": test_item_id})
@@ -163,13 +159,12 @@ async def test_search_sync():
         print(f"   Found {len([c for c in search_results_after if c['item_id'] == test_item_id])} chunks")
         return False
     
-    # Step 7: Clean up - permanently delete the test item
+    # Step 7: Clean up - no-op (item already deleted)
     print("\n" + "=" * 80)
     print("Step 7: Cleaning up test data")
     print("=" * 80)
     
-    await db.saved_items.delete_one({"_id": ObjectId(test_item_id)})
-    print("✓ Permanently deleted test item from database")
+    print("✓ No additional cleanup required for saved_items")
     
     # Final verification
     print("\n" + "=" * 80)

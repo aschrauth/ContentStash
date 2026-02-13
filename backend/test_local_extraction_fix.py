@@ -54,7 +54,6 @@ async def test_local_extraction_fix():
         "tags": [],
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
-        "archived_at": None
     }
     
     result = await db.saved_items.insert_one(test_item_1)
@@ -71,7 +70,6 @@ async def test_local_extraction_fix():
             {"archived_text": ""},
             {"archived_text": None}
         ],
-        "archived_at": None
     }).to_list(length=None)
     
     item_1_in_queue = any(str(item["_id"]) == item_1_id for item in pending_local)
@@ -96,7 +94,6 @@ async def test_local_extraction_fix():
         "tags": [],
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
-        "archived_at": None
     }
     
     result = await db.saved_items.insert_one(test_item_2)
@@ -113,7 +110,6 @@ async def test_local_extraction_fix():
             {"archived_text": ""},
             {"archived_text": None}
         ],
-        "archived_at": None
     }).to_list(length=None)
     
     item_2_in_queue = any(str(item["_id"]) == item_2_id for item in pending_local)
@@ -139,7 +135,6 @@ async def test_local_extraction_fix():
         "tags": [],
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
-        "archived_at": None
     }
     
     result = await db.saved_items.insert_one(test_item_3)
@@ -156,7 +151,6 @@ async def test_local_extraction_fix():
             {"archived_text": ""},
             {"archived_text": None}
         ],
-        "archived_at": None
     }).to_list(length=None)
     
     item_3_in_queue = any(str(item["_id"]) == item_3_id for item in pending_local)
@@ -207,7 +201,6 @@ async def test_local_extraction_fix():
             {"archived_text": ""},
             {"archived_text": None}
         ],
-        "archived_at": None
     }).to_list(length=None)
     
     item_1_still_in_queue = any(str(item["_id"]) == item_1_id for item in pending_local)

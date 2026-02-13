@@ -20,12 +20,11 @@ async def get_tags(
     """
     db = get_database()
     
-    # Aggregate tags from user's items (excluding archived items)
+    # Aggregate tags from the current user's items
     pipeline = [
         {
             "$match": {
-                "owner_id": ObjectId(current_user.id),
-                "archived_at": None
+                "owner_id": ObjectId(current_user.id)
             }
         },
         {
@@ -72,8 +71,7 @@ async def autocomplete_tags(
     pipeline = [
         {
             "$match": {
-                "owner_id": ObjectId(current_user.id),
-                "archived_at": None
+                "owner_id": ObjectId(current_user.id)
             }
         },
         {

@@ -39,7 +39,6 @@ async def test_local_extraction_fixes():
         "archived_text": "This is existing content that should be replaced",
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
-        "archived_at": None
     }
     
     result_1 = await db.saved_items.insert_one(test_item_1)
@@ -54,7 +53,6 @@ async def test_local_extraction_fixes():
         "owner_id": ObjectId("507f1f77bcf86cd799439011"),
         "extraction_type": "local",
         "processing_status": {"$in": ["pending", "pending_local_extraction"]},
-        "archived_at": None
     }
     
     pending_items = await db.saved_items.find(query).to_list(length=None)
@@ -80,7 +78,6 @@ async def test_local_extraction_fixes():
         "processing_status": "pending",
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
-        "archived_at": None
     }
     
     result_2 = await db.saved_items.insert_one(test_item_2)
@@ -98,7 +95,6 @@ async def test_local_extraction_fixes():
         "processing_status": "pending",
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
-        "archived_at": None
     }
     
     result_3 = await db.saved_items.insert_one(test_item_3)
@@ -127,7 +123,6 @@ async def test_local_extraction_fixes():
         "processing_status": "pending",
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
-        "archived_at": None
     }
     
     result_4 = await db.saved_items.insert_one(test_item_4)
@@ -140,7 +135,6 @@ async def test_local_extraction_fixes():
         "_id": ObjectId(test_item_4_id),
         "extraction_type": "local",
         "processing_status": {"$in": ["pending", "pending_local_extraction"]},
-        "archived_at": None
     })
     print(f"  - Appears in pending-local queue: {'YES' if pending_count > 0 else 'NO'}")
     
@@ -162,7 +156,6 @@ async def test_local_extraction_fixes():
         "_id": ObjectId(test_item_4_id),
         "extraction_type": "local",
         "processing_status": {"$in": ["pending", "pending_local_extraction"]},
-        "archived_at": None
     })
     print(f"  - Still in pending-local queue: {'YES' if pending_count_after > 0 else 'NO'}")
     
@@ -183,7 +176,6 @@ async def test_local_extraction_fixes():
         "_id": ObjectId(test_item_4_id),
         "extraction_type": "local",
         "processing_status": {"$in": ["pending", "pending_local_extraction"]},
-        "archived_at": None
     })
     
     if pending_count > 0 and pending_count_after == 0 and pending_count_final == 0:

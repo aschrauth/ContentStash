@@ -73,8 +73,8 @@ Primary: Knowledge workers (product managers, researchers, strategists) who cons
 **FR-002: Save Content with Auto Metadata**
 - **Description:** Save URLs or pasted content. For URLs, system fetches title, description, and preview image. For pasted content, user provides title and system generates short description.
 - **Entity Type:** User-Generated Content
-- **Operations:** Create, View, Edit (URL, title, description, image, content type, notes, tags), Delete (soft delete with 30-day archive), List/Search, Export
-- **Key Rules:** URL must be valid format. Metadata fetch simulated with 1-3 second delay. User can override auto-fetched fields. Processing status: pending → processed/failed. Max 500 chars for title, 2000 for description. Deleted items archived 30 days.
+- **Operations:** Create, View, Edit (URL, title, description, image, content type, notes, tags), Delete (hard delete after confirmation), List/Search, Export
+- **Key Rules:** URL must be valid format. Metadata fetch simulated with 1-3 second delay. User can override auto-fetched fields. Processing status: pending → processed/failed. Max 500 chars for title, 2000 for description. Deleted items are permanently removed after user confirmation.
 - **Acceptance:** User pastes URL, sees metadata preview within 3 seconds, can save. User pastes text with title, can save. Item appears immediately in library with visible processing status.
 
 **FR-003: Hashtag Tagging with Autocomplete**
@@ -160,7 +160,7 @@ Primary: Knowledge workers (product managers, researchers, strategists) who cons
 
 **Edit Saved Item:** User opens item detail → clicks edit on any field → modifies → auto-saves on blur
 
-**Delete Saved Item:** User selects item(s) → clicks delete → confirms → soft deleted with 30-day archive
+**Delete Saved Item:** User selects item(s) → clicks delete → confirms → permanently deleted
 
 **Filter by Tags:** User clicks tag pill in library → items filter to show only those with tag → can add multiple tags (AND logic)
 
@@ -179,7 +179,7 @@ Primary: Knowledge workers (product managers, researchers, strategists) who cons
 | Entity | Type | Who Creates | Who Edits | Who Deletes | Delete Action |
 |--------|------|-------------|-----------|-------------|---------------|
 | User | System/Config | Self (registration) | Self | Self | Hard delete + cascade all data |
-| SavedItem | User-Generated | Owner | Owner (metadata, notes, tags) | Owner | Soft delete, 30-day archive |
+| SavedItem | User-Generated | Owner | Owner (metadata, notes, tags) | Owner | Hard delete (permanent) |
 | Tag | User-Generated | Owner (manual or accepted) | Owner (add/remove from items) | Owner (remove from item) | Removing from item doesn't delete globally |
 | Note | User-Generated | Owner | Owner | Owner | Clear content, preserve history |
 | ContentChunk | System Data | System (processing) | System only | System (with item) | Deleted with parent item |
@@ -203,7 +203,7 @@ Primary: Knowledge workers (product managers, researchers, strategists) who cons
 - Content extraction simulated with 2-5 second delay, 10% random failure rate
 - Autocomplete shows max 10 tag suggestions, sorted by usage frequency
 - Search requires minimum 2 characters, returns max 100 results ranked by relevance
-- Deleted items recoverable from archive for 30 days, then permanently deleted
+- Deleted items are permanently deleted immediately after user confirmation
 - Processing errors must be visible with recovery path (reprocess, manual paste)
 - Chat responses limited to 500 words with 3-5 citations maximum
 
@@ -221,9 +221,9 @@ Primary: Knowledge workers (product managers, researchers, strategists) who cons
 
 **SavedItem**
 - **Type:** User-Generated Content | **Storage:** localStorage with cache for recent items
-- **Key Fields:** id, ownerId, contentType (article/video/podcast/chat/note/unknown), url (optional), title, description, imageUrl, faviconUrl, notesMarkdown, notesHistory, tags (array of accepted tag names), suggestedTags (array), suggestedTopic, suggestedSummary, archivedText, processingStatus (pending/processed/failed), processingError, createdAt, updatedAt, archivedAt (for soft delete)
+- **Key Fields:** id, ownerId, contentType (article/video/podcast/chat/note/unknown), url (optional), title, description, imageUrl, faviconUrl, notesMarkdown, notesHistory, tags (array of accepted tag names), suggestedTags (array), suggestedTopic, suggestedSummary, archivedText, processingStatus (pending/processed/failed), processingError, createdAt, updatedAt
 - **Relationships:** belongs to User, has many ContentChunks, has many Tags
-- **Lifecycle:** Full CRUD + soft delete with 30-day archive + export
+- **Lifecycle:** Full CRUD + hard delete (permanent) + export
 
 **Tag**
 - **Type:** User-Generated Content | **Storage:** localStorage (derived from SavedItems or separate registry)
@@ -396,8 +396,8 @@ Core features included:
 
 ### 9.2 Entity Lifecycle Decisions
 
-**SavedItem:** Full CRUD + soft delete with 30-day archive + export
-- **Reason:** User-generated content needs full control. Soft delete allows recovery from accidental deletion.
+**SavedItem:** Full CRUD + hard delete (permanent) + export
+- **Reason:** User-generated content needs full control, and permanent deletion keeps storage usage predictable and implementation simpler.
 
 **Tag:** Create via hashtag, remove from items (doesn't delete globally)
 - **Reason:** Tags are vocabulary that should persist even if removed from individual items. Prevents accidental loss of tag history.

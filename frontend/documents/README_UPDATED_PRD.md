@@ -88,7 +88,7 @@ Primary: Knowledge workers (product managers, researchers, strategists) who cons
 **FR-007: Deletion Workflow**
 - **Status:** Implemented
 - **Description:** "Delete" button triggers a custom in-app confirmation modal (matching design system) instead of browser alert.
-- **Logic:** Soft delete (archivedAt set) or hard delete from store.
+- **Logic:** Hard delete after confirmation (item is permanently removed).
 
 ---
 
@@ -194,4 +194,3 @@ To replace the current `localStorage` simulation, the backend must provide:
 
 **Document Date:** 2024-05-22  
 **Status:** Ready for Backend Integration
-

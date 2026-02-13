@@ -59,9 +59,9 @@ async def vector_search(query: str, owner_id: str, k: int = 8, max_chunks_per_it
         # We'll filter down to k chunks with diversity constraints
         retrieval_limit = k * 5  # Get 5x more chunks for diversity filtering (increased from 3x)
         
-        # MongoDB Atlas Vector Search aggregation pipeline
-        # Note: We filter by owner_id in vectorSearch, then join with saved_items
-        # to exclude chunks from soft-deleted items (archived_at != null)
+        # MongoDB Atlas Vector Search aggregation pipeline.
+        # We filter by owner_id in vectorSearch, then join with saved_items
+        # to ensure each chunk still has a valid parent item.
         pipeline = [
             {
                 "$vectorSearch": {
@@ -86,7 +86,7 @@ async def vector_search(query: str, owner_id: str, k: int = 8, max_chunks_per_it
                 }
             },
             {
-                # Join with saved_items to check if item is deleted
+                # Join with saved_items to verify parent item exists.
                 "$lookup": {
                     "from": "saved_items",
                     "let": {"item_id_str": "$item_id"},
@@ -98,20 +98,14 @@ async def vector_search(query: str, owner_id: str, k: int = 8, max_chunks_per_it
                                 }
                             }
                         },
-                        {
-                            "$project": {
-                                "archived_at": 1
-                            }
-                        }
                     ],
                     "as": "item_info"
                 }
             },
             {
-                # Filter out chunks where parent item is deleted (archived_at is not null)
+                # Filter out orphaned chunks where parent item does not exist.
                 "$match": {
-                    "item_info": {"$ne": []},  # Item must exist
-                    "item_info.archived_at": None  # Item must not be archived
+                    "item_info": {"$ne": []}  # Item must exist
                 }
             },
             {
