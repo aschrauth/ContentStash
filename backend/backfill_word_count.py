@@ -3,15 +3,16 @@ import asyncio
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 
-# Hardcoded for verification
-MONGODB_URI = ""
-
 async def backfill_word_counts():
     """
     Iterate over all SavedItems and populate word_count if missing.
     """
+    mongo_uri = os.getenv("MONGODB_URI")
+    if not mongo_uri:
+        raise ValueError("MONGODB_URI environment variable is required")
+
     print("Connecting to database...")
-    client = AsyncIOMotorClient(MONGODB_URI)
+    client = AsyncIOMotorClient(mongo_uri)
     db = client.contentstash # Explicitly use 'contentstash' db
     
     print(f"Connected to database: {db.name}")
