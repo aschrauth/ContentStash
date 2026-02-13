@@ -10,9 +10,21 @@ import { formatDate, cn, calculateReadTime } from '@/lib/utils'; // Added cn imp
 interface ItemCardProps {
   item: SavedItem;
   viewMode?: 'grid' | 'list';
+  unreadVariant?: 'accent' | 'tinted';
 }
 
-export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
+export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'accent' }: ItemCardProps) {
+  const isUnread = item.isRead !== true;
+
+  const unreadCardClasses =
+    unreadVariant === 'accent'
+      ? isUnread
+        ? "ring-1 ring-inset ring-sky-500/30"
+        : ""
+      : isUnread
+      ? "bg-sky-500/10 hover:bg-sky-500/15 border-sky-500/30 hover:border-sky-400/40"
+      : "";
+
   const getIcon = () => {
     if (item.url?.includes('youtube') || item.url?.includes('youtu.be')) return <Youtube className="w-4 h-4" />;
     if (item.imageUrl && !item.url) return <ImageIcon className="w-4 h-4" />;
@@ -42,9 +54,18 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
             scale: 1.01,
             transition: { duration: 0.2, ease: "easeOut" }
           }}
-          className="group relative bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md md:h-32"
+          className={cn(
+            "group relative bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md md:h-32",
+            unreadCardClasses
+          )}
           style={{ willChange: 'transform' }}
         >
+          {isUnread && unreadVariant === 'accent' && (
+            <span
+              className="absolute left-0 top-0 bottom-0 w-1 bg-sky-400/90 z-30 pointer-events-none"
+              aria-hidden="true"
+            />
+          )}
           {/* Unified Container: Flex Wrap on Mobile, Flex Row No Wrap on Desktop */}
           <div className="flex flex-wrap md:flex-nowrap items-start md:items-stretch h-full">
 
@@ -188,9 +209,18 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
           y: -4,
           transition: { type: "tween", duration: 0.2, ease: "easeOut" }
         }}
-        className="group relative h-full flex flex-col bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-violet-500/10"
+        className={cn(
+          "group relative h-full flex flex-col bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-violet-500/10",
+          unreadCardClasses
+        )}
         style={{ willChange: 'transform' }}
       >
+        {isUnread && unreadVariant === 'accent' && (
+          <span
+            className="absolute left-0 top-0 bottom-0 w-1 bg-sky-400/90 z-30 pointer-events-none"
+            aria-hidden="true"
+          />
+        )}
         {/* Image Preview */}
         {item.imageUrl && (
           <div className="relative h-40 w-full overflow-hidden bg-slate-900">
@@ -219,7 +249,7 @@ export default function ItemCard({ item, viewMode = 'grid' }: ItemCardProps) {
         )}
 
         {/* Content */}
-        <div className="flex-1 p-5 flex flex-col">
+        <div className="relative flex-1 p-5 flex flex-col">
           {/* Header */}
           <div className="flex flex-col gap-2 mb-3">
             {/* Metadata Part 1: Icon, Read Time, Date */}

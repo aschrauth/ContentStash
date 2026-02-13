@@ -34,6 +34,7 @@ export type SavedItem = {
   wordCount?: number;
   extractionType?: 'fast' | 'complete' | 'local';
   processingStatus: 'pending' | 'processing' | 'processed' | 'failed' | 'pending_local_extraction';
+  isRead?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -264,7 +265,7 @@ export const useStore = create<AppState>()(
             set({ itemsCursor: null, hasMoreItems: false });
           }
 
-          const response = await getItems(token, searchQuery, tags, 50, cursor);
+          const response = await getItems(token, searchQuery, tags, 50, cursor ?? undefined);
 
           // Handle both old format (array) and new format (object with pagination)
           let itemsData: any[];
@@ -297,6 +298,7 @@ export const useStore = create<AppState>()(
             wordCount: item.word_count as number | undefined,
             extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: item.processing_status as 'pending' | 'processing' | 'processed' | 'failed' | 'pending_local_extraction',
+            isRead: item.is_read === true,
             createdAt: item.created_at as string,
             updatedAt: item.updated_at as string
           }));
@@ -371,6 +373,7 @@ export const useStore = create<AppState>()(
               archived_text: itemData.archivedText,  // Convert camelCase to snake_case
               source: itemData.source,
               extraction_type: itemData.extractionType,  // Convert camelCase to snake_case
+              is_read: itemData.isRead ?? false,
             }),
           });
 
@@ -399,6 +402,7 @@ export const useStore = create<AppState>()(
             wordCount: newItem.word_count,
             extractionType: newItem.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: newItem.processing_status,
+            isRead: newItem.is_read === true,
             createdAt: newItem.created_at,
             updatedAt: newItem.updated_at,
           };
@@ -436,6 +440,7 @@ export const useStore = create<AppState>()(
               archived_text: updates.archivedText,
               source: updates.source,
               extraction_type: updates.extractionType,
+              is_read: updates.isRead,
             }),
           });
 
@@ -464,6 +469,7 @@ export const useStore = create<AppState>()(
             wordCount: updatedItem.word_count,
             extractionType: updatedItem.extraction_type as 'fast' | 'complete' | 'local' | undefined,
             processingStatus: updatedItem.processing_status,
+            isRead: updatedItem.is_read === true,
             createdAt: updatedItem.created_at,
             updatedAt: updatedItem.updated_at,
           };

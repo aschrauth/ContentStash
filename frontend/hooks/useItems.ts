@@ -61,6 +61,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
         wordCount: item.word_count as number | undefined,
         extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
         processingStatus: item.processing_status as 'pending' | 'processed' | 'failed',
+        isRead: item.is_read === true,
         createdAt: item.created_at as string,
         updatedAt: item.updated_at as string,
       }));
@@ -76,6 +77,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
       return lastPage.pagination.has_more ? (lastPage.pagination.next_cursor ?? undefined) : undefined;
     },
     enabled: enabled && !!token,
+    refetchOnMount: 'always',
     staleTime: 5 * 60 * 1000, // 5 minutes - keep data fresh longer
     gcTime: 10 * 60 * 1000, // 10 minutes - keep in cache longer for navigation
   });

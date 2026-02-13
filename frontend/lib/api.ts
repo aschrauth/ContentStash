@@ -51,6 +51,7 @@ export interface PaginationMetadata {
   has_more: boolean;
   limit: number;
   total: number;
+  unread?: number;
 }
 
 export interface PaginatedResponse<T> {

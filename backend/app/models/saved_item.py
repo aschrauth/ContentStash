@@ -17,6 +17,7 @@ class SavedItemBase(BaseModel):
     extraction_type: Optional[str] = Field(default="fast", pattern="^(fast|complete|local)$")
     source: Optional[str] = Field(None, max_length=100)
     word_count: Optional[int] = None
+    is_read: bool = False
     
     @field_validator('tags')
     @classmethod
@@ -48,6 +49,7 @@ class SavedItemUpdate(BaseModel):
     extraction_type: Optional[str] = Field(None, pattern="^(fast|complete|local)$")
     source: Optional[str] = Field(None, max_length=100)
     word_count: Optional[int] = None
+    is_read: Optional[bool] = None
     
     @field_validator('tags')
     @classmethod

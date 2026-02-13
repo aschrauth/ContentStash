@@ -5,6 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Filter, Grid, List, Search, Loader2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { getItems } from '@/lib/api';
+import { resolveItemReadState } from '@/lib/readStatus';
 import { cn } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import ItemCard from '@/components/ItemCard';
@@ -20,6 +22,7 @@ function LibraryContent() {
   
   const {
     currentUser,
+    token,
     updatePreferences,
     fetchTags,
     tags,
@@ -30,6 +33,7 @@ function LibraryContent() {
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [debouncedSearch, setDebouncedSearch] = useState(initialQuery);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [fullUnreadCount, setFullUnreadCount] = useState<number | null>(null);
   const isInitialMount = useRef(true);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +58,7 @@ function LibraryContent() {
     search: debouncedSearch,
     tags: selectedTags,
   });
+  const dataAny = data as any;
 
   // Invalidate items cache for SSE updates
   const invalidateItems = useInvalidateItems();
@@ -69,14 +74,33 @@ function LibraryContent() {
 
   // Flatten all pages into a single array of items
   const allItems = useMemo(() => {
-    if (!data?.pages) return [];
-    return data.pages.flatMap((page: any) => page.items);
-  }, [data?.pages]);
+    if (!dataAny?.pages) return [];
+    return dataAny.pages.flatMap((page: any) => page.items);
+  }, [dataAny?.pages]);
+
+  const displayItems = useMemo(() => {
+    return allItems.map((item: any) => ({
+      ...item,
+      isRead: resolveItemReadState(item.id, item.isRead === true),
+    }));
+  }, [allItems]);
 
   // Get total count from the first page (all pages have the same total)
   const totalCount = useMemo(() => {
-    return data?.pages?.[0]?.pagination?.total ?? null;
-  }, [data?.pages]);
+    return dataAny?.pages?.[0]?.pagination?.total ?? null;
+  }, [dataAny?.pages]);
+
+  const unreadCount = useMemo(() => {
+    const paginationUnread = dataAny?.pages?.[0]?.pagination?.unread;
+    const loadedUnreadCount = displayItems.filter((item: any) => item.isRead !== true).length;
+    if (fullUnreadCount !== null) {
+      return fullUnreadCount;
+    }
+    if (typeof paginationUnread === 'number') {
+      return Math.max(paginationUnread, loadedUnreadCount);
+    }
+    return loadedUnreadCount;
+  }, [dataAny?.pages, displayItems, fullUnreadCount]);
 
   // Sync local state with store preference on mount and when currentUser changes
   useEffect(() => {
@@ -98,7 +122,65 @@ function LibraryContent() {
     updatePreferences({ viewMode: mode });
   };
 
-  const displayItems = allItems;
+  // Build an accurate unread count across the entire library (all pages),
+  // independent of the currently displayed paginated subset.
+  useEffect(() => {
+    let isCancelled = false;
+
+    const computeFullUnreadCount = async () => {
+      if (!token) {
+        setFullUnreadCount(null);
+        return;
+      }
+
+      try {
+        let cursor: string | undefined = undefined;
+        let unread = 0;
+
+        while (true) {
+          const response = await getItems(token, undefined, undefined, 100, cursor);
+
+          if (Array.isArray(response)) {
+            for (const item of response) {
+              const itemId = (item as any).id as string;
+              const serverIsRead = (item as any).is_read === true;
+              const effectiveIsRead = resolveItemReadState(itemId, serverIsRead);
+              if (!effectiveIsRead) unread += 1;
+            }
+            break;
+          }
+
+          for (const item of response.items || []) {
+            const itemId = (item as any).id as string;
+            const serverIsRead = (item as any).is_read === true;
+            const effectiveIsRead = resolveItemReadState(itemId, serverIsRead);
+            if (!effectiveIsRead) unread += 1;
+          }
+
+          if (!response.pagination?.has_more || !response.pagination?.next_cursor) {
+            break;
+          }
+
+          cursor = response.pagination.next_cursor ?? undefined;
+        }
+
+        if (!isCancelled) {
+          setFullUnreadCount(unread);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Failed to compute full unread count:', error);
+          setFullUnreadCount(null);
+        }
+      }
+    };
+
+    computeFullUnreadCount();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [token, currentUser?.id]);
 
   // Get all unique tags for filter - use tags from store (with counts) or fallback to local computation
   const allTags = useMemo(() => {
@@ -155,7 +237,7 @@ function LibraryContent() {
             <h1 className="text-3xl font-bold text-white mb-1">Library</h1>
             <p className="text-slate-400">
               {totalCount !== null
-                ? `${totalCount} ${totalCount === 1 ? 'item' : 'items'} total`
+                ? `${totalCount} ${totalCount === 1 ? 'item' : 'items'} total (${unreadCount} unread)`
                 : isLoading
                 ? 'Loading...'
                 : `${displayItems.length} ${displayItems.length === 1 ? 'item' : 'items'}`
@@ -236,8 +318,8 @@ function LibraryContent() {
                   : "grid-cols-1 gap-[15px]"
               )}
             >
-              {displayItems.map((item) => (
-                <ItemCard key={item.id} item={item} viewMode={viewMode} />
+              {displayItems.map((item: any) => (
+                <ItemCard key={item.id} item={item} viewMode={viewMode} unreadVariant="accent" />
               ))}
             </div>
             

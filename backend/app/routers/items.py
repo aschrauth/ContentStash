@@ -333,6 +333,7 @@ async def create_item(
         "suggested_topic": None,
         "processing_status": "pending",
         "processing_error": None,
+        "is_read": False,
         "created_at": now,
         "updated_at": now
     }
@@ -369,6 +370,7 @@ async def create_item(
         word_count=len(archived_text.split()) if archived_text else 0,
         processing_status="pending",
         processing_error=None,
+        is_read=False,
         created_at=now,
         updated_at=now
     )
@@ -484,12 +486,17 @@ async def list_items(
             word_count=doc.get("word_count"),
             processing_status=doc.get("processing_status", "pending"),
             processing_error=doc.get("processing_error"),
+            is_read=doc.get("is_read", False),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"]
         ))
     
     # Get total count for the query (without cursor pagination)
     total_count = await db.saved_items.count_documents(query)
+    unread_count = await db.saved_items.count_documents({
+        "owner_id": ObjectId(current_user.id),
+        "is_read": {"$ne": True}
+    })
     
     # Return paginated response with total count
     return {
@@ -498,7 +505,8 @@ async def list_items(
             "next_cursor": next_cursor,
             "has_more": has_more,
             "limit": limit,
-            "total": total_count
+            "total": total_count,
+            "unread": unread_count
         }
     }
 
@@ -555,6 +563,7 @@ async def get_pending_local_extraction(
             word_count=doc.get("word_count"),
             processing_status=doc.get("processing_status", "pending"),
             processing_error=doc.get("processing_error"),
+            is_read=doc.get("is_read", False),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"]
         ))
@@ -620,6 +629,7 @@ async def get_item(
         word_count=item_doc.get("word_count"),
         processing_status=item_doc.get("processing_status", "pending"),
         processing_error=item_doc.get("processing_error"),
+        is_read=item_doc.get("is_read", False),
         created_at=item_doc["created_at"],
         updated_at=item_doc["updated_at"]
     )
@@ -699,6 +709,9 @@ async def update_item(
     
     if updates.source is not None:
         update_doc["source"] = updates.source
+
+    if updates.is_read is not None:
+        update_doc["is_read"] = updates.is_read
     
     if updates.extraction_type is not None:
         # Check if extraction_type is actually changing
@@ -761,6 +774,7 @@ async def update_item(
         word_count=updated_item_doc.get("word_count"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
+        is_read=updated_item_doc.get("is_read", False),
         created_at=updated_item_doc["created_at"],
         updated_at=updated_item_doc["updated_at"]
     )
@@ -912,6 +926,7 @@ async def reprocess_item(
         word_count=updated_item_doc.get("word_count"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
+        is_read=updated_item_doc.get("is_read", False),
         created_at=updated_item_doc["created_at"],
         updated_at=updated_item_doc["updated_at"]
     )
@@ -1095,6 +1110,7 @@ async def upload_extracted_content(
         word_count=updated_item_doc.get("word_count"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
+        is_read=updated_item_doc.get("is_read", False),
         created_at=updated_item_doc["created_at"],
         updated_at=updated_item_doc["updated_at"]
     )

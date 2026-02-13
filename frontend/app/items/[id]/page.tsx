@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useStore, SavedItem } from '@/lib/store';
+import { resolveItemReadState, setReadOverride } from '@/lib/readStatus';
 import { formatDate, cn, cleanMarkdown, calculateReadTime } from '@/lib/utils';
 import { API_ENDPOINTS } from '@/lib/api';
 import AppLayout from '@/components/layout/AppLayout';
@@ -38,11 +39,49 @@ export default function ItemDetailPage() {
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const hasAutoMarkedReadRef = useRef(false);
+
+  const syncItemReadInCache = (targetItemId: string, nextIsRead: boolean, previousIsRead?: boolean) => {
+    queryClient.setQueriesData(
+      { queryKey: ['items'] },
+      (oldData: any) => {
+        if (!oldData?.pages) return oldData;
+
+        const cachedItem = oldData.pages
+          .flatMap((page: any) => page.items || [])
+          .find((cached: any) => cached.id === targetItemId);
+
+        const priorReadState = typeof previousIsRead === 'boolean'
+          ? previousIsRead
+          : (cachedItem?.isRead === true);
+        const unreadDelta = priorReadState === nextIsRead ? 0 : (nextIsRead ? -1 : 1);
+
+        const nextPages = oldData.pages.map((page: any) => ({
+          ...page,
+          items: (page.items || []).map((cached: any) =>
+            cached.id === targetItemId ? { ...cached, isRead: nextIsRead } : cached
+          ),
+          pagination: typeof page.pagination?.unread === 'number' && unreadDelta !== 0
+            ? {
+                ...page.pagination,
+                unread: Math.max(0, page.pagination.unread + unreadDelta),
+              }
+            : page.pagination,
+        }));
+
+        return {
+          ...oldData,
+          pages: nextPages,
+        };
+      }
+    );
+  };
 
   // Handle params safely
   useEffect(() => {
     if (params?.id) {
       setItemId(params.id as string);
+      hasAutoMarkedReadRef.current = false;
     }
   }, [params]);
 
@@ -79,6 +118,9 @@ export default function ItemDetailPage() {
 
         if (response.ok) {
           const data = await response.json();
+          const rawServerIsRead = data.is_read === true;
+          const serverIsRead = resolveItemReadState(data.id, rawServerIsRead);
+          const shouldAutoMarkRead = !rawServerIsRead && !hasAutoMarkedReadRef.current;
 
           // Convert snake_case to camelCase
           const formattedItem = {
@@ -98,6 +140,7 @@ export default function ItemDetailPage() {
             wordCount: data.word_count,
             extractionType: data.extraction_type,
             processingStatus: data.processing_status,
+            isRead: shouldAutoMarkRead ? true : serverIsRead,
             createdAt: data.created_at,
             updatedAt: data.updated_at
           };
@@ -108,6 +151,48 @@ export default function ItemDetailPage() {
           setEditSource(formattedItem.source || '');
           setNoteContent(formattedItem.notesMarkdown || '');
           setIsLoading(false);
+
+          if (shouldAutoMarkRead) {
+            hasAutoMarkedReadRef.current = true;
+            setReadOverride(data.id, true);
+            syncItemReadInCache(data.id, true, serverIsRead);
+
+            fetch(API_ENDPOINTS.itemById(data.id), {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ is_read: true }),
+            })
+              .then(async (markReadResponse) => {
+                if (!markReadResponse.ok) {
+                  const error = await markReadResponse.json();
+                  throw new Error(error?.detail || 'Failed to auto-mark as read');
+                }
+
+                const updatedData = await markReadResponse.json();
+                const persistedIsRead = typeof updatedData.is_read === 'boolean'
+                  ? updatedData.is_read
+                  : true;
+
+                setItem(prev => prev ? {
+                  ...prev,
+                  isRead: persistedIsRead,
+                  updatedAt: updatedData.updated_at ?? prev.updatedAt,
+                } : prev);
+                setReadOverride(data.id, persistedIsRead);
+                syncItemReadInCache(data.id, persistedIsRead, true);
+                queryClient.invalidateQueries({ queryKey: ['items'] });
+              })
+              .catch((markError) => {
+                console.error('Failed to auto-mark item as read:', markError);
+                hasAutoMarkedReadRef.current = false;
+                setItem(prev => prev ? { ...prev, isRead: serverIsRead } : prev);
+                setReadOverride(data.id, serverIsRead);
+                syncItemReadInCache(data.id, serverIsRead, true);
+              });
+          }
 
         } else if (response.status === 404) {
           console.error('[Detail View] Item not found (404)');
@@ -168,6 +253,7 @@ export default function ItemDetailPage() {
             wordCount: updatedData.word_count,
             extractionType: updatedData.extraction_type,
             processingStatus: updatedData.processing_status,
+            isRead: resolveItemReadState(updatedData.id, updatedData.is_read === true),
             createdAt: updatedData.created_at,
             updatedAt: updatedData.updated_at
           };
@@ -342,6 +428,73 @@ export default function ItemDetailPage() {
     }
   };
 
+  const updateReadStatus = async (nextIsRead: boolean, showToast: boolean = true) => {
+    if (!item) {
+      throw new Error('Item not loaded');
+    }
+
+    const authToken = token || localStorage.getItem('token');
+    if (!authToken) {
+      throw new Error('Not authenticated');
+    }
+
+    const previousIsRead = item.isRead === true;
+    setItem(prev => prev ? { ...prev, isRead: nextIsRead } : prev);
+    setReadOverride(item.id, nextIsRead);
+    syncItemReadInCache(item.id, nextIsRead, previousIsRead);
+
+    try {
+      const response = await fetch(API_ENDPOINTS.itemById(item.id), {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          is_read: nextIsRead,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error?.detail || 'Failed to update read status');
+      }
+
+      const updatedData = await response.json();
+      const persistedIsRead = typeof updatedData.is_read === 'boolean'
+        ? updatedData.is_read
+        : nextIsRead;
+
+      setItem(prev => prev ? {
+        ...prev,
+        isRead: persistedIsRead,
+        updatedAt: updatedData.updated_at ?? prev.updatedAt,
+      } : prev);
+      setReadOverride(item.id, persistedIsRead);
+      syncItemReadInCache(item.id, persistedIsRead, nextIsRead);
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+
+      if (showToast) {
+        toast.success(persistedIsRead ? "Marked as read" : "Marked as unread");
+      }
+    } catch (error) {
+      setItem(prev => prev ? { ...prev, isRead: previousIsRead } : prev);
+      setReadOverride(item.id, previousIsRead);
+      syncItemReadInCache(item.id, previousIsRead, nextIsRead);
+      throw error;
+    }
+  };
+
+  const handleToggleReadState = async () => {
+    const nextIsRead = !(item.isRead === true);
+    try {
+      await updateReadStatus(nextIsRead);
+    } catch (error) {
+      console.error('Failed to toggle read status:', error);
+      toast.error("Failed to update read status");
+    }
+  };
+
   return (
     <AppLayout>
       <div className="max-w-5xl mx-auto pb-20">
@@ -390,6 +543,27 @@ export default function ItemDetailPage() {
                         <Check className="w-3 h-3" /> Processed
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={handleToggleReadState}
+                      className={cn(
+                        "px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 transition-colors",
+                        item.isRead === true
+                          ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/40 hover:bg-emerald-500/30"
+                          : "bg-slate-500/10 text-slate-300 border-slate-500/40 hover:bg-slate-500/20"
+                      )}
+                      title={item.isRead === true ? "Mark as unread" : "Mark as read"}
+                      aria-pressed={item.isRead !== true}
+                    >
+                      {item.isRead === true ? (
+                        <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border border-emerald-300/70 bg-emerald-500/20">
+                          <Check className="w-2.5 h-2.5" />
+                        </span>
+                      ) : (
+                        <span className="inline-block h-3.5 w-3.5 rounded-[3px] border border-slate-300/70" />
+                      )}
+                      {item.isRead === true ? "Read" : "Unread"}
+                    </button>
 
                   </div>
 
@@ -671,6 +845,7 @@ export default function ItemDetailPage() {
                             source: updatedData.source,
                             extractionType: updatedData.extraction_type,
                             processingStatus: updatedData.processing_status,
+                            isRead: resolveItemReadState(updatedData.id, updatedData.is_read === true),
                             createdAt: updatedData.created_at,
                             updatedAt: updatedData.updated_at
                           };
