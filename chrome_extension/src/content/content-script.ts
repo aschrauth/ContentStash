@@ -88,6 +88,7 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
   let inFeaturedSection = false;
   let inPromotionalBlock = false;
   let inRelatedSection = false;
+  let relatedSectionSkipCount = 0;
   let inClutterSection = false;
   let inNavigation = false;
   let inConsentSection = false;
@@ -291,19 +292,35 @@ function cleanMarkdownContent(content: string, isSubstack: boolean = false): str
       continue;
     }
 
+    // Exit related section when we encounter:
+    // 1. A major heading (H1-H3) - indicates a new content section
+    // 2. A long paragraph (>200 chars) - indicates article body resumed
+    // 3. Too many skipped lines (>10) - prevents truncating full article after small related blocks
+    if (inRelatedSection) {
+      const isMajorHeading = /^#{1,3}\s+\w+/.test(stripped);
+      const isLongParagraph = stripped.length > 200 && !stripped.startsWith('#');
+      const tooManySkipped = relatedSectionSkipCount > 10;
+
+      if (isMajorHeading || isLongParagraph || tooManySkipped) {
+        inRelatedSection = false;
+        relatedSectionSkipCount = 0;
+        // Continue processing this line normally
+      } else {
+        relatedSectionSkipCount++;
+        skippedCount.relatedSection++;
+        continue;
+      }
+    }
+
     // Detect "Related articles" or similar sections
     const relatedPatterns = [
-      /^#+\s*(related articles?|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)/i,
-      /^(related articles?|related|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)$/i
+      /^#+\s*(related articles?|related stories|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)/i,
+      /^(related articles?|related stories|related|you might also like|more from|read next|discover more|in our library|recommended|more stories|trending now)$/i
     ];
 
     if (relatedPatterns.some(pattern => pattern.test(stripped))) {
       inRelatedSection = true;
-      continue;
-    }
-
-    // Skip everything in the related section
-    if (inRelatedSection) {
+      relatedSectionSkipCount = 0;
       continue;
     }
 
