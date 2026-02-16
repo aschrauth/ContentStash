@@ -17,8 +17,6 @@ function App() {
   const [pendingCount, setPendingCount] = useState(0);
   const [message, setMessage] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [pollingEnabled, setPollingEnabled] = useState(true);
-  const [pollingInterval, setPollingInterval] = useState(15);
   const [popupCloseDelay, setPopupCloseDelay] = useState(1000);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -56,8 +54,6 @@ function App() {
   async function loadSettings() {
     try {
       const settings = await Storage.getSettings();
-      setPollingEnabled(settings.pollingEnabled);
-      setPollingInterval(settings.pollingIntervalMinutes);
       setPopupCloseDelay(settings.popupCloseDelayMs);
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -70,18 +66,7 @@ function App() {
 
     try {
       await Storage.updateSettings({
-        pollingEnabled,
-        pollingIntervalMinutes: pollingInterval,
         popupCloseDelayMs: popupCloseDelay,
-      });
-
-      // Notify service worker to update polling alarm
-      await chrome.runtime.sendMessage({
-        type: 'UPDATE_POLLING_SETTINGS',
-        payload: {
-          enabled: pollingEnabled,
-          intervalMinutes: pollingInterval,
-        },
       });
 
       setMessage('✓ Settings saved');
@@ -106,6 +91,7 @@ function App() {
       setIsAuthenticated(true);
       setMessage('✓ Logged in successfully');
       loadPendingCount();
+      await chrome.runtime.sendMessage({ type: 'PROCESS_PENDING_NOW' });
     } catch (error) {
       setMessage('✗ Login failed: ' + (error as Error).message);
     }
@@ -247,6 +233,7 @@ function App() {
         }
 
         setMessage('✓ Saved with local extraction!');
+        await chrome.runtime.sendMessage({ type: 'PROCESS_PENDING_NOW' });
       } else {
         // For fast/complete, extract metadata and send to server
         setMessage('Extracting metadata...');
@@ -338,6 +325,7 @@ function App() {
         });
 
         setMessage('✓ Saved successfully!');
+        await chrome.runtime.sendMessage({ type: 'PROCESS_PENDING_NOW' });
       }
 
       setTimeout(() => {
@@ -423,35 +411,6 @@ function App() {
           {showSettings ? (
             <div className="settings-section">
               <h2>Settings</h2>
-
-              <div className="setting-group">
-                <label className="setting-label">
-                  <input
-                    type="checkbox"
-                    checked={pollingEnabled}
-                    onChange={(e) => setPollingEnabled(e.target.checked)}
-                  />
-                  Enable automatic polling for pending items
-                </label>
-              </div>
-
-              <div className="setting-group">
-                <label className="setting-label">
-                  Polling interval (minutes):
-                  <input
-                    type="number"
-                    min="1"
-                    max="1440"
-                    value={pollingInterval}
-                    onChange={(e) => setPollingInterval(parseInt(e.target.value) || 15)}
-                    disabled={!pollingEnabled}
-                    className="interval-input"
-                  />
-                </label>
-                <p className="setting-hint">
-                  How often to check for items that need local extraction (1-1440 minutes)
-                </p>
-              </div>
 
               <div className="setting-group">
                 <label className="setting-label">

@@ -85,6 +85,13 @@ class GenerateMetadataResponse(BaseModel):
     tags: List[str]
 
 
+class PendingLocalHintResponse(BaseModel):
+    """Lightweight response for local extraction queue polling hints."""
+    pending_count: int
+    queue_version: str
+    recommended_poll_seconds: int
+
+
 @router.get("/status-stream")
 async def stream_item_status(
     current_user: User = Depends(get_current_user_from_query),
@@ -569,6 +576,47 @@ async def get_pending_local_extraction(
         ))
     
     return items
+
+
+@router.get("/pending-local/hint", response_model=PendingLocalHintResponse)
+async def get_pending_local_extraction_hint(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get a lightweight hint for local extraction queue state.
+
+    Returns only count + queue version metadata so extensions can poll cheaply,
+    then fetch full queue payload only when needed.
+    """
+    db = get_database()
+
+    query = {
+        "owner_id": ObjectId(current_user.id),
+        "extraction_type": "local",
+        "processing_status": {"$in": ["pending", "pending_local_extraction"]}
+    }
+
+    pending_count = await db.saved_items.count_documents(query)
+
+    latest_item = await db.saved_items.find_one(
+        query,
+        sort=[("updated_at", -1)],
+        projection={"updated_at": 1}
+    )
+
+    latest_updated_at = latest_item.get("updated_at") if latest_item else None
+    timestamp_part = latest_updated_at.isoformat() if latest_updated_at else "none"
+    queue_version = f"{pending_count}:{timestamp_part}"
+
+    # Server guidance for extension polling cadence.
+    # Keep this conservative: fast checks only while queue has work.
+    recommended_poll_seconds = 10 if pending_count > 0 else 900
+
+    return PendingLocalHintResponse(
+        pending_count=pending_count,
+        queue_version=queue_version,
+        recommended_poll_seconds=recommended_poll_seconds
+    )
 
 
 @router.get("/{item_id}", response_model=SavedItem)

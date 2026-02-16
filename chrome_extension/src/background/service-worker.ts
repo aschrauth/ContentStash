@@ -4,55 +4,104 @@ import { extractYouTubeTranscript, fetchYouTubeTranscriptXml, extractVideoId, is
 import type { SavedItem } from '../types';
 
 const api = new ContentStashAPI();
+const POLL_ALARM = 'pollPendingItems';
+const IDLE_POLL_SECONDS = 900;
+const ACTIVE_POLL_SECONDS = 10;
+const WARM_POLL_SECONDS = 60;
+const MAX_BACKOFF_SECONDS = 300;
 
-// Initialize on install
+let isPollingInFlight = false;
+let failureBackoffSeconds = 0;
+
+function withJitter(seconds: number): number {
+  const jitter = 0.9 + Math.random() * 0.2;
+  return Math.max(5, Math.round(seconds * jitter));
+}
+
+async function scheduleNextPoll(seconds: number) {
+  const nextSeconds = withJitter(seconds);
+  await chrome.alarms.clear(POLL_ALARM);
+  await chrome.alarms.create(POLL_ALARM, {
+    when: Date.now() + nextSeconds * 1000,
+  });
+  console.log(`Next local queue check in ${nextSeconds}s`);
+}
+
+async function ensurePollAlarmScheduled() {
+  const existingAlarm = await chrome.alarms.get(POLL_ALARM);
+  if (!existingAlarm) {
+    await scheduleNextPoll(WARM_POLL_SECONDS);
+  }
+}
+
+// Initialize on install/startup
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('ContentStash extension installed');
-
-  // Set up polling alarm
-  const settings = await Storage.getSettings();
-  if (settings.pollingEnabled) {
-    await setupPollingAlarm(settings.pollingIntervalMinutes);
-  }
+  await scheduleNextPoll(WARM_POLL_SECONDS);
 });
 
-// Set up polling alarm
-async function setupPollingAlarm(intervalMinutes: number) {
-  await chrome.alarms.clear('pollPendingItems');
-  await chrome.alarms.create('pollPendingItems', {
-    periodInMinutes: intervalMinutes,
-  });
-  console.log(`Polling alarm set for every ${intervalMinutes} minutes`);
-}
+chrome.runtime.onStartup.addListener(async () => {
+  await scheduleNextPoll(WARM_POLL_SECONDS);
+});
+
+// Ensure polling is armed even if lifecycle events did not recreate the alarm.
+void ensurePollAlarmScheduled();
 
 // Handle alarm for polling
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === 'pollPendingItems') {
+  if (alarm.name === POLL_ALARM) {
     await processPendingItems();
   }
 });
 
 // Process pending local extraction items
 async function processPendingItems() {
+  if (isPollingInFlight) {
+    console.log('Local queue poll already in flight, skipping duplicate trigger');
+    return;
+  }
+
+  isPollingInFlight = true;
+
   try {
     const authState = await Storage.getAuthState();
 
     if (!authState.isAuthenticated || !authState.token) {
       console.log('Not authenticated, skipping polling');
+      await scheduleNextPoll(IDLE_POLL_SECONDS);
       return;
     }
 
     api.baseUrl = authState.serverUrl || api.baseUrl;
     api.setToken(authState.token);
-    const pendingItems = await api.getPendingLocalItems();
 
+    const hint = await api.getPendingLocalHint();
+    const hasPending = hint.pending_count > 0;
+
+    if (!hasPending) {
+      failureBackoffSeconds = 0;
+      // Hint checks are lightweight; keep authenticated idle cadence warm for faster queue pickup.
+      await scheduleNextPoll(Math.min(hint.recommended_poll_seconds || IDLE_POLL_SECONDS, WARM_POLL_SECONDS));
+      return;
+    }
+
+    const pendingItems = await api.getPendingLocalItems();
     console.log(`Found ${pendingItems.length} items pending local extraction`);
 
     for (const item of pendingItems) {
       await processItem(item);
     }
+
+    failureBackoffSeconds = 0;
+    await scheduleNextPoll(Math.min(hint.recommended_poll_seconds || ACTIVE_POLL_SECONDS, ACTIVE_POLL_SECONDS));
   } catch (error) {
     console.error('Error processing pending items:', error);
+    failureBackoffSeconds = failureBackoffSeconds === 0
+      ? 15
+      : Math.min(failureBackoffSeconds * 2, MAX_BACKOFF_SECONDS);
+    await scheduleNextPoll(failureBackoffSeconds);
+  } finally {
+    isPollingInFlight = false;
   }
 }
 
@@ -77,6 +126,22 @@ async function processItem(item: SavedItem) {
   }
 }
 
+async function reportExtractionFailure(
+  item: SavedItem,
+  errorMessage: string,
+  extractionSource: 'chrome_extension_failed' | 'chrome_extension_error' = 'chrome_extension_failed'
+) {
+  try {
+    await api.uploadContent(item.id, {
+      content: `[Extraction ${extractionSource === 'chrome_extension_error' ? 'Error' : 'Failed'}] ${errorMessage}\n\nURL: ${item.url || 'unknown'}`,
+      extraction_source: extractionSource,
+    });
+    console.log(`✓ Reported ${extractionSource} for item ${item.id}`);
+  } catch (uploadError) {
+    console.error(`✗ Failed to report ${extractionSource} for item ${item.id}:`, uploadError);
+  }
+}
+
 // Process a YouTube video item
 async function processYouTubeItem(item: SavedItem) {
   try {
@@ -85,7 +150,9 @@ async function processYouTubeItem(item: SavedItem) {
     // Extract video ID from URL
     const videoId = extractVideoId(item.url!);
     if (!videoId) {
-      console.error(`[YouTube] Could not extract video ID from URL: ${item.url}`);
+      const errorMsg = `Could not extract video ID from URL: ${item.url}`;
+      console.error(`[YouTube] ${errorMsg}`);
+      await reportExtractionFailure(item, errorMsg, 'chrome_extension_failed');
       return;
     }
 
@@ -95,7 +162,9 @@ async function processYouTubeItem(item: SavedItem) {
     const result = await extractYouTubeTranscript(videoId);
 
     if (!result || !result.content || result.content.length < 100) {
-      console.warn(`[YouTube] Insufficient transcript content for item ${item.id}`);
+      const errorMsg = `Insufficient transcript content (${result?.content?.length || 0} chars, minimum 100 required)`;
+      console.warn(`[YouTube] ${errorMsg} for item ${item.id}`);
+      await reportExtractionFailure(item, errorMsg, 'chrome_extension_failed');
       return;
     }
 
@@ -114,6 +183,11 @@ async function processYouTubeItem(item: SavedItem) {
     console.log(`✓ [YouTube] Successfully uploaded transcript for item ${item.id} with source: ${source}`);
   } catch (error) {
     console.error(`[YouTube] Error processing item ${item.id}:`, error);
+    await reportExtractionFailure(
+      item,
+      error instanceof Error ? error.message : String(error),
+      'chrome_extension_error'
+    );
   }
 }
 
@@ -211,7 +285,10 @@ async function processGenericItem(item: SavedItem) {
       },
     });
 
-    const content = results[0]?.result;
+    const extractionResult = results[0]?.result;
+    const content = typeof extractionResult === 'string'
+      ? extractionResult
+      : (typeof extractionResult?.content === 'string' ? extractionResult.content : '');
 
     if (content && content.length > 100) {
       // Upload to server
@@ -221,7 +298,7 @@ async function processGenericItem(item: SavedItem) {
       });
       console.log(`✓ [Generic] Successfully extracted and uploaded content for item ${item.id} (${content.length} chars)`);
     } else {
-      const errorMsg = `Insufficient content extracted (${content?.length || 0} chars, minimum 100 required)`;
+      const errorMsg = `Insufficient content extracted (${content.length} chars, minimum 100 required)`;
       console.warn(`✗ [Generic] ${errorMsg} for item ${item.id}`);
 
       // Report failure to server by uploading minimal content with error indicator
@@ -275,20 +352,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: error.message });
     });
     return true; // Keep channel open for async response
-  }
-
-  if (message.type === 'UPDATE_POLLING_SETTINGS') {
-    const { enabled, intervalMinutes } = message.payload;
-    if (enabled) {
-      setupPollingAlarm(intervalMinutes).then(() => {
-        sendResponse({ success: true });
-      });
-    } else {
-      chrome.alarms.clear('pollPendingItems').then(() => {
-        sendResponse({ success: true });
-      });
-    }
-    return true;
   }
 
   // Handle YouTube extraction request from content script

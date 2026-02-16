@@ -28,8 +28,6 @@ export interface AuthState {
 
 export interface ExtensionSettings {
   serverUrl: string;
-  pollingEnabled: boolean;
-  pollingIntervalMinutes: number;
   popupCloseDelayMs: number;
 }
 
@@ -47,6 +45,12 @@ export interface UploadContentRequest {
   content: string;
   extraction_source: string;
   source?: string;
+}
+
+export interface PendingLocalHint {
+  pending_count: number;
+  queue_version: string;
+  recommended_poll_seconds: number;
 }
 
 export interface YouTubeMetadata {

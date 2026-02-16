@@ -1,4 +1,4 @@
-import type { SavedItem, CreateItemRequest, UploadContentRequest } from '../types';
+import type { SavedItem, CreateItemRequest, UploadContentRequest, PendingLocalHint } from '../types';
 
 export class ContentStashAPI {
   public baseUrl: string;
@@ -67,6 +67,10 @@ export class ContentStashAPI {
 
   async getPendingLocalItems(): Promise<SavedItem[]> {
     return this.request<SavedItem[]>('/api/v1/items/pending-local');
+  }
+
+  async getPendingLocalHint(): Promise<PendingLocalHint> {
+    return this.request<PendingLocalHint>('/api/v1/items/pending-local/hint');
   }
 
   async uploadContent(itemId: string, data: UploadContentRequest): Promise<SavedItem> {

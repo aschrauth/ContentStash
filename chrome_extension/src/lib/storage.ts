@@ -2,8 +2,6 @@ import type { AuthState, ExtensionSettings } from '../types';
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
   serverUrl: 'http://localhost:8000',
-  pollingEnabled: true,
-  pollingIntervalMinutes: 15,
   popupCloseDelayMs: 1000,
 };
 
@@ -28,15 +26,11 @@ export class Storage {
   static async getSettings(): Promise<ExtensionSettings> {
     const result = await chrome.storage.local.get([
       'serverUrl',
-      'pollingEnabled',
-      'pollingIntervalMinutes',
       'popupCloseDelayMs',
     ]);
     
     return {
       serverUrl: result.serverUrl || DEFAULT_SETTINGS.serverUrl,
-      pollingEnabled: result.pollingEnabled ?? DEFAULT_SETTINGS.pollingEnabled,
-      pollingIntervalMinutes: result.pollingIntervalMinutes || DEFAULT_SETTINGS.pollingIntervalMinutes,
       popupCloseDelayMs: result.popupCloseDelayMs ?? DEFAULT_SETTINGS.popupCloseDelayMs,
     };
   }
