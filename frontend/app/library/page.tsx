@@ -169,6 +169,12 @@ function LibraryContent() {
         }
       } catch (error) {
         if (!isCancelled) {
+          // If the session expired, clear auth and avoid noisy console spam.
+          // Other effects will redirect to /login once auth is cleared.
+          if ((error as any)?.name === 'ApiError' && ((error as any)?.status === 401 || (error as any)?.status === 403)) {
+            useStore.getState().clearSession();
+            return;
+          }
           console.error('Failed to compute full unread count:', error);
           setFullUnreadCount(null);
         }

@@ -5,6 +5,22 @@
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
+export class ApiError extends Error {
+  status: number;
+  bodyText?: string;
+
+  constructor(message: string, status: number, bodyText?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.bodyText = bodyText;
+  }
+}
+
+export const isApiError = (error: unknown): error is ApiError => {
+  return typeof error === 'object' && error !== null && (error as any).name === 'ApiError';
+};
+
 /**
  * API endpoints
  */
@@ -94,7 +110,13 @@ export const getItems = async (
   });
   
   if (!response.ok) {
-    throw new Error('Failed to fetch items');
+    let bodyText: string | undefined;
+    try {
+      bodyText = await response.text();
+    } catch {
+      // ignore
+    }
+    throw new ApiError('Failed to fetch items', response.status, bodyText);
   }
   
   return response.json();

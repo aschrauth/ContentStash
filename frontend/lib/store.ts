@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { API_ENDPOINTS, getItems } from './api';
+import { API_ENDPOINTS, getItems, isApiError } from './api';
 import { getQueryClient } from '@/components/providers/QueryProvider';
 
 // --- Types ---
@@ -69,6 +69,7 @@ export type TagWithCount = {
 interface AppState {
   currentUser: User | null;
   token: string | null;
+  clearSession: () => void;
   items: SavedItem[];
   tags: TagWithCount[];
   chatThreads: ChatThread[];
@@ -106,6 +107,21 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       currentUser: null,
       token: null,
+      clearSession: () => {
+        const queryClient = getQueryClient();
+        if (queryClient) {
+          queryClient.clear();
+        }
+
+        localStorage.removeItem('token');
+        set({
+          currentUser: null,
+          token: null,
+          items: [],
+          chatThreads: [],
+          tags: []
+        });
+      },
       items: [],
       tags: [],
       chatThreads: [],
@@ -219,7 +235,9 @@ export const useStore = create<AppState>()(
             headers: {
               'Authorization': `Bearer ${token}`,
             },
-          }).catch(err => console.error('Logout error:', err));
+          }).catch(() => {
+            // Ignore network/auth errors during logout cleanup.
+          });
         }
 
         // Clear all user-specific state including persisted data
@@ -312,6 +330,10 @@ export const useStore = create<AppState>()(
             hasMoreItems: pagination?.has_more || false
           });
         } catch (error) {
+          if (isApiError(error) && (error.status === 401 || error.status === 403)) {
+            get().clearSession();
+            return;
+          }
           console.error('Failed to fetch items:', error);
           // On error, ensure we're not stuck in loading state
           if (loadMore) {
@@ -341,6 +363,10 @@ export const useStore = create<AppState>()(
           });
 
           if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+              get().clearSession();
+              return;
+            }
             throw new Error('Failed to fetch tags');
           }
 

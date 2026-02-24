@@ -31,39 +31,26 @@ export function useAuth(requireAuth = true) {
       // This happens even if currentUser is already populated from cache (background update)
       if (storedToken) {
         try {
-          // If we already have a user, we don't need to block interaction,
-          // but we should still verify the session is active
+          // Always validate the stored token, even if currentUser is restored from cache.
+          // Otherwise an expired token can linger and cause 401 spam across the app.
+          const response = await fetch(API_ENDPOINTS.me, {
+            headers: {
+              'Authorization': `Bearer ${storedToken}`,
+            },
+          });
 
-          // NOTE: For now, we only fetch if !currentUser to avoid redundant calls,
-          // BUT to support true 'background validation' we really should fetch always.
-          // However, to match the Plan "Update user data silently", we should probably fetches 
-          // but NOT wipe state immediately unless 401. 
+          if (response.ok) {
+            const user = await response.json();
+            useStore.setState({ currentUser: user, token: storedToken });
 
-          // Current logic: Only fetch if NO currentUser.
-          // CHANGE: To fully utilize the Optimistic UI (currentUser is present),
-          // we should consider if we want to re-validate.
-          // For MVP performance to fix the "blank screen", keeping this logic is fine because
-          // currentUser IS present (from cache), so this block is skipped, App renders.
-
-          if (!currentUser) {
-            const response = await fetch(API_ENDPOINTS.me, {
-              headers: {
-                'Authorization': `Bearer ${storedToken}`,
-              },
-            });
-
-            if (response.ok) {
-              const user = await response.json();
-              useStore.setState({ currentUser: user, token: storedToken });
-
-              // Fetch items after successful authentication
-              const fetchItems = useStore.getState().fetchItems;
-              await fetchItems();
-            } else {
-              // Token is invalid only if request fails
-              localStorage.removeItem('token');
-              useStore.setState({ currentUser: null, token: null });
-            }
+            // Fetch items after successful authentication
+            const fetchItems = useStore.getState().fetchItems;
+            await fetchItems();
+          } else if (response.status === 401 || response.status === 403) {
+            useStore.getState().clearSession();
+          } else if (!currentUser) {
+            // Non-auth failure when trying to establish a session: be conservative.
+            useStore.getState().clearSession();
           }
         } catch (error) {
           console.error('Failed to fetch user profile:', error);
@@ -71,8 +58,7 @@ export function useAuth(requireAuth = true) {
             // Only clear if we were trying to establish a session. 
             // If we have a cached user, maybe keep them offline?
             // For safety, let's clear if the network call failed during initialization
-            localStorage.removeItem('token');
-            useStore.setState({ currentUser: null, token: null });
+            useStore.getState().clearSession();
           }
         }
       }

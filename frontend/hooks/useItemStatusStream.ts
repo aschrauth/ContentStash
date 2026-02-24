@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { API_BASE_URL } from '@/lib/api';
+import { useStore } from '@/lib/store';
 
 interface UseItemStatusStreamOptions {
   onItemsUpdated?: () => void;
@@ -21,7 +22,7 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
   }, [onItemsUpdated]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = useStore.getState().token || localStorage.getItem('token');
     if (!token) return;
 
     let lastPendingCount = -1;
@@ -82,6 +83,12 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
 
       eventSource.onerror = (error) => {
         console.warn('SSE: Connection interrupted or failed. Attempting to reconnect...', error);
+        // If auth has been cleared, stop reconnecting.
+        const currentToken = useStore.getState().token || localStorage.getItem('token');
+        if (!currentToken) {
+          cleanup();
+          return;
+        }
         cleanup();
         scheduleReconnect();
       };
