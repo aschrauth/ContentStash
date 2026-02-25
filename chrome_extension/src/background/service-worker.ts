@@ -13,6 +13,16 @@ const MAX_BACKOFF_SECONDS = 300;
 let isPollingInFlight = false;
 let failureBackoffSeconds = 0;
 
+function isTransientFetchFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  // Browser fetch failures (offline, DNS, refused connection, CORS/network blocks)
+  // typically surface as TypeError: Failed to fetch.
+  return error.name === 'TypeError' && /failed to fetch/i.test(error.message);
+}
+
 function withJitter(seconds: number): number {
   const jitter = 0.9 + Math.random() * 0.2;
   return Math.max(5, Math.round(seconds * jitter));
@@ -95,7 +105,11 @@ async function processPendingItems() {
     failureBackoffSeconds = 0;
     await scheduleNextPoll(Math.min(hint.recommended_poll_seconds || ACTIVE_POLL_SECONDS, ACTIVE_POLL_SECONDS));
   } catch (error) {
-    console.error('Error processing pending items:', error);
+    if (isTransientFetchFailure(error)) {
+      console.warn('Pending item poll skipped because backend is unreachable. Retrying with backoff.');
+    } else {
+      console.error('Error processing pending items:', error);
+    }
     failureBackoffSeconds = failureBackoffSeconds === 0
       ? 15
       : Math.min(failureBackoffSeconds * 2, MAX_BACKOFF_SECONDS);
