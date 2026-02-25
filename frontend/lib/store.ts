@@ -29,6 +29,7 @@ export type SavedItem = {
   tags: string[];
   suggestedTags?: string[];
   suggestedTopic?: string;
+  aiSummary?: string;
   archivedText?: string;
   source?: string;
   wordCount?: number;

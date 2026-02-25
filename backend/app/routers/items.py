@@ -374,6 +374,7 @@ async def create_item(
         source=source,
         suggested_tags=None,
         suggested_topic=None,
+        ai_summary=None,
         word_count=len(archived_text.split()) if archived_text else 0,
         processing_status="pending",
         processing_error=None,
@@ -490,6 +491,7 @@ async def list_items(
             source=doc.get("source"),
             suggested_tags=doc.get("suggested_tags"),
             suggested_topic=doc.get("suggested_topic"),
+            ai_summary=doc.get("ai_summary"),
             word_count=doc.get("word_count"),
             processing_status=doc.get("processing_status", "pending"),
             processing_error=doc.get("processing_error"),
@@ -567,6 +569,7 @@ async def get_pending_local_extraction(
             source=doc.get("source"),
             suggested_tags=doc.get("suggested_tags"),
             suggested_topic=doc.get("suggested_topic"),
+            ai_summary=doc.get("ai_summary"),
             word_count=doc.get("word_count"),
             processing_status=doc.get("processing_status", "pending"),
             processing_error=doc.get("processing_error"),
@@ -674,6 +677,7 @@ async def get_item(
         source=item_doc.get("source"),
         suggested_tags=item_doc.get("suggested_tags"),
         suggested_topic=item_doc.get("suggested_topic"),
+        ai_summary=item_doc.get("ai_summary"),
         word_count=item_doc.get("word_count"),
         processing_status=item_doc.get("processing_status", "pending"),
         processing_error=item_doc.get("processing_error"),
@@ -819,6 +823,7 @@ async def update_item(
         source=updated_item_doc.get("source"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
+        ai_summary=updated_item_doc.get("ai_summary"),
         word_count=updated_item_doc.get("word_count"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
@@ -955,7 +960,7 @@ async def reprocess_item(
     
     # Fetch and return updated item
     updated_item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
-    
+
     return SavedItem(
         id=str(updated_item_doc["_id"]),
         owner_id=str(updated_item_doc["owner_id"]),
@@ -971,6 +976,7 @@ async def reprocess_item(
         source=updated_item_doc.get("source"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
+        ai_summary=updated_item_doc.get("ai_summary"),
         word_count=updated_item_doc.get("word_count"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),
@@ -1136,10 +1142,10 @@ async def upload_extracted_content(
                 current_user.id,
                 skip_extraction=True
             )
-    
+
     # Fetch and return updated item
     updated_item_doc = await db.saved_items.find_one({"_id": ObjectId(item_id)})
-    
+
     return SavedItem(
         id=str(updated_item_doc["_id"]),
         owner_id=str(updated_item_doc["owner_id"]),
@@ -1155,6 +1161,7 @@ async def upload_extracted_content(
         source=updated_item_doc.get("source"),
         suggested_tags=updated_item_doc.get("suggested_tags"),
         suggested_topic=updated_item_doc.get("suggested_topic"),
+        ai_summary=updated_item_doc.get("ai_summary"),
         word_count=updated_item_doc.get("word_count"),
         processing_status=updated_item_doc.get("processing_status", "pending"),
         processing_error=updated_item_doc.get("processing_error"),

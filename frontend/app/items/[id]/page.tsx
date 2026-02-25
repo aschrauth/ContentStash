@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check, Zap } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check, Zap, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import toast from 'react-hot-toast';
@@ -135,6 +135,7 @@ export default function ItemDetailPage() {
             tags: data.tags,
             suggestedTags: data.suggested_tags,
             suggestedTopic: data.suggested_topic,
+            aiSummary: data.ai_summary,
             archivedText: data.archived_text,
             source: data.source,
             wordCount: data.word_count,
@@ -641,6 +642,24 @@ export default function ItemDetailPage() {
                     )}
 
                     <p className="text-slate-300 text-lg leading-relaxed mb-6">{item.description}</p>
+                  </div>
+                )}
+
+                {item.aiSummary && item.processingStatus === 'processed' && (
+                  <div className="clear-both pt-4">
+                    <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4">
+                      <h3 className="text-sm font-semibold text-violet-300 flex items-center gap-1.5 mb-3">
+                        <Sparkles className="w-3.5 h-3.5" /> Key Points
+                      </h3>
+                      <ul className="space-y-1.5">
+                        {item.aiSummary.split('\n').filter(line => line.trim()).map((line, i) => (
+                          <li key={i} className="text-slate-300 text-sm leading-relaxed flex gap-2">
+                            <span className="text-violet-400 mt-0.5 shrink-0">&bull;</span>
+                            <span>{line.replace(/^[-*]\s*/, '')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 )}
 

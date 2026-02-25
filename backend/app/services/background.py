@@ -44,9 +44,9 @@ def generate_auto_categorization(archived_text: str) -> Optional[Dict[str, Any]]
         return None
     
     try:
-        # Use first 1500 chars for cost optimization
-        content_sample = archived_text[:1500].strip()
-        
+        # Use first 3000 chars for better bullet-point context
+        content_sample = archived_text[:3000].strip()
+
         # Construct concise prompt for structured JSON output
         prompt = f"""Analyze this content and provide categorization in JSON format.
 
@@ -56,8 +56,10 @@ Respond with JSON only:
 {{
   "suggested_tags": ["tag1", "tag2", "tag3"],
   "topic": "main topic",
-  "summary": "2-3 sentence summary"
-}}"""
+  "summary": "- Key point one\\n- Key point two\\n- Key point three"
+}}
+
+For "summary": write 3 to 5 bullet points covering the key points of the article. Each bullet must start with "- ". Use fewer bullets for shorter or simpler content. Do not repeat the title."""
 
 # Call Gemini with Flash-Lite model
         response = gemini_service.generate_content(
