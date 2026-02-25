@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ContentStashAPI } from '../lib/api';
+import { ApiError, ContentStashAPI } from '../lib/api';
 import { Storage } from '../lib/storage';
 import type { ExtractionType } from '../types';
 import './popup.css';
@@ -26,14 +26,46 @@ function App() {
     loadSettings();
   }, []);
 
+  function isUnauthorizedError(error: unknown): boolean {
+    if (error instanceof ApiError) {
+      return error.status === 401 || error.status === 403;
+    }
+
+    return /401|403|Invalid authentication credentials/i.test((error as Error)?.message || '');
+  }
+
+  async function resetToLogin(messageText = 'Session expired. Please log in again.') {
+    await Storage.clearAuth();
+    api.setToken(null);
+    setIsAuthenticated(false);
+    setPendingCount(0);
+    setShowSettings(false);
+    setMessage(messageText);
+  }
+
   async function checkAuth() {
     const authState = await Storage.getAuthState();
-    setIsAuthenticated(authState.isAuthenticated);
     setServerUrl(authState.serverUrl);
     api.baseUrl = authState.serverUrl;
-    if (authState.token) {
-      api.setToken(authState.token);
+
+    if (!authState.isAuthenticated || !authState.token) {
+      setIsAuthenticated(false);
+      setIsLoading(false);
+      return;
     }
+
+    api.setToken(authState.token);
+    try {
+      await api.getCurrentUser();
+      setIsAuthenticated(true);
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        await resetToLogin();
+      } else {
+        setIsAuthenticated(true);
+      }
+    }
+
     setIsLoading(false);
   }
 
@@ -47,6 +79,9 @@ function App() {
         setPendingCount(items.length);
       }
     } catch (error) {
+      if (isUnauthorizedError(error)) {
+        await resetToLogin();
+      }
       console.error('Failed to load pending count:', error);
     }
   }
@@ -99,6 +134,7 @@ function App() {
 
   async function handleLogout() {
     await Storage.clearAuth();
+    api.setToken(null);
     setIsAuthenticated(false);
     setEmail('');
     setPassword('');
@@ -332,6 +368,11 @@ function App() {
         window.close();
       }, popupCloseDelay);
     } catch (error) {
+      if (isUnauthorizedError(error)) {
+        await resetToLogin();
+        setIsProcessing(false);
+        return;
+      }
       setMessage('✗ Failed to save: ' + (error as Error).message);
       setIsProcessing(false);
     }

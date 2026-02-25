@@ -1,5 +1,17 @@
 import type { SavedItem, CreateItemRequest, UploadContentRequest, PendingLocalHint } from '../types';
 
+export class ApiError extends Error {
+  public status: number;
+  public body: string;
+
+  constructor(status: number, body: string, prefix: string = 'API Error') {
+    super(`${prefix}: ${status} - ${body}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export class ContentStashAPI {
   public baseUrl: string;
   private token: string | null = null;
@@ -8,7 +20,7 @@ export class ContentStashAPI {
     this.baseUrl = baseUrl;
   }
 
-  setToken(token: string) {
+  setToken(token: string | null) {
     this.token = token;
   }
 
@@ -35,7 +47,7 @@ export class ContentStashAPI {
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`API Error: ${response.status} - ${error}`);
+      throw new ApiError(response.status, error);
     }
 
     return response.json();
@@ -52,10 +64,14 @@ export class ContentStashAPI {
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`Login failed: ${error}`);
+      throw new ApiError(response.status, error, 'Login failed');
     }
 
     return response.json();
+  }
+
+  async getCurrentUser(): Promise<unknown> {
+    return this.request<unknown>('/api/v1/auth/me');
   }
 
   async createItem(data: CreateItemRequest): Promise<SavedItem> {
