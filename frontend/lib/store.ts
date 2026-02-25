@@ -491,6 +491,7 @@ export const useStore = create<AppState>()(
             tags: updatedItem.tags || [],
             suggestedTags: updatedItem.suggested_tags,
             suggestedTopic: updatedItem.suggested_topic,
+            aiSummary: updatedItem.ai_summary,
             archivedText: updatedItem.archived_text,
             source: updatedItem.source,
             wordCount: updatedItem.word_count,

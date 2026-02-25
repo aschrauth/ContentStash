@@ -526,6 +526,7 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
             "word_count": word_count,
             "suggested_tags": ai_suggestions.get("tags"),
             "suggested_topic": ai_suggestions.get("topic"),
+            "ai_summary": None,  # Reset so stale summary is cleared on reprocessing
             "extraction_type": actual_extraction_method  # Update with actual method used
         }
         

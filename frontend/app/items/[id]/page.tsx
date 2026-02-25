@@ -834,51 +834,23 @@ export default function ItemDetailPage() {
                     value={item.extractionType || 'fast'}
                     onChange={async (e) => {
                       const newType = e.target.value as 'fast' | 'complete' | 'local';
+
+                      // Optimistic update: immediately reflect the change in the UI
+                      // so the dropdown and status badge update without waiting for the API
+                      setItem({
+                        ...item,
+                        extractionType: newType,
+                        processingStatus: 'processing',
+                      });
+
                       try {
-                        // Update via Zustand store
+                        // Send the update to the backend (triggers background reprocessing)
                         await updateItem(item.id, { extractionType: newType });
-
-                        // Fetch the updated item from the API to get the new processing status
-                        const response = await fetch(API_ENDPOINTS.itemById(item.id), {
-                          headers: {
-                            'Authorization': `Bearer ${token}`,
-                          },
-                        });
-
-                        if (response.ok) {
-                          const updatedData = await response.json();
-
-                          // Update local state with the fresh data from API including new processing status
-                          const formattedItem: SavedItem = {
-                            id: updatedData.id,
-                            ownerId: updatedData.owner_id,
-                            url: updatedData.url,
-                            title: updatedData.title,
-                            description: updatedData.description,
-                            imageUrl: updatedData.image_url,
-                            faviconUrl: updatedData.favicon_url,
-                            notesMarkdown: updatedData.notes_markdown,
-                            tags: updatedData.tags,
-                            suggestedTags: updatedData.suggested_tags,
-                            suggestedTopic: updatedData.suggested_topic,
-                            aiSummary: updatedData.ai_summary,
-                            archivedText: updatedData.archived_text,
-                            source: updatedData.source,
-                            extractionType: updatedData.extraction_type,
-                            processingStatus: updatedData.processing_status,
-                            isRead: resolveItemReadState(updatedData.id, updatedData.is_read === true),
-                            createdAt: updatedData.created_at,
-                            updatedAt: updatedData.updated_at
-                          };
-
-                          // This will trigger the polling effect to start monitoring
-                          setItem(formattedItem);
-                          toast.success(`Extraction type changed to ${newType}. Reprocessing...`);
-                        } else {
-                          toast.error('Failed to fetch updated item');
-                        }
+                        toast.success(`Extraction type changed to ${newType}. Reprocessing...`);
                       } catch (error) {
                         console.error('Error updating extraction type:', error);
+                        // Revert optimistic update on failure
+                        setItem(item);
                         toast.error('Failed to update extraction type');
                       }
                     }}
