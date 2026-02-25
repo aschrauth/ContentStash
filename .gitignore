@@ -12,6 +12,10 @@ npm_cache/
 chrome_extension/dist/
 chrome_extension/public/
 
+# Runtime logs
+backend/*.log
+frontend/*.log
+
 # Python
 __pycache__/
 *.py[cod]
