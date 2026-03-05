@@ -20,6 +20,99 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _normalize_summary_value(value: Any) -> str:
+    """
+    Normalize summary values from Gemini into bullet-point markdown text.
+    Handles string, list, and nested dictionary shapes.
+    """
+    if isinstance(value, str):
+        summary = value.strip()
+        return summary
+
+    if isinstance(value, list):
+        bullets = []
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            text = item.strip()
+            if not text:
+                continue
+            text = text.lstrip("-* ").strip()
+            bullets.append(f"- {text}")
+        return "\n".join(bullets)
+
+    if isinstance(value, dict):
+        for key in ("bullets", "points", "items", "summary"):
+            normalized = _normalize_summary_value(value.get(key))
+            if normalized:
+                return normalized
+
+    return ""
+
+
+def _extract_summary(categorization: Dict[str, Any]) -> str:
+    """Extract summary from multiple possible Gemini key formats."""
+    summary_keys = (
+        "summary",
+        "key_points",
+        "keyPoints",
+        "highlights",
+        "bullet_points",
+        "bullets",
+    )
+
+    for key in summary_keys:
+        normalized = _normalize_summary_value(categorization.get(key))
+        if normalized:
+            return normalized
+    return ""
+
+
+def _generate_summary_fallback(content_sample: str) -> str:
+    """
+    Fallback summary generation when Gemini omits summary in structured output.
+    Returns 3-5 bullet lines or empty string on failure.
+    """
+    if not content_sample or not gemini_service.is_available():
+        return ""
+
+    try:
+        prompt = f"""Write 3 to 5 concise bullet points capturing the key points of this content.
+
+Content:
+{content_sample}
+
+Rules:
+- Start each line with "- "
+- Return bullet lines only
+- No intro or conclusion text"""
+
+        response = gemini_service.generate_content(
+            prompt=prompt,
+            model="gemini-2.5-flash-lite"
+        )
+
+        if not response:
+            return ""
+
+        lines = []
+        for raw_line in response.strip().splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            line = line.lstrip("-* ").strip()
+            if not line:
+                continue
+            lines.append(f"- {line}")
+            if len(lines) >= 5:
+                break
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Fallback summary generation failed: {str(e)}")
+        return ""
+
+
 def generate_auto_categorization(archived_text: str) -> Optional[Dict[str, Any]]:
     """
     Generate auto-categorization using Gemini 2.5 Flash-Lite.
@@ -93,7 +186,11 @@ For "summary": write 3 to 5 bullet points covering the key points of the article
             # Extract and validate fields
             suggested_tags = categorization.get("suggested_tags", [])
             topic = categorization.get("topic", "")
-            summary = categorization.get("summary", "")
+            summary = _extract_summary(categorization)
+
+            # If Gemini omitted summary in structured output, do a summary-only fallback call.
+            if not summary:
+                summary = _generate_summary_fallback(content_sample)
             
             # Ensure suggested_tags is a list and limit to 5 tags
             if not isinstance(suggested_tags, list):
@@ -544,8 +641,9 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
                 update_doc["suggested_tags"] = auto_categorization["suggested_tags"]
             if auto_categorization.get("topic"):
                 update_doc["suggested_topic"] = auto_categorization["topic"]
-            if auto_categorization.get("summary"):
-                update_doc["ai_summary"] = auto_categorization["summary"]
+            summary = auto_categorization.get("summary")
+            if isinstance(summary, str) and summary.strip():
+                update_doc["ai_summary"] = summary.strip()
         
         # Add metadata fields if they were fetched and are missing
         if metadata:
