@@ -23,7 +23,10 @@ export default function ItemDetailPage() {
   // In Next.js 15, params is a Promise. We need to handle it correctly.
   const params = useParams();
   const router = useRouter();
-  const { items, updateItem, deleteItem, token, _hasHydrated } = useStore();
+  const updateItem = useStore((state) => state.updateItem);
+  const deleteItem = useStore((state) => state.deleteItem);
+  const token = useStore((state) => state.token);
+  const _hasHydrated = useStore((state) => state._hasHydrated);
   const queryClient = useQueryClient();
 
   const [itemId, setItemId] = useState<string | null>(null);

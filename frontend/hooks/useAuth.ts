@@ -41,11 +41,21 @@ export function useAuth(requireAuth = true) {
 
           if (response.ok) {
             const user = await response.json();
-            useStore.setState({ currentUser: user, token: storedToken });
+            const state = useStore.getState();
+            const existingUser = state.currentUser;
+            const shouldUpdateUser =
+              !existingUser ||
+              existingUser.id !== user.id ||
+              existingUser.email !== user.email ||
+              existingUser.name !== user.name ||
+              state.token !== storedToken;
+
+            if (shouldUpdateUser) {
+              useStore.setState({ currentUser: user, token: storedToken });
+            }
 
             // Fetch items after successful authentication
-            const fetchItems = useStore.getState().fetchItems;
-            await fetchItems();
+            await useStore.getState().fetchItems();
           } else if (response.status === 401 || response.status === 403) {
             useStore.getState().clearSession();
           } else if (!currentUser) {
@@ -65,7 +75,7 @@ export function useAuth(requireAuth = true) {
     };
 
     initAuth();
-  }, [currentUser, hasHydrated]); // Removing 'token' from deps to avoid loop when setting it
+  }, [hasHydrated]); // Run once after hydration; avoid auth revalidation loops on currentUser updates.
 
   useEffect(() => {
     // Wait for hydration before making auth decisions
