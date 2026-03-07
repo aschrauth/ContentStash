@@ -2,11 +2,13 @@
 Content extraction service using readability-lxml for robust text extraction.
 Falls back to Playwright for JavaScript-heavy sites.
 """
+import html
 import requests
 from readability import Document
 from typing import Optional, Dict
 import logging
 from markdownify import markdownify as md
+from bs4 import BeautifulSoup
 from .youtube import is_youtube_url, extract_video_id, get_video_transcript, get_transcript_from_ytdlp, get_video_metadata_from_api, get_video_metadata_from_ytdlp
 from .exceptions import ExtractionBlockError
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
@@ -64,6 +66,68 @@ def extract_source_from_url(url: str) -> str:
     except Exception as e:
         logger.warning(f"Failed to extract source from URL {url}: {str(e)}")
         return "Unknown"
+
+
+def _normalize_text_block(text: str) -> str:
+    """Collapse whitespace so dedupe and matching work on rendered content."""
+    return " ".join(text.split()).strip()
+
+
+def _extract_text_from_node(node) -> str:
+    """Handle template-backed strings that can confuse BeautifulSoup.get_text()."""
+    text = node.get_text(" ", strip=True)
+    if text:
+        return text
+    if getattr(node, "string", None):
+        return str(node.string).strip()
+    return ""
+
+
+def _extract_townnews_article_html(page_html: str) -> Optional[str]:
+    """
+    Extract the core article body from TownNews/BLOX pages.
+
+    TownNews wraps the article, sharing controls, tag chips, author cards, and
+    recommendation widgets in a single <article>. This helper rebuilds the
+    article from the headline, carousel captions, and article body text only.
+    """
+    soup = BeautifulSoup(page_html, "html.parser")
+    article_body = soup.select_one("#article-body, [itemprop='articleBody']")
+    headline = soup.select_one(".asset-headline span, .asset-headline, h1")
+
+    looks_like_townnews = bool(
+        article_body and (
+            soup.select_one("meta[name='tncms-access-version']") or
+            soup.select_one("#asset-photo-carousel") or
+            soup.select_one(".asset-tags") or
+            soup.select_one(".asset-headline")
+        )
+    )
+
+    if not looks_like_townnews:
+        return None
+
+    fragments: list[str] = []
+    seen_blocks: set[str] = set()
+
+    def append_text_block(tag: str, text: str) -> None:
+        normalized = _normalize_text_block(text)
+        if not normalized or normalized in seen_blocks:
+            return
+        seen_blocks.add(normalized)
+        fragments.append(f"<{tag}>{html.escape(normalized)}</{tag}>")
+
+    if headline:
+        append_text_block("h1", _extract_text_from_node(headline))
+
+    for caption in soup.select("#asset-photo-carousel .caption-text p"):
+        append_text_block("p", _extract_text_from_node(caption))
+
+    for block in article_body.find_all(["h2", "h3", "h4", "p", "li"]):
+        append_text_block(block.name, _extract_text_from_node(block))
+
+    extracted_html = "\n".join(fragments).strip()
+    return extracted_html or None
 
 def _clean_extracted_content(content: str) -> str:
     """
@@ -193,7 +257,16 @@ def _clean_extracted_content(content: str) -> str:
         # Skip lines with hex-encoded JavaScript (obfuscated code)
         if re.search(r'\\x[0-9a-fA-F]{2}', line):
             continue
-        
+
+        # Skip inline JavaScript fragments that markdownify can surface from widgets
+        if lower_line.startswith('fetch("http') or \
+           lower_line.startswith("fetch('http") or \
+           lower_line.startswith('.then(function') or \
+           lower_line.startswith('return response.json') or \
+           'document.getelementbyid(' in lower_line or \
+           'document.queryselectorall(' in lower_line:
+            continue
+
         # Skip lines that look like minified/obfuscated JavaScript
         if re.search(r'[a-z]\[\'\\x[0-9a-fA-F]{2}', line):
             continue
@@ -336,7 +409,8 @@ def _clean_extracted_content(content: str) -> str:
             'share this', 'share article', 'follow us', 'newsletter', 'subscribe',
             'sign up', 'get updates', 'stay connected', 'join our',
             'cookies', 'advertising', 'your privacy choices',
-            'opt out of sale', 'targeted advertising', 'switch label'
+            'opt out of sale', 'targeted advertising', 'switch label',
+            'tags', 'most popular', 'around the web', 'followed notifications'
         ]
         
         if any(heading in lower_line for heading in clutter_headings):
@@ -360,9 +434,9 @@ def _clean_extracted_content(content: str) -> str:
             r'^\[.*\]\(/resources/tag/',       # Tag links
             r'^\[!\[\].*\]\(/resources/',      # Related article image links
             r'^\[.*\]\(/resources/[^)]+\)$',   # Generic resource links
-            r'^(share|email|print|facebook|twitter|linkedin|copy link|whatsapp|reddit|pinterest|post|google|flipboard|tumblr)$',  # Sharing buttons
-            r'^\*\*(share|email|print|facebook|twitter|linkedin|copy link|post|google)\*\*$',  # Bold sharing buttons
-            r'^\[(share|email|print|facebook|twitter|linkedin|copy link|post|google)\]',  # Link sharing buttons
+            r'^(share|email|print|facebook|twitter|linkedin|copy link|copy article link|whatsapp|sms|reddit|pinterest|post|google|flipboard|tumblr|save|view comments|close)$',  # Sharing/buttons
+            r'^\*\*(share|email|print|facebook|twitter|linkedin|copy link|copy article link|post|google|save)\*\*$',  # Bold sharing buttons
+            r'^\[(share|email|print|facebook|twitter|linkedin|copy link|copy article link|post|google|save)\]',  # Link sharing buttons
         ]
         
         if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in skip_patterns):
@@ -371,6 +445,7 @@ def _clean_extracted_content(content: str) -> str:
         # Skip markdown links with sharing/social text (including list items)
         # Pattern: [Share on Facebook](url), * [Post](url), etc.
         sharing_link_patterns = [
+            r'^\*?\s*\[(facebook|twitter|whatsapp|sms|email|print|copy article link|copy link|save|view comments)\]\(',
             r'^\*?\s*\[share on facebook\]',
             r'^\*?\s*\[share on twitter\]',
             r'^\*?\s*\[share on linkedin\]',
@@ -381,6 +456,9 @@ def _clean_extracted_content(content: str) -> str:
             r'^\*?\s*\[post to tumblr\]',
             r'^\*?\s*\[print this page\]',
             r'^\*?\s*\[show more sharing options\]',
+            r'^\*?\s*\[save\]\(',
+            r'^\*?\s*\[view comments\]\(',
+            r'^\*?\s*\[manage followed notifications\]\(',
             r'^\*?\s*\[post\]\(',  # Twitter/X "Post" button as link
             r'^\*?\s*\[google',  # Google sharing link (matches "google" or "google preferred")
             r'^\*?\s*\[email\]\(',
@@ -407,10 +485,21 @@ def _clean_extracted_content(content: str) -> str:
             'share on whatsapp',
             'share on linkedin',
             'plus icon',  # Common icon text
-            'google preferred'  # Google sharing variant
+            'google preferred',  # Google sharing variant
+            'sms',
+            'copy article link',
+            'save',
+            'view comments',
+            'close'
         ]
         # Check both with and without list marker
         if lower_line in standalone_skip or lower_line.lstrip('* ') in standalone_skip:
+            continue
+
+        if re.match(r'^follow\s+[a-z][a-z .\'-]+$', lower_line):
+            continue
+
+        if lower_line.startswith('you can reach ') and '@' in lower_line:
             continue
         
         # Skip lines that contain author bylines with names
@@ -427,7 +516,10 @@ def _clean_extracted_content(content: str) -> str:
             # Also check if it's a heading with just a name
             if ('author' in prev_line or 'by [' in prev_line) and len(stripped) < 50:
                 continue
-        
+
+        if lower_line in {'featured', "editor's pick"}:
+            continue
+
         # Skip headings that are just author names (e.g., "### Brian Welk")
         if re.match(r'^#{1,6}\s+[A-Z][a-z]+\s+[A-Z][a-z]+$', stripped):
             # This is likely an author name heading (FirstName LastName)
@@ -568,56 +660,66 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
             
             # Wait for any lazy-loaded content after expansion
             await asyncio.sleep(3 if is_substack else 2)
+
+            # TownNews/BLOX article pages hydrate the full article body in the DOM, but the
+            # outer <article> also contains share controls, tag chips, author cards, and
+            # recommendation widgets. Rebuild those pages from the article-body only.
+            rendered_html = await page.content()
+            extracted_html = _extract_townnews_article_html(rendered_html)
+            used_townnews_extraction = bool(extracted_html)
+            if extracted_html:
+                logger.info(f"Found TownNews article body using DOM-specific extraction ({len(extracted_html)} chars)")
             
             # Try to find main content using semantic HTML5 and CMS patterns
-            if is_substack:
-                content_selectors = [
-                    '.body.markup',
-                    'article .body',
-                    '.post-content',
-                    'article',
-                    '.available-content',
-                    'main',
-                ]
-            else:
-                # Prioritize semantic HTML5 elements and common CMS patterns
-                content_selectors = [
-                    # Semantic HTML5
-                    'article[role="article"]',
-                    'article',
-                    'main[role="main"]',
-                    'main',
-                    '[role="main"]',
-                    
-                    # Common CMS patterns (WordPress, Medium, Ghost, etc.)
-                    '.post-content', '.entry-content', '.article-content',
-                    '.content-body', '.article-body', '.post-body',
-                    
-                    # IndieWire and similar news sites
-                    '.article__body', '.story-body', '.news-article',
-                    
-                    # Squarespace
-                    '.blog-item-content', '.sqs-block-content',
-                    
-                    # Generic fallbacks
-                    '#content', '.content', '#main-content', '.main-content',
-                    '#page', '.page-content'
-                ]
-            
-            extracted_html = None
-            for selector in content_selectors:
-                try:
-                    element = await page.query_selector(selector)
-                    if element:
-                        extracted_html = await element.inner_html()
-                        if len(extracted_html) > MIN_CONTENT_LENGTH:
-                            logger.info(f"Found content using selector '{selector}' ({len(extracted_html)} chars)")
-                            break
-                except:
-                    continue
+            if not extracted_html:
+                if is_substack:
+                    content_selectors = [
+                        '.body.markup',
+                        'article .body',
+                        '.post-content',
+                        'article',
+                        '.available-content',
+                        'main',
+                    ]
+                else:
+                    # Prioritize semantic HTML5 elements and common CMS patterns
+                    content_selectors = [
+                        # Semantic HTML5
+                        'article[role="article"]',
+                        'article',
+                        'main[role="main"]',
+                        'main',
+                        '[role="main"]',
+                        
+                        # Common CMS patterns (WordPress, Medium, Ghost, etc.)
+                        '.post-content', '.entry-content', '.article-content',
+                        '.content-body', '.article-body', '.post-body',
+                        
+                        # IndieWire and similar news sites
+                        '.article__body', '.story-body', '.news-article',
+                        
+                        # Squarespace
+                        '.blog-item-content', '.sqs-block-content',
+                        
+                        # Generic fallbacks
+                        '#content', '.content', '#main-content', '.main-content',
+                        '#page', '.page-content'
+                    ]
+                
+                extracted_html = None
+                for selector in content_selectors:
+                    try:
+                        element = await page.query_selector(selector)
+                        if element:
+                            extracted_html = await element.inner_html()
+                            if len(extracted_html) > MIN_CONTENT_LENGTH:
+                                logger.info(f"Found content using selector '{selector}' ({len(extracted_html)} chars)")
+                                break
+                    except:
+                        continue
             
             # If no selector worked, try to find the largest content container
-            if not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH:
+            if (not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH) and not used_townnews_extraction:
                 logger.info("Semantic selectors failed, searching for largest content container")
                 try:
                     # Use JavaScript to find the element with the most text content
@@ -675,7 +777,7 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
                     logger.warning(f"Largest container heuristic failed: {str(e)}")
             
             # Last resort: get the full body
-            if not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH:
+            if (not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH) and not used_townnews_extraction:
                 logger.info("Using full body content as final fallback")
                 body = await page.query_selector('body')
                 if body:
