@@ -3,6 +3,7 @@ Background processing service for saved items.
 """
 import logging
 import json
+import re
 from datetime import datetime
 from bson import ObjectId
 from typing import Optional, Dict, Any
@@ -66,6 +67,99 @@ def _extract_summary(categorization: Dict[str, Any]) -> str:
         if normalized:
             return normalized
     return ""
+
+
+def _extractive_summary_fallback(content: str, max_points: int = 5) -> str:
+    """
+    Deterministic fallback summary when AI output is unavailable or malformed.
+    Extracts the first few substantial sentences from the cleaned article text.
+    """
+    if not content:
+        return ""
+
+    text = content
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"[*_`>|]+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    if not text:
+        return ""
+
+    bullet_lines = []
+    seen = set()
+
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    for sentence in sentences:
+        cleaned = sentence.strip(" -•\t\r\n")
+        if len(cleaned) < 45 or len(cleaned) > 280:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        if cleaned.startswith("http://") or cleaned.startswith("https://"):
+            continue
+        seen.add(lowered)
+        bullet_lines.append(f"- {cleaned}")
+        if len(bullet_lines) >= max_points:
+            break
+
+    return "\n".join(bullet_lines)
+
+
+def _coerce_text_to_bullets(text: str, max_points: int = 5) -> str:
+    """
+    Convert freeform text or loosely formatted bullets into normalized bullet markdown.
+    """
+    if not text:
+        return ""
+
+    bullet_lines = []
+    seen = set()
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^(summary|key points|highlights)\s*:\s*", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"^[-*•\d\.\)\s]+", "", line).strip()
+        if len(line) < 20:
+            continue
+        lowered = line.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        bullet_lines.append(f"- {line}")
+        if len(bullet_lines) >= max_points:
+            break
+
+    if bullet_lines:
+        return "\n".join(bullet_lines)
+
+    return _extractive_summary_fallback(text, max_points=max_points)
+
+
+def _parse_categorization_response(response_text: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse Gemini categorization output, tolerating wrapper prose around the JSON object.
+    """
+    candidates = [response_text]
+
+    first_brace = response_text.find("{")
+    last_brace = response_text.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        candidates.append(response_text[first_brace:last_brace + 1])
+
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            continue
+
+    return None
 
 
 def _generate_summary_fallback(content_sample: str) -> str:
@@ -133,7 +227,14 @@ def generate_auto_categorization(archived_text: str) -> Optional[Dict[str, Any]]
         return None
     
     if not gemini_service.is_available():
-        logger.info("Gemini service not available, skipping auto-categorization")
+        logger.info("Gemini service not available, using extractive summary fallback")
+        summary = _extractive_summary_fallback(archived_text)
+        if summary:
+            return {
+                "suggested_tags": [],
+                "topic": "",
+                "summary": summary
+            }
         return None
     
     try:
@@ -175,61 +276,76 @@ For "summary": write 3 to 5 bullet points covering the key points of the article
             response_text = response_text[:-3]
         response_text = response_text.strip()
         
-        try:
-            categorization = json.loads(response_text)
-            
-            # Validate structure
-            if not isinstance(categorization, dict):
-                logger.error("Categorization response is not a dictionary")
-                return None
-            
-            # Extract and validate fields
-            suggested_tags = categorization.get("suggested_tags", [])
-            topic = categorization.get("topic", "")
-            summary = _extract_summary(categorization)
+        categorization = _parse_categorization_response(response_text)
 
-            # If Gemini omitted summary in structured output, do a summary-only fallback call.
-            if not summary:
-                summary = _generate_summary_fallback(content_sample)
-            
-            # Ensure suggested_tags is a list and limit to 5 tags
-            if not isinstance(suggested_tags, list):
-                suggested_tags = []
-            suggested_tags = suggested_tags[:5]
-            
-            # Ensure topic and summary are strings
-            if not isinstance(topic, str):
-                topic = ""
-            if not isinstance(summary, str):
-                summary = ""
-            
-            result = {
-                "suggested_tags": suggested_tags,
-                "topic": topic,
-                "summary": summary
-            }
-            
-            logger.info(
-                f"Successfully generated auto-categorization: "
-                f"{len(suggested_tags)} tags, topic='{topic[:50]}...', "
-                f"summary length={len(summary)}"
-            )
-            
-            return result
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response from Gemini: {str(e)}")
-            logger.debug(f"Response text: {response_text[:500]}")
+        # Validate structure
+        if not isinstance(categorization, dict):
+            logger.warning("Categorization response was not valid JSON; using summary fallback")
+            summary = _coerce_text_to_bullets(response_text) or _extractive_summary_fallback(archived_text)
+            if summary:
+                return {
+                    "suggested_tags": [],
+                    "topic": "",
+                    "summary": summary
+                }
             return None
+
+        # Extract and validate fields
+        suggested_tags = categorization.get("suggested_tags", [])
+        topic = categorization.get("topic", "")
+        summary = _extract_summary(categorization)
+
+        # If Gemini omitted summary in structured output, do a summary-only fallback call.
+        if not summary:
+            summary = _generate_summary_fallback(content_sample) or _extractive_summary_fallback(archived_text)
+
+        # Ensure suggested_tags is a list and limit to 5 tags
+        if not isinstance(suggested_tags, list):
+            suggested_tags = []
+        suggested_tags = suggested_tags[:5]
+
+        # Ensure topic and summary are strings
+        if not isinstance(topic, str):
+            topic = ""
+        if not isinstance(summary, str):
+            summary = ""
+
+        result = {
+            "suggested_tags": suggested_tags,
+            "topic": topic,
+            "summary": summary
+        }
+
+        logger.info(
+            f"Successfully generated auto-categorization: "
+            f"{len(suggested_tags)} tags, topic='{topic[:50]}...', "
+            f"summary length={len(summary)}"
+        )
+
+        return result
             
     except GeminiServiceError as e:
         logger.error(f"Gemini service error during auto-categorization: {str(e)}")
+        summary = _extractive_summary_fallback(archived_text)
+        if summary:
+            return {
+                "suggested_tags": [],
+                "topic": "",
+                "summary": summary
+            }
         return None
     except Exception as e:
         logger.error(
             f"Unexpected error during auto-categorization: {str(e)}",
             exc_info=True
         )
+        summary = _extractive_summary_fallback(archived_text)
+        if summary:
+            return {
+                "suggested_tags": [],
+                "topic": "",
+                "summary": summary
+            }
         return None
 
 
@@ -501,6 +617,21 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
         if archived_text:
             logger.info(f"Generating auto-categorization for item {item_id}")
             auto_categorization = generate_auto_categorization(archived_text)
+
+            if not auto_categorization:
+                fallback_summary = _generate_summary_fallback(archived_text[:3000].strip()) or _extractive_summary_fallback(archived_text)
+                if fallback_summary:
+                    auto_categorization = {
+                        "suggested_tags": [],
+                        "topic": "",
+                        "summary": fallback_summary
+                    }
+                    logger.info(f"Recovered fallback summary for item {item_id}")
+            elif not auto_categorization.get("summary"):
+                fallback_summary = _generate_summary_fallback(archived_text[:3000].strip()) or _extractive_summary_fallback(archived_text)
+                if fallback_summary:
+                    auto_categorization["summary"] = fallback_summary
+                    logger.info(f"Filled missing summary fallback for item {item_id}")
             
             if auto_categorization:
                 logger.info(
