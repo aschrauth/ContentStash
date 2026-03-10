@@ -40,7 +40,7 @@ The Gemini RAG (Retrieval-Augmented Generation) system is an intelligent content
 │              Background Processing Pipeline                  │
 │  1. Extract content → archived_text                          │
 │  2. Chunk text (500 tokens, 75 overlap)                      │
-│  3. Generate embeddings (text-embedding-004)                 │
+│  3. Generate embeddings (models/gemini-embedding-001)                 │
 │  4. Store chunks in item_chunks collection                   │
 │  5. Generate auto-categorization (Flash-Lite)                │
 └────────────────────────┬────────────────────────────────────┘
@@ -60,7 +60,7 @@ The Gemini RAG (Retrieval-Augmented Generation) system is an intelligent content
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    RAG Query Pipeline                        │
-│  1. Embed query (text-embedding-004)                         │
+│  1. Embed query (models/gemini-embedding-001)                         │
 │  2. Vector search in item_chunks (MongoDB Atlas)             │
 │  3. Retrieve top K relevant chunks                           │
 │  4. Generate answer with citations (Flash-Lite)              │
@@ -122,7 +122,7 @@ Follow the detailed instructions in [`VECTOR_SEARCH_SETUP.md`](VECTOR_SEARCH_SET
 
 1. Create a vector search index named `vector_index`
 2. Configure it on the `item_chunks` collection
-3. Set up 768-dimensional embeddings with cosine similarity
+3. Set up 3072-dimensional embeddings with cosine similarity
 4. Add owner_id filter for security
 
 **Quick Summary:**
@@ -173,7 +173,7 @@ When a user saves content, the system automatically:
 
 1. **Extracts Content**: Fetches and extracts text from the URL
 2. **Chunks Text**: Splits into ~500 token chunks with 75 token overlap
-3. **Generates Embeddings**: Creates 768-dimensional vectors using `text-embedding-004`
+3. **Generates Embeddings**: Creates 3072-dimensional vectors using `models/gemini-embedding-001`
 4. **Stores Chunks**: Saves to `item_chunks` collection with embeddings
 
 **When It Happens:**
@@ -186,7 +186,7 @@ When a user saves content, the system automatically:
 
 - **Chunk Size**: 500 tokens (approximate, using whitespace tokenization)
 - **Overlap**: 75 tokens between consecutive chunks
-- **Embedding Model**: `text-embedding-004` (768 dimensions)
+- **Embedding Model**: `models/gemini-embedding-001` (3072 dimensions)
 - **Storage**: MongoDB `item_chunks` collection
 
 **Code Reference:**
@@ -232,7 +232,7 @@ The system uses Gemini 2.5 Flash-Lite to automatically generate:
 Semantic search finds content by meaning, not just keywords:
 
 1. User enters search query
-2. Query is embedded using `text-embedding-004`
+2. Query is embedded using `models/gemini-embedding-001`
 3. MongoDB Atlas Vector Search finds similar chunks
 4. Results ranked by cosine similarity score
 
@@ -300,7 +300,7 @@ Ask questions and get AI-generated answers with proper citations:
 
 - **Index Type**: MongoDB Atlas Vector Search
 - **Similarity Metric**: Cosine similarity
-- **Dimensions**: 768 (matches text-embedding-004)
+- **Dimensions**: 768 (matches models/gemini-embedding-001)
 - **Candidates**: K * 10 (for good recall/performance balance)
 - **Security**: Filtered by `owner_id`
 
@@ -449,7 +449,7 @@ For each item without chunks:
 
 1. **Validates**: Checks if item has `archived_text`
 2. **Chunks**: Splits text into 500-token chunks with 75-token overlap
-3. **Embeds**: Generates 768-dimensional embeddings
+3. **Embeds**: Generates 3072-dimensional embeddings
 4. **Stores**: Saves chunks to `item_chunks` collection
 5. **Categorizes**: Generates tags, topic, and summary (unless skipped)
 6. **Updates**: Marks item as processed
@@ -515,12 +515,12 @@ The system is designed to minimize API costs while maintaining quality.
 
 ### Model Choices
 
-**Embedding Model: `text-embedding-004`**
+**Embedding Model: `models/gemini-embedding-001`**
 - Cost: Free tier available, then $0.00001 per 1K tokens
-- Dimensions: 768 (good balance of quality and size)
+- Dimensions: 3072 (good balance of quality and size)
 - Speed: Fast batch processing
 
-**Generation Model: `gemini-2.5-flash-lite`**
+**Generation Model: `gemini-2.5-flash`**
 - Cost: Significantly cheaper than full Gemini models
 - Quality: Excellent for RAG tasks
 - Speed: Very fast response times
@@ -748,7 +748,7 @@ The system is designed to minimize API costs while maintaining quality.
 
 **Solutions:**
 1. Delete and recreate index with correct config
-2. Verify 768 dimensions
+2. Verify 3072 dimensions
 3. Confirm cosine similarity
 4. Check field path is "embedding"
 
@@ -805,7 +805,7 @@ POST /api/v1/items
               │
               ├─► Generate Embeddings (batch)
               │        │
-              │        └─► Gemini text-embedding-004
+              │        └─► Gemini models/gemini-embedding-001
               │
               ├─► Store Chunks in item_chunks
               │
@@ -826,7 +826,7 @@ POST /api/v1/chat/ask
      │
      ├─► Embed Query
      │        │
-     │        └─► Gemini text-embedding-004
+     │        └─► Gemini models/gemini-embedding-001
      │
      ├─► Vector Search
      │        │
@@ -933,13 +933,13 @@ POST /api/v1/chat/ask
   owner_id: "507f1f77bcf86cd799439011",  // User ID for filtering
   chunk_index: 0,                         // Position in original text
   text: "Chunk content here...",          // ~500 tokens
-  embedding: [0.123, -0.456, ...],        // 768-dimensional vector
+  embedding: [0.123, -0.456, ...],        // 3072-dimensional vector
   created_at: ISODate("2024-01-15T10:30:00Z")
 }
 ```
 
 **Indexes:**
-- Vector search index on `embedding` (768 dimensions, cosine)
+- Vector search index on `embedding` (3072 dimensions, cosine)
 - Filter index on `owner_id`
 - Compound index on `item_id` + `chunk_index`
 

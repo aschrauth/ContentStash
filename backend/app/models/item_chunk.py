@@ -10,7 +10,7 @@ class ItemChunkBase(BaseModel):
     owner_id: str = Field(..., description="Owner ID for permissions/filtering")
     chunk_index: int = Field(..., ge=0, description="Order in original text (0-based)")
     text: str = Field(..., min_length=1, max_length=10000, description="Chunk content (~500 tokens)")
-    embedding: List[float] = Field(..., description="768-dimensional embedding vector from text-embedding-004")
+    embedding: List[float] = Field(..., description="3072-dimensional embedding vector from models/gemini-embedding-001")
 
 
 class ItemChunkCreate(ItemChunkBase):

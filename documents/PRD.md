@@ -31,7 +31,7 @@ Primary: Knowledge workers (product managers, researchers, strategists) who cons
 
 **Complexity Assessment:** Moderate
 - **State Management:** Frontend state with localStorage persistence + simulated backend
-- **External Integrations:** Simulated AI/RAG features (OpenAI-like responses), URL metadata extraction
+- **External Integrations:** Simulated AI/RAG features (Gemini-like responses), URL metadata extraction
 - **Business Logic:** Moderate - content chunking simulation, tag autocomplete, search ranking, chat context
 
 **MVP Success Criteria:**

@@ -1,13 +1,16 @@
 """
 RAG (Retrieval-Augmented Generation) service for chat-based search.
 """
-from openai import OpenAI
 from typing import List, Dict, Optional
 import logging
 from app.config import settings
 from app.database import get_database
 from app.models.chat import Citation
-from app.services.gemini import gemini_service, GeminiServiceError
+from app.services.gemini import (
+    GEMINI_MODEL_TEXT_REASONING,
+    gemini_service,
+    GeminiServiceError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +19,7 @@ async def vector_search(query: str, owner_id: str, k: int = 8, max_chunks_per_it
     Perform semantic search using MongoDB Atlas Vector Search with diversity.
     
     This function:
-    1. Embeds the query using Gemini text-embedding-004
+    1. Embeds the query using Gemini models/gemini-embedding-001
     2. Executes MongoDB Atlas $vectorSearch aggregation on item_chunks
     3. Filters by owner_id for security
     4. Applies diversity filtering to ensure multiple unique articles
@@ -156,7 +159,7 @@ async def vector_search(query: str, owner_id: str, k: int = 8, max_chunks_per_it
                 logger.error(
                     "MongoDB Atlas Vector Search index 'vector_index' not found. "
                     "Please create the index in Atlas UI on the 'item_chunks' collection. "
-                    "Index should be on 'embedding' field with 768 dimensions, cosine similarity."
+                    "Index should be on 'embedding' field with 3072 dimensions, cosine similarity."
                 )
             elif "namespace not found" in error_msg.lower():
                 logger.error(
@@ -324,7 +327,7 @@ async def _fallback_search(user_id: str, query: str, limit: int = 5) -> List[Dic
 
 async def generate_answer(query: str, chunks: List[Dict]) -> Dict[str, any]:
     """
-    Generate an answer using Gemini 2.5 Flash-Lite based on retrieved chunks.
+    Generate an answer using Gemini 2.5 Flash based on retrieved chunks.
     
     This function:
     1. Takes the user's query and relevant chunks from vector search
@@ -367,10 +370,10 @@ async def generate_answer(query: str, chunks: List[Dict]) -> Dict[str, any]:
         # Build the prompt with strict citation requirements
         prompt = _build_citation_prompt(query, evidence, source_mapping)
         
-        # Call Gemini API with Flash-Lite model for cost optimization
+        # Use the higher-reasoning model for citation-grounded answers.
         response_text = gemini_service.generate_content(
             prompt=prompt,
-            model="gemini-2.5-flash-lite"
+            model=GEMINI_MODEL_TEXT_REASONING
         )
         
         if not response_text:
@@ -684,7 +687,7 @@ def _build_context(items: List[Dict]) -> str:
 
 
 def _build_rag_prompt(query: str, context: str) -> str:
-    """Build the RAG prompt for OpenAI."""
+    """Build the RAG prompt for grounded answer generation."""
     return f"""Based on the following saved items, please answer this question:
 
 Question: {query}

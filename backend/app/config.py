@@ -1,5 +1,6 @@
-from pydantic_settings import BaseSettings
 from typing import Optional
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -19,11 +20,8 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: str = "http://localhost:3000"
     
-    # OpenAI
-    openai_api_key: Optional[str] = None
-    
     # Google Gemini
-    gemini_api_key: Optional[str] = None
+    gemini_api_key: str | None = None
     
     # YouTube Data API v3
     youtube_api_key: Optional[str] = None

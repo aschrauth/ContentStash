@@ -93,7 +93,7 @@ Paste the following JSON configuration:
 - **Dimensions**: `3072` (matches Gemini models/gemini-embedding-001 output)
 - **Similarity**: `cosine` (recommended for text embeddings)
 
-**Important**: The embedding model `models/gemini-embedding-001` is used because it's compatible with the Gemini v1beta API. This model produces 3072-dimensional embeddings. The newer `text-embedding-004` model is only available in v1 API and will cause errors if used with v1beta.
+**Important**: The embedding model `models/gemini-embedding-001` is the current production model because it's compatible with the Gemini v1beta API. It produces 3072-dimensional embeddings. Older references to `text-embedding-004` are historical only and will fail on the current integration.
 
 ### Filter Field Configuration
 
@@ -147,14 +147,14 @@ Test by:
 1. No chunks exist for the user (check `owner_id` filter)
 2. Query embedding failed (check Gemini API key)
 3. Index not fully built yet (check status in Atlas UI)
-4. Embedding model incompatibility (ensure using `models/embedding-001`)
+4. Embedding model incompatibility (ensure using `models/gemini-embedding-001`)
 
 **Debug steps**:
 1. Check backend logs for error messages
 2. Verify Gemini API key is configured
 3. Confirm chunks exist: `db.item_chunks.countDocuments({owner_id: "your_user_id"})`
 4. Verify index is "Active" in Atlas UI
-5. Check that `backend/app/services/gemini.py` uses `models/gemini-embedding-001` (not `text-embedding-004`)
+5. Check that `backend/app/services/gemini.py` uses `models/gemini-embedding-001`; any `text-embedding-004` reference is stale documentation or an old branch
 
 ### Embedding Model Errors
 

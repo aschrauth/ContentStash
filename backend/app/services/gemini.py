@@ -15,6 +15,10 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 
+GEMINI_MODEL_TEXT_FAST = "gemini-2.5-flash-lite"
+GEMINI_MODEL_TEXT_REASONING = "gemini-2.5-flash"
+GEMINI_MODEL_EMBEDDING = "models/gemini-embedding-001"
+
 
 class GeminiServiceError(Exception):
     """Base exception for Gemini service errors"""
@@ -148,7 +152,7 @@ class GeminiService:
     def generate_content(
         self,
         prompt: str,
-        model: str = "gemini-2.5-flash-lite"
+        model: str = GEMINI_MODEL_TEXT_FAST
     ) -> str:
         """
         Generate text content using Gemini API.
@@ -188,7 +192,7 @@ class GeminiService:
     def embed_content(
         self,
         text: str,
-        model: str = "models/gemini-embedding-001"
+        model: str = GEMINI_MODEL_EMBEDDING
     ) -> List[float]:
         """
         Generate embeddings for a single text using Gemini API.
@@ -232,7 +236,7 @@ class GeminiService:
     def embed_batch(
         self,
         texts: List[str],
-        model: str = "models/gemini-embedding-001"
+        model: str = GEMINI_MODEL_EMBEDDING
     ) -> List[List[float]]:
         """
         Generate embeddings for multiple texts efficiently using batch processing.

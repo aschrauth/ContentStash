@@ -9,7 +9,6 @@ python-jose[cryptography]
 email-validator
 beautifulsoup4
 requests
-openai
 readability-lxml
 lxml_html_clean
 markdownify

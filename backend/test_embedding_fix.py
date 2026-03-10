@@ -1,6 +1,6 @@
 """
 Test script to verify the embedding model fix works correctly.
-This tests that the Gemini service can generate embeddings with the new model.
+This tests that the Gemini service can generate embeddings with the current model.
 """
 
 import asyncio
@@ -16,7 +16,7 @@ from app.services.gemini import gemini_service
 async def test_embedding_generation():
     """Test that embedding generation works with the new model"""
     
-    print("Testing Gemini embedding generation with models/embedding-001...")
+    print("Testing Gemini embedding generation with models/gemini-embedding-001...")
     print("-" * 60)
     
     # Check if service is available
@@ -41,11 +41,11 @@ async def test_embedding_generation():
         print(f"  - Dimension: {len(embedding)}")
         print(f"  - First 5 values: {embedding[:5]}")
         
-        # Verify dimension is 768 (expected for models/embedding-001)
-        if len(embedding) != 768:
-            print(f"⚠️  Warning: Expected 768 dimensions, got {len(embedding)}")
+        # Verify dimension is 3072 (expected for models/gemini-embedding-001)
+        if len(embedding) != 3072:
+            print(f"⚠️  Warning: Expected 3072 dimensions, got {len(embedding)}")
         else:
-            print(f"✓ Embedding dimension is correct (768)")
+            print("✓ Embedding dimension is correct (3072)")
         
         return True
         

@@ -4,11 +4,11 @@
 
 ## Issues Fixed
 
-### Issue 1: Gemini API Model Version Incompatibility (CRITICAL) ✅
+### Issue 1: Gemini API Model Version Incompatibility (Historical, Fixed) ✅
 
-**Problem**: The embedding model `text-embedding-004` was not available in the Gemini `v1beta` API version, causing all AI search queries to fail with a 404 error.
+**Problem**: The previously used embedding model `text-embedding-004` was not available in the Gemini `v1beta` API version, causing all AI search queries to fail with a 404 error.
 
-**Root Cause**: The code was using `text-embedding-004` which is only available in the v1 API, but the application uses the v1beta API.
+**Root Cause**: The code was previously using `text-embedding-004`, which is only available in the v1 API, while the application uses the v1beta API.
 
 **Solution**: Changed the embedding model to `models/gemini-embedding-001` which is compatible with v1beta API.
 

@@ -158,7 +158,7 @@ To replace the current `localStorage` simulation, the backend must provide:
 
 2.  **AI Services:**
     - **Scraper:** Puppeteer/Playwright to fetch OG tags and main content from URLs.
-    - **LLM Integration:** OpenAI/Anthropic for:
+    - **LLM Integration:** Gemini for:
         - Generating tags/topics from content.
         - Generating Title/Description from pasted text.
         - RAG Chat responses (Embeddings + Retrieval + Generation).

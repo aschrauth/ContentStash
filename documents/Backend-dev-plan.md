@@ -266,7 +266,7 @@ Example:
 - `JWT_SECRET` — Token signing key (required, min 32 chars)
 - `JWT_EXPIRES_IN` — Seconds before JWT expiry (default: 604800 = 7 days)
 - `CORS_ORIGINS` — Allowed frontend URL(s) (comma-separated)
-- `OPENAI_API_KEY` — For AI features (required for S5-S6)
+- `GEMINI_API_KEY` — For AI features (required for S5-S6)
 
 ---
 
@@ -287,10 +287,10 @@ Example:
 
 ## 8️⃣ Integrations
 
-### OpenAI API (Required for S5-S6)
-- Purpose: Generate AI suggestions, chat responses
-- Endpoints: Chat completions, embeddings
-- Env Var: `OPENAI_API_KEY`
+### Gemini API (Required for S5-S6)
+- Purpose: Generate AI suggestions, embeddings, and chat responses
+- Endpoints: Content generation, embeddings
+- Env Var: `GEMINI_API_KEY`
 - Fallback: Keyword-based heuristics if API unavailable
 
 ### URL Metadata Fetching
@@ -623,14 +623,14 @@ Example:
 
 ### Task 4: Implement AI Tag Suggestions
 - Create `app/services/ai.py`
-- Use OpenAI API to generate 3-7 tag suggestions
+- Use Gemini API to generate 3-7 tag suggestions
 - Consider user's existing tags for consistency
 - Store in `suggested_tags` field
 - **Manual Test Step:** After processing, open item detail → suggested tags appear
 - **User Test Prompt:** "Open a processed item and confirm AI-suggested tags appear in the sidebar."
 
 ### Task 5: Implement Topic Classification
-- Use OpenAI API to generate single topic label
+- Use Gemini API to generate single topic label
 - Store in `suggested_topic` field
 - **Manual Test Step:** After processing, open item detail → topic label appears
 - **User Test Prompt:** "Open a processed item and confirm a topic label appears."
@@ -681,7 +681,7 @@ Example:
 - **User Test Prompt:** "Ask a question in chat about content you've saved and confirm you get a response."
 
 ### Task 4: Implement AI Answer Generation
-- Use OpenAI API to generate answer from retrieved items
+- Use Gemini API to generate answer from retrieved items
 - Include context from archived text
 - **Manual Test Step:** Send chat message → AI generates contextual answer
 - **User Test Prompt:** "Ask a question in chat and confirm the answer is relevant to your saved content."

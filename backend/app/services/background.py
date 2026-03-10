@@ -14,7 +14,11 @@ from app.services.extraction import extract_content, extract_content_with_metada
 from app.services.exceptions import ExtractionBlockError
 from app.services.ai import generate_tags_and_topic
 from app.services.chunking import chunk_text
-from app.services.gemini import gemini_service, GeminiServiceError
+from app.services.gemini import (
+    GEMINI_MODEL_TEXT_FAST,
+    gemini_service,
+    GeminiServiceError,
+)
 from app.services.youtube import is_youtube_url, extract_video_id, get_youtube_channel_name_only
 from app.config import settings
 
@@ -183,7 +187,7 @@ Rules:
 
         response = gemini_service.generate_content(
             prompt=prompt,
-            model="gemini-2.5-flash-lite"
+            model=GEMINI_MODEL_TEXT_FAST
         )
 
         if not response:
@@ -255,10 +259,10 @@ Respond with JSON only:
 
 For "summary": write 3 to 5 bullet points covering the key points of the article. Each bullet must start with "- ". Use fewer bullets for shorter or simpler content. Do not repeat the title."""
 
-# Call Gemini with Flash-Lite model
+        # Use the fast low-cost model for ingest-time categorization.
         response = gemini_service.generate_content(
             prompt=prompt,
-            model="gemini-2.5-flash-lite"
+            model=GEMINI_MODEL_TEXT_FAST
         )
         
         if not response:

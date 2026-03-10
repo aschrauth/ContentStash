@@ -200,7 +200,7 @@ async def generate_metadata(
     """
     Generate metadata (title, description, tags) from pasted content.
     
-    - Uses AI if OpenAI key is configured
+    - Uses Gemini when configured
     - Falls back to basic text processing if not
     - Does not save to database
     - Returns generated metadata for frontend to populate form

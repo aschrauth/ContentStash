@@ -34,7 +34,7 @@ async def semantic_search(
     Perform semantic search on saved items using vector embeddings.
     
     This endpoint:
-    - Embeds the query using Gemini text-embedding-004
+    - Embeds the query using Gemini models/gemini-embedding-001
     - Searches for similar chunks using MongoDB Atlas Vector Search
     - Returns top K most relevant chunks with scores
     - Filters results by user ownership for security
@@ -95,7 +95,7 @@ async def ask_question(
     
     This endpoint:
     - Performs semantic search to find relevant chunks (K=8)
-    - Passes chunks to Gemini 2.5 Flash-Lite for answer generation
+    - Passes chunks to Gemini 2.5 Flash for answer generation
     - Enforces citation requirements and factual accuracy
     - Returns answer with quoted excerpts and source references
     

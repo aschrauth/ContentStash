@@ -44,7 +44,7 @@ async def test_semantic_search():
     return True
 
 
-def test_generate_answer():
+async def test_generate_answer():
     """Test the generate_answer function"""
     print("\n" + "="*60)
     print("TEST 2: Answer Generation with Citations")
@@ -74,7 +74,7 @@ def test_generate_answer():
     print(f"Chunks provided: {len(mock_chunks)}")
     
     try:
-        result = generate_answer(test_query, mock_chunks)
+        result = await generate_answer(test_query, mock_chunks)
         
         print(f"\n✅ Answer generation completed")
         print(f"\nAnswer:\n{result['answer']}")
@@ -127,7 +127,7 @@ async def main():
     await test_semantic_search()
     
     # Test 2: Answer generation
-    test_generate_answer()
+    await test_generate_answer()
     
     print("\n" + "="*60)
     print("TESTING COMPLETE")
