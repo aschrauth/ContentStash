@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, MessageSquare, Sparkles, ExternalLink } from 'lucide-react';
-import { useStore } from '@/lib/store';
+import { ChatMessage, useStore } from '@/lib/store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
@@ -52,6 +52,7 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
     if (!input.trim() || !currentUser) return;
 
     const userMessage = input;
+    const createdAt = new Date().toISOString();
     setInput('');
 
     try {
@@ -66,14 +67,15 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
             ...state.chatThreads,
             {
               id: tempThreadId,
-              user_id: currentUser.id,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+              ownerId: currentUser.id,
+              title: userMessage,
+              createdAt,
+              updatedAt: createdAt,
               messages: [
                 {
                   role: 'user' as const,
                   content: userMessage,
-                  timestamp: new Date().toISOString(),
+                  createdAt,
                 }
               ]
             }
@@ -101,6 +103,11 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
         // First fetch current thread state to get existing messages
         const currentThread = chatThreads.find(t => t.id === threadId);
         const currentMessages = currentThread?.messages || [];
+        const optimisticMessage: ChatMessage = {
+          role: 'user',
+          content: userMessage,
+          createdAt,
+        };
         
         // Optimistically update the store with user message
         useStore.setState((state) => ({
@@ -110,11 +117,7 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
                   ...thread,
                   messages: [
                     ...currentMessages,
-                    {
-                      role: 'user' as const,
-                      content: userMessage,
-                      timestamp: new Date().toISOString(),
-                    }
+                    optimisticMessage
                   ]
                 }
               : thread
@@ -153,6 +156,7 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
+            data-stash-overlay-backdrop="chat"
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
           />
 
@@ -162,6 +166,7 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            data-stash-overlay-panel="chat"
             className="fixed right-0 top-0 bottom-0 w-full md:w-[500px] bg-[#0f172a] border-l border-white/10 shadow-2xl z-50 flex flex-col"
           >
             {/* Header */}
@@ -314,4 +319,3 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
     </AnimatePresence>
   );
 }
-

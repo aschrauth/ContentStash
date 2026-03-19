@@ -286,11 +286,15 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   const showMetadataFields = activeTab === 'paste' || hasFetchedMeta;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div
+      data-stash-overlay-backdrop="save"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        data-stash-overlay-panel="save"
         className="w-full max-w-2xl bg-[#1e293b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
       >
         {/* Header */}
@@ -411,7 +415,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                     {...register('source')}
                   />
                   <p className="text-xs text-slate-500">
-                    Defaults to "Pasted Content" if left empty.
+                    Defaults to &quot;Pasted Content&quot; if left empty.
                   </p>
                 </div>
                 
@@ -441,6 +445,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                 {/* Preview Card (Only for URL) */}
                 {activeTab === 'url' && previewImage && (
                   <div className="relative h-40 w-full rounded-lg overflow-hidden border border-white/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={previewImage} alt={watch('title') || 'Preview'} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                       <p className="text-white font-medium text-sm truncate w-full">{watch('title')}</p>
@@ -543,4 +548,3 @@ export default function SaveModal({ onClose }: SaveModalProps) {
     </div>
   );
 }
-

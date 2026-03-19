@@ -82,6 +82,7 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
             `}>
               {item.imageUrl ? (
                 <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={item.imageUrl}
                     alt={item.title}
@@ -224,6 +225,7 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
         {/* Image Preview */}
         {item.imageUrl && (
           <div className="relative h-40 w-full overflow-hidden bg-slate-900">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={item.imageUrl}
               alt={item.title}

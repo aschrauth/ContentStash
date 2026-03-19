@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import Navbar from './Navbar';
 import { AnimatePresence } from 'framer-motion';
@@ -13,8 +14,38 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const { isAuthenticated } = useAuth(true);
+  const pathname = usePathname();
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+
+  const resetDocumentInteractivity = () => {
+    if (typeof document === 'undefined') return;
+
+    const { body, documentElement } = document;
+
+    body.style.overflow = '';
+    body.style.pointerEvents = '';
+    documentElement.style.overflow = '';
+    documentElement.style.pointerEvents = '';
+    body.removeAttribute('data-scroll-locked');
+    documentElement.removeAttribute('data-scroll-locked');
+  };
+
+  useEffect(() => {
+    setIsSaveModalOpen(false);
+    setIsChatOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (isSaveModalOpen || isChatOpen) return;
+
+    resetDocumentInteractivity();
+
+    return () => {
+      resetDocumentInteractivity();
+    };
+  }, [isSaveModalOpen, isChatOpen, pathname]);
 
   if (!isAuthenticated) {
     // Show a loading shell instead of blocking blank screen
@@ -62,4 +93,3 @@ export default function AppLayout({ children }: AppLayoutProps) {
     </div>
   );
 }
-

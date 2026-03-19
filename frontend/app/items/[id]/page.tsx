@@ -1,22 +1,24 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ExternalLink, Trash2, Clock, Tag, Edit3, Save, X, RefreshCw, Check, Zap, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import toast from 'react-hot-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { InfiniteData, useQueryClient } from '@tanstack/react-query';
 
 import { useStore, SavedItem } from '@/lib/store';
 import { resolveItemReadState, setReadOverride } from '@/lib/readStatus';
 import { formatDate, cn, cleanMarkdown, calculateReadTime } from '@/lib/utils';
-import { API_ENDPOINTS } from '@/lib/api';
+import { API_ENDPOINTS, normalizeSavedItem, PaginatedResponse, RawSavedItem } from '@/lib/api';
 import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import RichTextEditor from '@/components/RichTextEditor';
 import ConfirmationModal from '@/components/ConfirmationModal';
+
+type ItemsInfiniteData = InfiniteData<PaginatedResponse<SavedItem>, unknown>;
 
 export default function ItemDetailPage() {
   // Unwrap params using React.use() if available, or fallback to direct access for older Next.js versions
@@ -44,24 +46,24 @@ export default function ItemDetailPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const hasAutoMarkedReadRef = useRef(false);
 
-  const syncItemReadInCache = (targetItemId: string, nextIsRead: boolean, previousIsRead?: boolean) => {
+  const syncItemReadInCache = useCallback((targetItemId: string, nextIsRead: boolean, previousIsRead?: boolean) => {
     queryClient.setQueriesData(
       { queryKey: ['items'] },
-      (oldData: any) => {
+      (oldData: ItemsInfiniteData | undefined) => {
         if (!oldData?.pages) return oldData;
 
         const cachedItem = oldData.pages
-          .flatMap((page: any) => page.items || [])
-          .find((cached: any) => cached.id === targetItemId);
+          .flatMap((page) => page.items || [])
+          .find((cached) => cached.id === targetItemId);
 
         const priorReadState = typeof previousIsRead === 'boolean'
           ? previousIsRead
           : (cachedItem?.isRead === true);
         const unreadDelta = priorReadState === nextIsRead ? 0 : (nextIsRead ? -1 : 1);
 
-        const nextPages = oldData.pages.map((page: any) => ({
+        const nextPages = oldData.pages.map((page) => ({
           ...page,
-          items: (page.items || []).map((cached: any) =>
+          items: (page.items || []).map((cached) =>
             cached.id === targetItemId ? { ...cached, isRead: nextIsRead } : cached
           ),
           pagination: typeof page.pagination?.unread === 'number' && unreadDelta !== 0
@@ -78,7 +80,7 @@ export default function ItemDetailPage() {
         };
       }
     );
-  };
+  }, [queryClient]);
 
   // Handle params safely
   useEffect(() => {
@@ -120,33 +122,14 @@ export default function ItemDetailPage() {
         });
 
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as RawSavedItem;
           const rawServerIsRead = data.is_read === true;
           const serverIsRead = resolveItemReadState(data.id, rawServerIsRead);
           const shouldAutoMarkRead = !rawServerIsRead && !hasAutoMarkedReadRef.current;
 
-          // Convert snake_case to camelCase
-          const formattedItem = {
-            id: data.id,
-            ownerId: data.owner_id,
-            url: data.url,
-            title: data.title,
-            description: data.description,
-            imageUrl: data.image_url,
-            faviconUrl: data.favicon_url,
-            notesMarkdown: data.notes_markdown,
-            tags: data.tags,
-            suggestedTags: data.suggested_tags,
-            suggestedTopic: data.suggested_topic,
-            aiSummary: data.ai_summary,
-            archivedText: data.archived_text,
-            source: data.source,
-            wordCount: data.word_count,
-            extractionType: data.extraction_type,
-            processingStatus: data.processing_status,
+          const formattedItem: SavedItem = {
+            ...normalizeSavedItem(data),
             isRead: shouldAutoMarkRead ? true : serverIsRead,
-            createdAt: data.created_at,
-            updatedAt: data.updated_at
           };
 
           setItem(formattedItem);
@@ -175,7 +158,7 @@ export default function ItemDetailPage() {
                   throw new Error(error?.detail || 'Failed to auto-mark as read');
                 }
 
-                const updatedData = await markReadResponse.json();
+                const updatedData = await markReadResponse.json() as RawSavedItem;
                 const persistedIsRead = typeof updatedData.is_read === 'boolean'
                   ? updatedData.is_read
                   : true;
@@ -215,16 +198,18 @@ export default function ItemDetailPage() {
     };
 
     fetchItem();
-  }, [itemId, token, router, _hasHydrated]);
+  }, [itemId, token, router, _hasHydrated, queryClient, syncItemReadInCache]);
 
   // Polling effect for pending items
+  const processingStatus = item?.processingStatus;
+
   useEffect(() => {
-    if (!itemId || !token || !item) return;
+    if (!itemId || !token || !processingStatus) return;
 
     // Only poll if status is pending, processing, or pending_local_extraction
-    const shouldPoll = item.processingStatus === 'pending' ||
-      item.processingStatus === 'processing' ||
-      item.processingStatus === 'pending_local_extraction';
+    const shouldPoll = processingStatus === 'pending' ||
+      processingStatus === 'processing' ||
+      processingStatus === 'pending_local_extraction';
 
     if (!shouldPoll) return;
 
@@ -237,30 +222,11 @@ export default function ItemDetailPage() {
         });
 
         if (response.ok) {
-          const updatedData = await response.json();
+          const updatedData = await response.json() as RawSavedItem;
 
-          // Convert snake_case to camelCase
           const formattedItem: SavedItem = {
-            id: updatedData.id,
-            ownerId: updatedData.owner_id,
-            url: updatedData.url,
-            title: updatedData.title,
-            description: updatedData.description,
-            imageUrl: updatedData.image_url,
-            faviconUrl: updatedData.favicon_url,
-            notesMarkdown: updatedData.notes_markdown,
-            tags: updatedData.tags,
-            suggestedTags: updatedData.suggested_tags,
-            suggestedTopic: updatedData.suggested_topic,
-            aiSummary: updatedData.ai_summary,
-            archivedText: updatedData.archived_text,
-            source: updatedData.source,
-            wordCount: updatedData.word_count,
-            extractionType: updatedData.extraction_type,
-            processingStatus: updatedData.processing_status,
+            ...normalizeSavedItem(updatedData),
             isRead: resolveItemReadState(updatedData.id, updatedData.is_read === true),
-            createdAt: updatedData.created_at,
-            updatedAt: updatedData.updated_at
           };
 
           // Update both the Zustand store AND local state
@@ -287,7 +253,7 @@ export default function ItemDetailPage() {
     }, 2000); // Poll every 2 seconds
 
     return () => clearInterval(pollInterval);
-  }, [itemId, token, item?.processingStatus, updateItem]);
+  }, [itemId, token, processingStatus, updateItem]);
 
   // Autocomplete for tags
   useEffect(() => {
@@ -521,6 +487,7 @@ export default function ItemDetailPage() {
               {/* Background Image Blur */}
               {item.imageUrl && (
                 <div className="absolute inset-0 z-0 opacity-10">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={item.imageUrl} alt="" className="w-full h-full object-cover blur-xl" />
                 </div>
               )}
@@ -637,6 +604,7 @@ export default function ItemDetailPage() {
                     {/* Preview Image - Floated Left */}
                     {item.imageUrl && (
                       <div className="float-left mr-6 mb-4 w-[250px] rounded-xl overflow-hidden border border-white/10 shadow-lg">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={item.imageUrl}
                           alt={item.title}
@@ -726,6 +694,7 @@ export default function ItemDetailPage() {
                         if (!src || (typeof src === 'string' && src.trim() === '')) {
                           return null;
                         }
+                        // eslint-disable-next-line @next/next/no-img-element
                         return <img src={src} alt={alt} {...props} />;
                       },
                       code: ({ inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) =>

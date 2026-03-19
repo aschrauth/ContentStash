@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { API_ENDPOINTS } from '@/lib/api';
@@ -11,6 +11,13 @@ export function useAuth(requireAuth = true) {
   const currentUser = useStore((state) => state.currentUser);
   const token = useStore((state) => state.token);
   const hasHydrated = useStore((state) => state._hasHydrated);
+  const currentUserRef = useRef(currentUser);
+  const tokenRef = useRef(token);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+    tokenRef.current = token;
+  }, [currentUser, token]);
 
   useEffect(() => {
     // Wait for Zustand to hydrate before initializing auth
@@ -23,7 +30,7 @@ export function useAuth(requireAuth = true) {
       // Always restore token to store if it exists in localStorage but not in store
       // This is critical for React Query hooks (useItems) to work immediately 
       // when currentUser is restored from cache but token wasn't (since token isn't persisted in Zustand)
-      if (storedToken && !token) {
+      if (storedToken && !tokenRef.current) {
         useStore.setState({ token: storedToken });
       }
 
@@ -58,13 +65,13 @@ export function useAuth(requireAuth = true) {
             await useStore.getState().fetchItems();
           } else if (response.status === 401 || response.status === 403) {
             useStore.getState().clearSession();
-          } else if (!currentUser) {
+          } else if (!currentUserRef.current) {
             // Non-auth failure when trying to establish a session: be conservative.
             useStore.getState().clearSession();
           }
         } catch (error) {
           console.error('Failed to fetch user profile:', error);
-          if (!currentUser) {
+          if (!currentUserRef.current) {
             // Only clear if we were trying to establish a session. 
             // If we have a cached user, maybe keep them offline?
             // For safety, let's clear if the network call failed during initialization

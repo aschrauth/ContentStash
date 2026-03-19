@@ -1,7 +1,7 @@
 'use client';
 
-import { useInfiniteQuery, useQueryClient, UseInfiniteQueryResult } from '@tanstack/react-query';
-import { getItems, PaginatedResponse } from '@/lib/api';
+import { InfiniteData, useInfiniteQuery, useQueryClient, UseInfiniteQueryResult } from '@tanstack/react-query';
+import { getItems, normalizeSavedItem, PaginatedResponse, RawSavedItem } from '@/lib/api';
 import { SavedItem } from '@/lib/store';
 import { useStore } from '@/lib/store';
 
@@ -10,6 +10,8 @@ interface UseItemsOptions {
   tags?: string[];
   enabled?: boolean;
 }
+
+type ItemsInfiniteData = InfiniteData<PaginatedResponse<SavedItem>, string | undefined>;
 
 /**
  * Hook to fetch items with React Query's useInfiniteQuery for proper infinite scroll
@@ -30,7 +32,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
       const response = await getItems(token, search, tags, 20, pageParam as string | undefined);
 
       // Handle both old format (array) and new format (object with pagination)
-      let itemsData: any[];
+      let itemsData: RawSavedItem[];
       let pagination: { next_cursor: string | null; has_more: boolean; limit: number; total: number };
 
       if (Array.isArray(response)) {
@@ -44,27 +46,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
       }
 
       // Convert snake_case to camelCase for all items
-      const formattedItems: SavedItem[] = itemsData.map((item: Record<string, unknown>) => ({
-        id: item.id as string,
-        ownerId: item.owner_id as string,
-        url: item.url as string | undefined,
-        title: item.title as string,
-        description: item.description as string | undefined,
-        imageUrl: item.image_url as string | undefined,
-        faviconUrl: item.favicon_url as string | undefined,
-        notesMarkdown: item.notes_markdown as string | undefined,
-        tags: (item.tags as string[]) || [],
-        suggestedTags: item.suggested_tags as string[] | undefined,
-        suggestedTopic: item.suggested_topic as string | undefined,
-        archivedText: item.archived_text as string | undefined,
-        source: item.source as string | undefined,
-        wordCount: item.word_count as number | undefined,
-        extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
-        processingStatus: item.processing_status as 'pending' | 'processed' | 'failed',
-        isRead: item.is_read === true,
-        createdAt: item.created_at as string,
-        updatedAt: item.updated_at as string,
-      }));
+      const formattedItems: SavedItem[] = itemsData.map(normalizeSavedItem);
 
       return {
         items: formattedItems,
@@ -102,7 +84,7 @@ export function useUpdateItemsCache() {
 
   return {
     addItem: (newItem: SavedItem) => {
-      queryClient.setQueriesData<{ pages: PaginatedResponse<SavedItem>[]; pageParams: any[] }>(
+      queryClient.setQueriesData<ItemsInfiniteData>(
         { queryKey: ['items'] },
         (oldData) => {
           if (!oldData || !oldData.pages || oldData.pages.length === 0) return oldData;
@@ -127,7 +109,7 @@ export function useUpdateItemsCache() {
     },
 
     updateItem: (itemId: string, updates: Partial<SavedItem>) => {
-      queryClient.setQueriesData<{ pages: PaginatedResponse<SavedItem>[]; pageParams: any[] }>(
+      queryClient.setQueriesData<ItemsInfiniteData>(
         { queryKey: ['items'] },
         (oldData) => {
           if (!oldData || !oldData.pages) return oldData;
@@ -148,7 +130,7 @@ export function useUpdateItemsCache() {
     },
 
     removeItem: (itemId: string) => {
-      queryClient.setQueriesData<{ pages: PaginatedResponse<SavedItem>[]; pageParams: any[] }>(
+      queryClient.setQueriesData<ItemsInfiniteData>(
         { queryKey: ['items'] },
         (oldData) => {
           if (!oldData || !oldData.pages) return oldData;

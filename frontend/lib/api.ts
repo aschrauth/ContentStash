@@ -3,6 +3,8 @@
  * Central configuration for API endpoints
  */
 
+import type { SavedItem } from './store';
+
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 export class ApiError extends Error {
@@ -18,7 +20,7 @@ export class ApiError extends Error {
 }
 
 export const isApiError = (error: unknown): error is ApiError => {
-  return typeof error === 'object' && error !== null && (error as any).name === 'ApiError';
+  return error instanceof ApiError;
 };
 
 /**
@@ -75,6 +77,55 @@ export interface PaginatedResponse<T> {
   pagination: PaginationMetadata;
 }
 
+export interface RawSavedItem {
+  id: string;
+  owner_id: string;
+  url?: string;
+  title: string;
+  description?: string;
+  image_url?: string;
+  favicon_url?: string;
+  notes_markdown?: string;
+  tags?: string[];
+  suggested_tags?: string[];
+  suggested_topic?: string;
+  ai_summary?: string;
+  archived_text?: string;
+  source?: string;
+  word_count?: number;
+  extraction_type?: SavedItem['extractionType'];
+  processing_status: SavedItem['processingStatus'];
+  processing_error?: string;
+  is_read?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type GetItemsResponse = PaginatedResponse<RawSavedItem> | RawSavedItem[];
+
+export const normalizeSavedItem = (item: RawSavedItem): SavedItem => ({
+  id: item.id,
+  ownerId: item.owner_id,
+  url: item.url,
+  title: item.title,
+  description: item.description,
+  imageUrl: item.image_url,
+  faviconUrl: item.favicon_url,
+  notesMarkdown: item.notes_markdown,
+  tags: item.tags || [],
+  suggestedTags: item.suggested_tags,
+  suggestedTopic: item.suggested_topic,
+  aiSummary: item.ai_summary,
+  archivedText: item.archived_text,
+  source: item.source,
+  wordCount: item.word_count,
+  extractionType: item.extraction_type,
+  processingStatus: item.processing_status,
+  isRead: item.is_read === true,
+  createdAt: item.created_at,
+  updatedAt: item.updated_at,
+});
+
 /**
  * Get items with pagination support
  */
@@ -84,7 +135,7 @@ export const getItems = async (
   tags?: string[],
   limit: number = 50,
   cursor?: string
-): Promise<PaginatedResponse<any>> => {
+): Promise<GetItemsResponse> => {
   const params = new URLSearchParams();
   
   if (search && search.trim()) {
@@ -119,5 +170,5 @@ export const getItems = async (
     throw new ApiError('Failed to fetch items', response.status, bodyText);
   }
   
-  return response.json();
+  return response.json() as Promise<GetItemsResponse>;
 };

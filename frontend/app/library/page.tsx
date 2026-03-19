@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { Filter, Grid, List, Search, Loader2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { getItems } from '@/lib/api';
+import { getItems, isApiError, RawSavedItem } from '@/lib/api';
 import { resolveItemReadState } from '@/lib/readStatus';
 import { cn } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
@@ -52,13 +51,11 @@ function LibraryContent() {
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-    error,
     refetch
   } = useItems({
     search: debouncedSearch,
     tags: selectedTags,
   });
-  const dataAny = data as any;
 
   // Invalidate items cache for SSE updates
   const invalidateItems = useInvalidateItems();
@@ -74,12 +71,12 @@ function LibraryContent() {
 
   // Flatten all pages into a single array of items
   const allItems = useMemo(() => {
-    if (!dataAny?.pages) return [];
-    return dataAny.pages.flatMap((page: any) => page.items);
-  }, [dataAny?.pages]);
+    if (!data?.pages) return [];
+    return data.pages.flatMap((page) => page.items);
+  }, [data?.pages]);
 
   const displayItems = useMemo(() => {
-    return allItems.map((item: any) => ({
+    return allItems.map((item) => ({
       ...item,
       isRead: resolveItemReadState(item.id, item.isRead === true),
     }));
@@ -87,12 +84,12 @@ function LibraryContent() {
 
   // Get total count from the first page (all pages have the same total)
   const totalCount = useMemo(() => {
-    return dataAny?.pages?.[0]?.pagination?.total ?? null;
-  }, [dataAny?.pages]);
+    return data?.pages?.[0]?.pagination?.total ?? null;
+  }, [data?.pages]);
 
   const unreadCount = useMemo(() => {
-    const paginationUnread = dataAny?.pages?.[0]?.pagination?.unread;
-    const loadedUnreadCount = displayItems.filter((item: any) => item.isRead !== true).length;
+    const paginationUnread = data?.pages?.[0]?.pagination?.unread;
+    const loadedUnreadCount = displayItems.filter((item) => item.isRead !== true).length;
     if (fullUnreadCount !== null) {
       return fullUnreadCount;
     }
@@ -100,7 +97,7 @@ function LibraryContent() {
       return Math.max(paginationUnread, loadedUnreadCount);
     }
     return loadedUnreadCount;
-  }, [dataAny?.pages, displayItems, fullUnreadCount]);
+  }, [data?.pages, displayItems, fullUnreadCount]);
 
   // Sync local state with store preference on mount and when currentUser changes
   useEffect(() => {
@@ -139,22 +136,17 @@ function LibraryContent() {
 
         while (true) {
           const response = await getItems(token, undefined, undefined, 100, cursor);
+          const items: RawSavedItem[] = Array.isArray(response) ? response : (response.items || []);
 
-          if (Array.isArray(response)) {
-            for (const item of response) {
-              const itemId = (item as any).id as string;
-              const serverIsRead = (item as any).is_read === true;
-              const effectiveIsRead = resolveItemReadState(itemId, serverIsRead);
-              if (!effectiveIsRead) unread += 1;
-            }
-            break;
-          }
-
-          for (const item of response.items || []) {
-            const itemId = (item as any).id as string;
-            const serverIsRead = (item as any).is_read === true;
+          for (const item of items) {
+            const itemId = item.id;
+            const serverIsRead = item.is_read === true;
             const effectiveIsRead = resolveItemReadState(itemId, serverIsRead);
             if (!effectiveIsRead) unread += 1;
+          }
+
+          if (Array.isArray(response)) {
+            break;
           }
 
           if (!response.pagination?.has_more || !response.pagination?.next_cursor) {
@@ -171,7 +163,7 @@ function LibraryContent() {
         if (!isCancelled) {
           // If the session expired, clear auth and avoid noisy console spam.
           // Other effects will redirect to /login once auth is cleared.
-          if ((error as any)?.name === 'ApiError' && ((error as any)?.status === 401 || (error as any)?.status === 403)) {
+          if (isApiError(error) && (error.status === 401 || error.status === 403)) {
             useStore.getState().clearSession();
             return;
           }
@@ -197,7 +189,7 @@ function LibraryContent() {
     
     // Fallback to computing from items (for backwards compatibility)
     const tagSet = new Set<string>();
-    allItems.forEach((item: any) => {
+    allItems.forEach((item) => {
       item.tags.forEach((tag: string) => tagSet.add(tag));
     });
     return Array.from(tagSet).sort();
@@ -324,7 +316,7 @@ function LibraryContent() {
                   : "grid-cols-1 gap-[15px]"
               )}
             >
-              {displayItems.map((item: any) => (
+              {displayItems.map((item) => (
                 <ItemCard key={item.id} item={item} viewMode={viewMode} unreadVariant="accent" />
               ))}
             </div>

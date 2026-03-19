@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { API_ENDPOINTS, getItems, isApiError } from './api';
+import { API_ENDPOINTS, getItems, isApiError, normalizeSavedItem, RawSavedItem } from './api';
 import { getQueryClient } from '@/components/providers/QueryProvider';
 
 // --- Types ---
@@ -287,7 +287,7 @@ export const useStore = create<AppState>()(
           const response = await getItems(token, searchQuery, tags, 50, cursor ?? undefined);
 
           // Handle both old format (array) and new format (object with pagination)
-          let itemsData: any[];
+          let itemsData: RawSavedItem[];
           let pagination: { next_cursor: string | null; has_more: boolean } | null = null;
 
           if (Array.isArray(response)) {
@@ -300,27 +300,7 @@ export const useStore = create<AppState>()(
           }
 
           // Convert snake_case to camelCase for all items
-          const formattedItems: SavedItem[] = itemsData.map((item: Record<string, unknown>) => ({
-            id: item.id as string,
-            ownerId: item.owner_id as string,
-            url: item.url as string | undefined,
-            title: item.title as string,
-            description: item.description as string | undefined,
-            imageUrl: item.image_url as string | undefined,
-            faviconUrl: item.favicon_url as string | undefined,
-            notesMarkdown: item.notes_markdown as string | undefined,
-            tags: (item.tags as string[]) || [],
-            suggestedTags: item.suggested_tags as string[] | undefined,
-            suggestedTopic: item.suggested_topic as string | undefined,
-            archivedText: item.archived_text as string | undefined,
-            source: item.source as string | undefined,
-            wordCount: item.word_count as number | undefined,
-            extractionType: item.extraction_type as 'fast' | 'complete' | 'local' | undefined,
-            processingStatus: item.processing_status as 'pending' | 'processing' | 'processed' | 'failed' | 'pending_local_extraction',
-            isRead: item.is_read === true,
-            createdAt: item.created_at as string,
-            updatedAt: item.updated_at as string
-          }));
+          const formattedItems: SavedItem[] = itemsData.map(normalizeSavedItem);
 
           // If loading more, append to existing items; otherwise replace
           const newItems = loadMore ? [...currentItems, ...formattedItems] : formattedItems;
