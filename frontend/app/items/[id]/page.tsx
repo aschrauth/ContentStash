@@ -601,9 +601,9 @@ export default function ItemDetailPage() {
                       )}
                     </div>
 
-                    {/* Preview Image - Floated Left */}
+                    {/* Preview Image - Floated Left on wider screens, stacked on mobile */}
                     {item.imageUrl && (
-                      <div className="float-left mr-6 mb-4 w-[250px] rounded-xl overflow-hidden border border-white/10 shadow-lg">
+                      <div className="mb-4 w-full overflow-hidden rounded-xl border border-white/10 shadow-lg md:float-left md:mr-6 md:w-[250px]">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={item.imageUrl}
