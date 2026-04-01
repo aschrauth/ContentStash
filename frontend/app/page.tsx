@@ -50,7 +50,7 @@ export default function LandingPage() {
               <Sparkles className="w-4 h-4 text-amber-400" />
               <span className="text-sm text-slate-300">Your AI-Powered Second Brain</span>
             </div>
-            
+
             <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-8">
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-violet-200 to-cyan-200">
                 Remember Everything.
@@ -140,17 +140,17 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <FeatureCard 
+            <FeatureCard
               icon={<Brain className="w-8 h-8 text-violet-400" />}
               title="AI-Powered Organization"
               description="Automatically tags and categorizes your content so you don't have to. Spend less time filing and more time reading."
             />
-            <FeatureCard 
+            <FeatureCard
               icon={<Search className="w-8 h-8 text-cyan-400" />}
               title="Chat with Your Library"
               description="Ask questions and get answers grounded in your saved content. It's like having a conversation with your bookmarks."
             />
-            <FeatureCard 
+            <FeatureCard
               icon={<Layers className="w-8 h-8 text-fuchsia-400" />}
               title="Context Preservation"
               description="Save not just the link, but the key takeaways. Add personal notes and highlights that stick with the content."
@@ -185,7 +185,7 @@ export default function LandingPage() {
             <span className="text-slate-300">Stash</span>
           </div>
           <div className="text-slate-500 text-sm">
-            © 2024 Stash Inc. All rights reserved.
+            © iceTopia Productions. All rights reserved.
           </div>
         </div>
       </footer>
