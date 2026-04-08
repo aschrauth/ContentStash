@@ -120,6 +120,8 @@ The shortcut then builds the full requests automatically:
 
 There are two realistic ways to install this shortcut.
 
+Important: option 2 is not a replacement for building the shortcut at least once. Someone has to create the shortcut first before there is anything to share.
+
 ### Option 1: Manual Creation In The Shortcuts App
 
 This is the most reliable option today.
@@ -132,9 +134,21 @@ Use this when:
 
 For this option, follow the full step-by-step build guide in [`IOS_SHORTCUT_GUIDE.md`](./IOS_SHORTCUT_GUIDE.md).
 
+This manual build is also the step you use to create the first working version of the shortcut that can later be shared with other people.
+
 ### Option 2: Share A Prebuilt iCloud Shortcut Link
 
 This is the best experience for end users once you are ready to distribute the shortcut more widely.
+
+What "prebuilt iCloud shortcut link" means in plain language:
+
+1. you manually create the shortcut first
+2. you test it on your own device
+3. once it is working, you open that shortcut in the Shortcuts app
+4. you use the Shortcuts app share option to share the finished shortcut
+5. Apple gives you an iCloud shortcut link that other people can open and install
+
+So yes, option 2 depends on option 1 happening first. You cannot share a prebuilt shortcut link until someone has already built the shortcut and saved it in the Shortcuts app.
 
 Use this when:
 
@@ -149,6 +163,11 @@ The ideal experience becomes:
 3. user runs it
 4. user signs in
 5. user starts saving content
+
+In other words:
+
+- option 1 = create the shortcut
+- option 2 = distribute the shortcut you already created
 
 ## Local Development Notes
 
