@@ -1059,7 +1059,7 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
             
             # Try to get metadata from YouTube Data API
             youtube_metadata = get_video_metadata_from_api(video_id, settings.youtube_api_key)
-            
+
             # If API failed, try yt-dlp as fallback for metadata
             if not youtube_metadata:
                 logger.info(f"YouTube API unavailable, trying yt-dlp for metadata")
@@ -1067,76 +1067,74 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
                 if youtube_metadata:
                     logger.info(f"✓ Successfully fetched metadata from yt-dlp")
                     logger.info(f"🎥 [YOUTUBE METADATA] Channel name from yt-dlp: {youtube_metadata.get('channel_name')}")
-                
-                if transcript:
-                    logger.info(f"🎥 [YOUTUBE METADATA] Successfully extracted YouTube transcript and metadata for {url}")
-                    # If we have both transcript and metadata, use them
-                    if youtube_metadata:
-                        # Format source as "YouTube | Channel Name"
-                        channel_name = youtube_metadata.get('channel_name', '')
-                        source = f"YouTube | {channel_name}" if channel_name else "YouTube"
-                        logger.info(f"🎥 [YOUTUBE METADATA] Formatted source field: '{source}'")
-                        
-                        return {
-                        'text': transcript,
-                        'title': youtube_metadata.get('title'),
-                        'description': youtube_metadata.get('description'),
-                        'image_url': youtube_metadata.get('thumbnail_url'),
-                        'author': youtube_metadata.get('channel_name'),
-                        'date': youtube_metadata.get('published_at'),
-                        'source': source,
-                        'url': url
-                    }
-                else:
-                    # Transcript succeeded but metadata failed - still return transcript
-                    logger.warning(f"YouTube metadata unavailable for {url}, using transcript only")
-                    return {
-                        'text': transcript,
-                        'title': None,
-                        'description': None,
-                        'image_url': None,
-                        'author': None,
-                        'date': None,
-                        'source': 'YouTube',
-                        'url': url
-                    }
-            elif youtube_metadata:
-                # Transcript failed but we have metadata
-                logger.warning(f"YouTube transcript unavailable for {url}, using metadata with description as content")
-                # Use description as content if transcript is unavailable
-                content = f"# {youtube_metadata.get('title', 'YouTube Video')}\n\n"
-                content += f"**Channel:** {youtube_metadata.get('channel_name', 'Unknown')}\n\n"
-                if youtube_metadata.get('description'):
-                    content += f"{youtube_metadata['description']}"
-                
-                # Format source as "YouTube | Channel Name"
+
+            # Best-case: transcript + metadata
+            if transcript and youtube_metadata:
                 channel_name = youtube_metadata.get('channel_name', '')
                 source = f"YouTube | {channel_name}" if channel_name else "YouTube"
-                logger.info(f"🎥 [YOUTUBE METADATA] Formatted source field (no transcript): '{source}'")
-                
+                logger.info(f"🎥 [YOUTUBE METADATA] Returning transcript + metadata for {url}")
                 return {
-                    'text': content,
+                    'text': transcript,
                     'title': youtube_metadata.get('title'),
                     'description': youtube_metadata.get('description'),
                     'image_url': youtube_metadata.get('thumbnail_url'),
+                    'favicon_url': 'https://www.youtube.com/favicon.ico',
                     'author': youtube_metadata.get('channel_name'),
                     'date': youtube_metadata.get('published_at'),
                     'source': source,
                     'url': url
                 }
-            else:
-                # Both transcript and metadata failed
-                logger.error(f"Failed to extract both transcript and metadata from YouTube for {url}")
+
+            # Transcript-only fallback
+            if transcript:
+                logger.warning(f"YouTube metadata unavailable for {url}, using transcript only")
                 return {
-                    'text': None,
+                    'text': transcript,
                     'title': None,
                     'description': None,
                     'image_url': None,
+                    'favicon_url': 'https://www.youtube.com/favicon.ico',
                     'author': None,
                     'date': None,
                     'source': 'YouTube',
                     'url': url
                 }
+
+            # Metadata-only fallback
+            if youtube_metadata:
+                logger.warning(f"YouTube transcript unavailable for {url}, using metadata with description as content")
+                content = f"# {youtube_metadata.get('title', 'YouTube Video')}\n\n"
+                content += f"**Channel:** {youtube_metadata.get('channel_name', 'Unknown')}\n\n"
+                if youtube_metadata.get('description'):
+                    content += f"{youtube_metadata['description']}"
+
+                channel_name = youtube_metadata.get('channel_name', '')
+                source = f"YouTube | {channel_name}" if channel_name else "YouTube"
+                return {
+                    'text': content,
+                    'title': youtube_metadata.get('title'),
+                    'description': youtube_metadata.get('description'),
+                    'image_url': youtube_metadata.get('thumbnail_url'),
+                    'favicon_url': 'https://www.youtube.com/favicon.ico',
+                    'author': youtube_metadata.get('channel_name'),
+                    'date': youtube_metadata.get('published_at'),
+                    'source': source,
+                    'url': url
+                }
+
+            # Both transcript and metadata failed
+            logger.error(f"Failed to extract both transcript and metadata from YouTube for {url}")
+            return {
+                'text': None,
+                'title': None,
+                'description': None,
+                'image_url': None,
+                'favicon_url': 'https://www.youtube.com/favicon.ico',
+                'author': None,
+                'date': None,
+                'source': 'YouTube',
+                'url': url
+            }
         else:
             logger.error(f"Failed to extract video ID from YouTube URL: {url}")
             return {'text': None, 'source': 'YouTube'}

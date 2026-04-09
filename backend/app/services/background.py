@@ -443,7 +443,10 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
         metadata = {}
         should_fetch_metadata = url and (
             not item_doc.get("title") or
-            not item_doc.get("description")
+            item_doc.get("title") == url or
+            not item_doc.get("description") or
+            not item_doc.get("image_url") or
+            not item_doc.get("favicon_url")
         )
         
         if should_fetch_metadata:
@@ -456,6 +459,7 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
                     'title': metadata_result.get('title'),
                     'description': metadata_result.get('description'),
                     'image_url': metadata_result.get('image_url'),
+                    'favicon_url': metadata_result.get('favicon_url'),
                     'source': metadata_result.get('source')
                 }
                 # If we got content from metadata extraction, use it
