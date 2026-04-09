@@ -11,6 +11,7 @@ from markdownify import markdownify as md
 from bs4 import BeautifulSoup
 from .youtube import is_youtube_url, extract_video_id, get_video_transcript, get_transcript_from_ytdlp, get_video_metadata_from_api, get_video_metadata_from_ytdlp
 from .exceptions import ExtractionBlockError
+from .metadata import fetch_metadata
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import asyncio
 from ..config import settings
@@ -1140,6 +1141,11 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
             logger.error(f"Failed to extract video ID from YouTube URL: {url}")
             return {'text': None, 'source': 'YouTube'}
     
+    # For non-YouTube URLs, fetch metadata once up front so callers can
+    # reliably receive title/description/image fields even when the page body
+    # is extracted via Playwright.
+    page_metadata = fetch_metadata(url)
+
     # For non-YouTube URLs, use the existing extraction logic
     try:
         # For "complete" extraction type, skip Readability and go directly to Playwright
@@ -1162,7 +1168,10 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
             logger.info(f"Extracted content with metadata from {url} using Playwright (complete mode)")
             return {
                 'text': markdown_text,
-                'title': title,
+                'title': page_metadata.get('title') or title,
+                'description': page_metadata.get('description'),
+                'image_url': page_metadata.get('image_url'),
+                'favicon_url': page_metadata.get('favicon_url'),
                 'author': None,
                 'date': None,
                 'source': extract_source_from_url(url),
@@ -1192,7 +1201,10 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
             logger.info(f"Extracted content with metadata from {url} using readability")
             return {
                 'text': markdown_text,
-                'title': title,
+                'title': page_metadata.get('title') or title,
+                'description': page_metadata.get('description'),
+                'image_url': page_metadata.get('image_url'),
+                'favicon_url': page_metadata.get('favicon_url'),
                 'author': None,
                 'date': None,
                 'source': extract_source_from_url(url),
@@ -1213,7 +1225,10 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
         logger.info(f"Extracted content with metadata from {url} using Playwright")
         return {
             'text': markdown_text,
-            'title': title,
+            'title': page_metadata.get('title') or title,
+            'description': page_metadata.get('description'),
+            'image_url': page_metadata.get('image_url'),
+            'favicon_url': page_metadata.get('favicon_url'),
             'author': None,
             'date': None,
             'source': extract_source_from_url(url),
@@ -1227,7 +1242,10 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
         if markdown_text:
             return {
                 'text': markdown_text,
-                'title': None,  # Can't get title without initial request
+                'title': page_metadata.get('title'),
+                'description': page_metadata.get('description'),
+                'image_url': page_metadata.get('image_url'),
+                'favicon_url': page_metadata.get('favicon_url'),
                 'author': None,
                 'date': None,
                 'source': extract_source_from_url(url),
