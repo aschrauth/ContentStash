@@ -23,6 +23,91 @@ logger = logging.getLogger(__name__)
 MIN_CONTENT_LENGTH = 1000
 
 
+def _merge_metadata(preferred: dict, fallback: dict) -> dict:
+    """Merge metadata dictionaries, preferring non-empty values from `preferred`."""
+    keys = ("title", "description", "image_url", "favicon_url")
+    merged = {}
+    for key in keys:
+        merged[key] = preferred.get(key) or fallback.get(key)
+    return merged
+
+
+async def _extract_page_metadata_with_playwright(url: str) -> Dict[str, Optional[str]]:
+    """
+    Extract title/description/image/favicon from rendered DOM using Playwright.
+    Useful when requests-based metadata fetching is blocked by anti-bot protections.
+    """
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-dev-shm-usage']
+            )
+
+            try:
+                page = await browser.new_page()
+                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+
+                metadata = await page.evaluate("""
+                    () => {
+                        const getMeta = (selectors) => {
+                            for (const selector of selectors) {
+                                const el = document.querySelector(selector);
+                                const value = el?.getAttribute('content');
+                                if (value && value.trim()) return value.trim();
+                            }
+                            return null;
+                        };
+
+                        const getFavicon = () => {
+                            const rels = ['icon', 'shortcut icon', 'apple-touch-icon'];
+                            for (const rel of rels) {
+                                const el = document.querySelector(`link[rel*="${rel}"]`);
+                                const href = el?.getAttribute('href');
+                                if (href && href.trim()) return href.trim();
+                            }
+                            return null;
+                        };
+
+                        const title = getMeta(['meta[property="og:title"]', 'meta[name="twitter:title"]']) || document.title || null;
+                        const description = getMeta([
+                            'meta[property="og:description"]',
+                            'meta[name="twitter:description"]',
+                            'meta[name="description"]'
+                        ]);
+                        const imageUrl = getMeta(['meta[property="og:image"]', 'meta[name="twitter:image"]']);
+                        const faviconUrl = getFavicon();
+
+                        return {
+                            title,
+                            description,
+                            image_url: imageUrl,
+                            favicon_url: faviconUrl
+                        };
+                    }
+                """)
+
+                from urllib.parse import urljoin
+
+                base_url = page.url or url
+                for key in ("image_url", "favicon_url"):
+                    value = metadata.get(key)
+                    if value:
+                        metadata[key] = urljoin(base_url, value)
+
+                return metadata
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning(f"Playwright metadata extraction failed for {url}: {str(e)}")
+        return {
+            "title": None,
+            "description": None,
+            "image_url": None,
+            "favicon_url": None
+        }
+
+
 def extract_source_from_url(url: str) -> str:
     """
     Extract source domain from URL for display purposes.
@@ -1139,10 +1224,12 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
             logger.error(f"Failed to extract video ID from YouTube URL: {url}")
             return {'text': None, 'source': 'YouTube'}
     
-    # For non-YouTube URLs, fetch metadata once up front so callers can
-    # reliably receive title/description/image fields even when the page body
-    # is extracted via Playwright.
+    # For non-YouTube URLs, fetch metadata once up front.
+    # If requests-based scraping is blocked, try rendered-DOM metadata via Playwright.
     page_metadata = fetch_metadata(url)
+    if not page_metadata.get("title") or not page_metadata.get("description") or not page_metadata.get("image_url"):
+        playwright_metadata = await _extract_page_metadata_with_playwright(url)
+        page_metadata = _merge_metadata(playwright_metadata, page_metadata)
 
     # For non-YouTube URLs, use the existing extraction logic
     try:
