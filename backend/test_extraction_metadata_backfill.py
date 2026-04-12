@@ -119,6 +119,28 @@ def test_extract_content_with_metadata_youtube_returns_transcript_and_metadata(m
     assert result["source"] == "YouTube | Channel Name"
 
 
+def test_merge_metadata_ignores_block_page_values():
+    merged = extraction._merge_metadata(
+        {
+            "title": "Just a moment...",
+            "description": "Enable JavaScript and cookies to continue",
+            "image_url": None,
+            "favicon_url": None,
+        },
+        {
+            "title": "OG Title",
+            "description": "OG Description",
+            "image_url": "https://example.com/cover.jpg",
+            "favicon_url": "https://example.com/favicon.ico",
+        },
+    )
+
+    assert merged["title"] == "OG Title"
+    assert merged["description"] == "OG Description"
+    assert merged["image_url"] == "https://example.com/cover.jpg"
+    assert merged["favicon_url"] == "https://example.com/favicon.ico"
+
+
 if __name__ == "__main__":
     import pytest
 

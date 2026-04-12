@@ -786,8 +786,11 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
         
         # Add metadata fields if they were fetched and are missing
         if metadata:
-            if not item_doc.get("title") and metadata.get("title"):
+            existing_title = item_doc.get("title")
+            if metadata.get("title") and (not existing_title or existing_title == url):
                 update_doc["title"] = metadata["title"]
+                if existing_title == url:
+                    logger.info(f"📋 [METADATA] Replacing placeholder URL title for item {item_id}")
             
             if not item_doc.get("description") and metadata.get("description"):
                 update_doc["description"] = metadata["description"]

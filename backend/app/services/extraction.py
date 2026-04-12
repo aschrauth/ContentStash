@@ -21,10 +21,55 @@ logger = logging.getLogger(__name__)
 # Minimum content length threshold - if readability extracts less than this,
 # we'll try Playwright as the site likely uses JavaScript rendering
 MIN_CONTENT_LENGTH = 1000
+PLAYWRIGHT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+BLOCK_PAGE_TEXT_SNIPPETS = (
+    "just a moment",
+    "attention required",
+    "verify you are human",
+    "verify you’re human",
+    "enable javascript and cookies to continue",
+    "checking if the site connection is secure",
+    "checking your browser before accessing",
+    "access denied",
+)
+
+
+def _looks_like_block_page_text(value: Optional[str]) -> bool:
+    """Detect common anti-bot interstitial copy that should not be saved as metadata."""
+    if not value or not isinstance(value, str):
+        return False
+
+    normalized = " ".join(value.split()).strip().lower()
+    if not normalized:
+        return False
+
+    return any(snippet in normalized for snippet in BLOCK_PAGE_TEXT_SNIPPETS)
+
+
+def _sanitize_metadata(metadata: Optional[dict]) -> dict:
+    """Normalize metadata values and drop obvious anti-bot interstitial text."""
+    metadata = metadata or {}
+    sanitized = {}
+
+    for key in ("title", "description", "image_url", "favicon_url"):
+        value = metadata.get(key)
+        if isinstance(value, str):
+            value = value.strip() or None
+        if key in ("title", "description") and _looks_like_block_page_text(value):
+            value = None
+        sanitized[key] = value
+
+    return sanitized
 
 
 def _merge_metadata(preferred: dict, fallback: dict) -> dict:
     """Merge metadata dictionaries, preferring non-empty values from `preferred`."""
+    preferred = _sanitize_metadata(preferred)
+    fallback = _sanitize_metadata(fallback)
     keys = ("title", "description", "image_url", "favicon_url")
     merged = {}
     for key in keys:
@@ -45,10 +90,19 @@ async def _extract_page_metadata_with_playwright(url: str) -> Dict[str, Optional
             )
 
             try:
-                page = await browser.new_page()
+                context = await browser.new_context(
+                    user_agent=PLAYWRIGHT_USER_AGENT,
+                    locale="en-US",
+                    viewport={"width": 1440, "height": 900},
+                )
+                page = await context.new_page()
+                await page.set_extra_http_headers({
+                    "Accept-Language": "en-US,en;q=0.9",
+                })
                 await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                await page.wait_for_timeout(2000)
 
-                metadata = await page.evaluate("""
+                metadata = _sanitize_metadata(await page.evaluate("""
                     () => {
                         const getMeta = (selectors) => {
                             for (const selector of selectors) {
@@ -85,7 +139,7 @@ async def _extract_page_metadata_with_playwright(url: str) -> Dict[str, Optional
                             favicon_url: faviconUrl
                         };
                     }
-                """)
+                """))
 
                 from urllib.parse import urljoin
 
@@ -97,6 +151,8 @@ async def _extract_page_metadata_with_playwright(url: str) -> Dict[str, Optional
 
                 return metadata
             finally:
+                if 'context' in locals():
+                    await context.close()
                 await browser.close()
     except Exception as e:
         logger.warning(f"Playwright metadata extraction failed for {url}: {str(e)}")
