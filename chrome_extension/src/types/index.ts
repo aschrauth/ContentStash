@@ -16,6 +16,7 @@ export interface SavedItem {
   suggested_topic?: string;
   processing_status: 'pending' | 'processed' | 'failed' | 'pending_local_extraction';
   processing_error?: string;
+  source?: string;
   created_at: string;
   updated_at: string;
 }

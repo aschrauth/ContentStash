@@ -15,6 +15,7 @@ from ..services.metadata import fetch_metadata
 from ..services.ai import generate_metadata_from_content
 from ..services.youtube import is_youtube_url, get_youtube_preview_metadata
 from ..services.extraction import extract_source_from_url
+from ..services.url_resolver import looks_like_intermediary_title, resolve_intermediary_url
 from ..config import settings
 from ..utils.auth import verify_token
 
@@ -148,6 +149,12 @@ async def preview_url(
     try:
         # Convert HttpUrl to string for the metadata service
         url_str = str(request.url)
+        resolution = await resolve_intermediary_url(url_str)
+        if resolution.was_resolved:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Resolved intermediary preview URL: {resolution.original_url} -> {resolution.url}")
+            url_str = resolution.url
         
         # Check if this is a YouTube URL and handle it specially
         if is_youtube_url(url_str):
@@ -256,6 +263,17 @@ async def create_item(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Either URL or title must be provided"
         )
+
+    if item_data.url:
+        original_url = str(item_data.url)
+        resolution = await resolve_intermediary_url(original_url)
+        if resolution.was_resolved:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Resolved intermediary create URL: {resolution.original_url} -> {resolution.url}")
+            item_data.url = resolution.url
+            if looks_like_intermediary_title(item_data.title, original_url):
+                item_data.title = None
     
     # If URL is provided but title is missing, fetch metadata
     if item_data.url and not item_data.title:

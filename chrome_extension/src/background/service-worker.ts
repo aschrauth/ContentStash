@@ -28,6 +28,229 @@ function withJitter(seconds: number): number {
   return Math.max(5, Math.round(seconds * jitter));
 }
 
+function normalizeHost(value: string): string {
+  try {
+    return new URL(value).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function isIntermediaryUrl(value?: string): boolean {
+  if (!value) return false;
+  const host = normalizeHost(value);
+  return host === 'apple.news' ||
+    host.endsWith('.apple.news') ||
+    host === 'flip.it' ||
+    host.endsWith('.flip.it') ||
+    host === 'flipboard.com' ||
+    host.endsWith('.flipboard.com');
+}
+
+function sourceFromUrl(value: string): string {
+  const host = normalizeHost(value);
+  return host || 'Unknown';
+}
+
+async function waitForTabComplete(tabId: number, timeoutMs: number = 30000): Promise<void> {
+  await new Promise<void>((resolve) => {
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+
+    const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+      if (updatedTabId === tabId && changeInfo.status === 'complete') {
+        finish();
+      }
+    };
+
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(finish, timeoutMs);
+  });
+}
+
+async function resolveIntermediaryTab(tabId: number, originalUrl: string): Promise<string> {
+  let currentTab = await chrome.tabs.get(tabId);
+  let currentUrl = currentTab.url || originalUrl;
+
+  if (!isIntermediaryUrl(originalUrl) && !isIntermediaryUrl(currentUrl)) {
+    return currentUrl;
+  }
+
+  if (currentUrl && !isIntermediaryUrl(currentUrl)) {
+    return currentUrl;
+  }
+
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: findIntermediaryTargetInPage,
+    args: [originalUrl],
+  });
+
+  const candidate = results[0]?.result as string | null | undefined;
+  if (!candidate || candidate === currentUrl) {
+    return currentUrl;
+  }
+
+  console.log(`[Intermediary] Resolved ${originalUrl} -> ${candidate}`);
+  await chrome.tabs.update(tabId, { url: candidate });
+  await waitForTabComplete(tabId);
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  currentTab = await chrome.tabs.get(tabId);
+  currentUrl = currentTab.url || candidate;
+  return currentUrl;
+}
+
+function findIntermediaryTargetInPage(originalUrl: string): string | null {
+  const intermediaryDomains = ['apple.news', 'flip.it', 'flipboard.com'];
+  const ignoredDomains = [
+    'apple.com',
+    'itunes.apple.com',
+    'apps.apple.com',
+    'flipboard.com',
+    'flip.it',
+    'facebook.com',
+    'twitter.com',
+    'x.com',
+    'linkedin.com',
+    'pinterest.com',
+  ];
+  const urlParamKeys = new Set([
+    'url',
+    'u',
+    'target',
+    'target_url',
+    'redirect',
+    'redirect_url',
+    'destination',
+    'link',
+    'link_url',
+    'article',
+    'article_url',
+  ]);
+
+  const hostOf = (value: string) => {
+    try {
+      return new URL(value).hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      return '';
+    }
+  };
+
+  const isIntermediary = (value: string) => {
+    const host = hostOf(value);
+    return intermediaryDomains.some(domain => host === domain || host.endsWith(`.${domain}`));
+  };
+
+  const isIgnored = (value: string) => {
+    const host = hostOf(value);
+    return ignoredDomains.some(domain => host === domain || host.endsWith(`.${domain}`));
+  };
+
+  const cleanUrl = (value: string | null | undefined) => {
+    if (!value) return null;
+    try {
+      const normalized = decodeURIComponent(value.replace(/\\\//g, '/').trim().replace(/^['"]|['"]$/g, ''));
+      return new URL(normalized, window.location.href).href;
+    } catch {
+      return null;
+    }
+  };
+
+  const isCandidate = (value: string | null) => {
+    if (!value) return false;
+    if (value.replace(/\/$/, '') === originalUrl.replace(/\/$/, '')) return false;
+    if (!/^https?:\/\//i.test(value)) return false;
+    if (isIntermediary(value)) return false;
+    if (isIgnored(value)) return false;
+    if (/\.(css|js|png|jpe?g|gif|svg|ico)$/i.test(new URL(value).pathname)) return false;
+    return true;
+  };
+
+  const queryCandidate = (value: string) => {
+    try {
+      const parsed = new URL(value);
+      for (const [key, paramValue] of parsed.searchParams.entries()) {
+        if (!urlParamKeys.has(key.toLowerCase())) continue;
+        const candidate = cleanUrl(paramValue);
+        if (isCandidate(candidate)) return candidate;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  const fromQuery = queryCandidate(window.location.href);
+  if (fromQuery) return fromQuery;
+
+  const refresh = document.querySelector('meta[http-equiv="refresh" i]')?.getAttribute('content') || '';
+  const refreshMatch = refresh.match(/url\s*=\s*([^;]+)/i);
+  if (refreshMatch) {
+    const candidate = cleanUrl(refreshMatch[1]);
+    if (isCandidate(candidate)) return candidate;
+  }
+
+  const metadataSelectors = [
+    'meta[property="og:url"]',
+    'meta[name="twitter:url"]',
+    'link[rel="canonical"]',
+    'link[rel="amphtml"]',
+  ];
+  for (const selector of metadataSelectors) {
+    const element = document.querySelector(selector);
+    const candidate = cleanUrl(element?.getAttribute('content') || element?.getAttribute('href'));
+    if (isCandidate(candidate)) return candidate;
+  }
+
+  const linkText = /\b(click|tap|open|read|continue|view|source|original|story|article)\b/i;
+  const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))
+    .map(anchor => {
+      const candidate = cleanUrl(anchor.getAttribute('href'));
+      if (!isCandidate(candidate)) return null;
+      const text = (anchor.innerText || anchor.textContent || '').trim();
+      let score = 0;
+      if (linkText.test(text)) score += 100;
+      try {
+        const pathDepth = new URL(candidate!).pathname.split('/').filter(Boolean).length;
+        score += Math.min(pathDepth * 10, 30);
+      } catch {
+        // keep score as-is
+      }
+      if (text.length > 25) score += 5;
+      return { candidate, score };
+    })
+    .filter((entry): entry is { candidate: string; score: number } => Boolean(entry))
+    .sort((a, b) => b.score - a.score);
+
+  if (anchors[0]?.candidate) {
+    return anchors[0].candidate;
+  }
+
+  const scriptKeyPattern = /(?:originalUrl|original_url|sourceUrl|sourceURL|source_url|articleUrl|article_url|canonicalUrl|canonical_url|targetUrl|target_url|externalUrl|external_url|redirectUrl|redirect_url)["']?\s*[:=]\s*["']([^"']+)/ig;
+  const genericUrlPattern = /https?:\\?\/\\?\/[^"'<>\s)]+/ig;
+  const scripts = Array.from(document.querySelectorAll('script'));
+  for (const script of scripts) {
+    const text = script.textContent || '';
+    for (const match of text.matchAll(scriptKeyPattern)) {
+      const candidate = cleanUrl(match[1]);
+      if (isCandidate(candidate)) return candidate;
+    }
+    for (const match of text.matchAll(genericUrlPattern)) {
+      const candidate = cleanUrl(match[0]);
+      if (isCandidate(candidate)) return candidate;
+    }
+  }
+
+  return null;
+}
+
 async function scheduleNextPoll(seconds: number) {
   const nextSeconds = withJitter(seconds);
   await chrome.alarms.clear(POLL_ALARM);
@@ -213,7 +436,7 @@ async function processGenericItem(item: SavedItem) {
     console.log(`[Generic] Processing page: ${item.url}`);
 
     // Check if metadata is missing (title looks like a URL)
-    const needsMetadata = !item.title ||
+    let needsMetadata = !item.title ||
       item.title.startsWith('http://') ||
       item.title.startsWith('https://') ||
       !item.description ||
@@ -231,24 +454,36 @@ async function processGenericItem(item: SavedItem) {
     });
 
     // Wait for the tab to load
-    await new Promise<void>((resolve) => {
-      const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-        if (tabId === tab!.id && changeInfo.status === 'complete') {
-          chrome.tabs.onUpdated.removeListener(listener);
-          resolve();
-        }
-      };
-      chrome.tabs.onUpdated.addListener(listener);
-
-      // Timeout after 30 seconds
-      setTimeout(() => {
-        chrome.tabs.onUpdated.removeListener(listener);
-        resolve();
-      }, 30000);
-    });
+    await waitForTabComplete(tab.id!);
 
     // Wait a bit more for dynamic content
     await new Promise(resolve => setTimeout(resolve, 3000));
+
+    const originalUrl = item.url!;
+    const resolvedUrl = await resolveIntermediaryTab(tab.id!, originalUrl);
+    if (resolvedUrl !== originalUrl) {
+      console.log(`[Generic] Updating item ${item.id} URL after intermediary resolution: ${resolvedUrl}`);
+      item = { ...item, url: resolvedUrl };
+      needsMetadata = true;
+      try {
+        await api.updateItemMetadata(item.id, {
+          url: resolvedUrl,
+          source: sourceFromUrl(resolvedUrl),
+        });
+      } catch (urlUpdateError) {
+        console.warn(`[Generic] Failed to update resolved URL for item ${item.id}:`, urlUpdateError);
+      }
+    }
+
+    if (isYouTubeUrl(item.url!)) {
+      console.log(`[Generic] Resolved intermediary URL is YouTube; switching to YouTube extraction for item ${item.id}`);
+      if (tab?.id) {
+        await chrome.tabs.remove(tab.id);
+        tab = undefined;
+      }
+      await processYouTubeItem(item);
+      return;
+    }
 
     // Extract metadata if needed
     if (needsMetadata) {

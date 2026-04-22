@@ -7,6 +7,118 @@ import './popup.css';
 
 const api = new ContentStashAPI();
 
+function isIntermediaryUrl(value?: string): boolean {
+  if (!value) return false;
+  try {
+    const host = new URL(value).hostname.toLowerCase().replace(/^www\./, '');
+    return host === 'apple.news' ||
+      host.endsWith('.apple.news') ||
+      host === 'flip.it' ||
+      host.endsWith('.flip.it') ||
+      host === 'flipboard.com' ||
+      host.endsWith('.flipboard.com');
+  } catch {
+    return false;
+  }
+}
+
+function looksLikeIntermediaryTitle(value?: string): boolean {
+  const normalized = (value || '').trim().toLowerCase();
+  return !normalized ||
+    normalized.includes('opening story') ||
+    normalized.includes('apple news') ||
+    normalized.includes('flipboard');
+}
+
+async function resolveActiveIntermediaryTarget(tabId: number, originalUrl: string): Promise<string | null> {
+  if (!isIntermediaryUrl(originalUrl)) {
+    return null;
+  }
+
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const ignoredDomains = [
+        'apple.com',
+        'itunes.apple.com',
+        'apps.apple.com',
+        'flipboard.com',
+        'flip.it',
+        'facebook.com',
+        'twitter.com',
+        'x.com',
+        'linkedin.com',
+        'pinterest.com',
+      ];
+
+      const hostOf = (value: string) => {
+        try {
+          return new URL(value).hostname.toLowerCase().replace(/^www\./, '');
+        } catch {
+          return '';
+        }
+      };
+
+      const isIgnored = (value: string) => {
+        const host = hostOf(value);
+        return ignoredDomains.some(domain => host === domain || host.endsWith(`.${domain}`));
+      };
+
+      const cleanUrl = (value: string | null | undefined) => {
+        if (!value) return null;
+        try {
+          return new URL(decodeURIComponent(value.replace(/\\\//g, '/').trim()), window.location.href).href;
+        } catch {
+          return null;
+        }
+      };
+
+      const isCandidate = (value: string | null) => {
+        if (!value || !/^https?:\/\//i.test(value)) return false;
+        if (isIgnored(value)) return false;
+        if (/\.(css|js|png|jpe?g|gif|svg|ico)$/i.test(new URL(value).pathname)) return false;
+        return true;
+      };
+
+      const refresh = document.querySelector('meta[http-equiv="refresh" i]')?.getAttribute('content') || '';
+      const refreshMatch = refresh.match(/url\s*=\s*([^;]+)/i);
+      if (refreshMatch) {
+        const candidate = cleanUrl(refreshMatch[1]);
+        if (isCandidate(candidate)) return candidate;
+      }
+
+      const selectors = [
+        'meta[property="og:url"]',
+        'meta[name="twitter:url"]',
+        'link[rel="canonical"]',
+        'link[rel="amphtml"]',
+      ];
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        const candidate = cleanUrl(element?.getAttribute('content') || element?.getAttribute('href'));
+        if (isCandidate(candidate)) return candidate;
+      }
+
+      const linkText = /\b(click|tap|open|read|continue|view|source|original|story|article)\b/i;
+      const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))
+        .map(anchor => {
+          const candidate = cleanUrl(anchor.getAttribute('href'));
+          if (!isCandidate(candidate)) return null;
+          const text = (anchor.innerText || anchor.textContent || '').trim();
+          let score = linkText.test(text) ? 100 : 0;
+          score += Math.min(new URL(candidate!).pathname.split('/').filter(Boolean).length * 10, 30);
+          return { candidate, score };
+        })
+        .filter((entry): entry is { candidate: string; score: number } => Boolean(entry))
+        .sort((a, b) => b.score - a.score);
+
+      return anchors[0]?.candidate || null;
+    },
+  });
+
+  return (results[0]?.result as string | null | undefined) || null;
+}
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -157,6 +269,27 @@ function App() {
       // For local extraction, extract content immediately
       if (extractionType === 'local') {
         setMessage('Extracting content...');
+
+        const isIntermediaryPage = isIntermediaryUrl(tab.url);
+        const resolvedIntermediaryUrl = await resolveActiveIntermediaryTarget(tab.id, tab.url);
+        if (isIntermediaryPage) {
+          const urlForQueuedExtraction = resolvedIntermediaryUrl || tab.url;
+          const item = await api.createItem({
+            url: urlForQueuedExtraction,
+            title: looksLikeIntermediaryTitle(tab.title) ? urlForQueuedExtraction : tab.title,
+            extraction_type: 'local',
+          });
+
+          if (item.id) {
+            await chrome.runtime.sendMessage({ type: 'PROCESS_PENDING_NOW' });
+          }
+
+          setMessage('✓ Saved with local extraction!');
+          setTimeout(() => {
+            window.close();
+          }, popupCloseDelay);
+          return;
+        }
 
         // Extract metadata using executeScript
         const metadataResults = await chrome.scripting.executeScript({

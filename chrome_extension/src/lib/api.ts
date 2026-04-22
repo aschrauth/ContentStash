@@ -97,9 +97,12 @@ export class ContentStashAPI {
   }
 
   async updateItemMetadata(itemId: string, metadata: {
+    url?: string;
     title?: string;
     description?: string;
     image_url?: string;
+    favicon_url?: string;
+    source?: string;
   }): Promise<SavedItem> {
     return this.request<SavedItem>(`/api/v1/items/${itemId}`, {
       method: 'PATCH',

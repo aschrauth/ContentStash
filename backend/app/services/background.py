@@ -12,6 +12,7 @@ from app.database import get_database, get_item_chunks_collection
 from app.services.metadata import fetch_metadata
 from app.services.extraction import extract_content, extract_content_with_metadata, extract_source_from_url
 from app.services.exceptions import ExtractionBlockError
+from app.services.url_resolver import looks_like_intermediary_title, resolve_intermediary_url
 from app.services.ai import generate_tags_and_topic
 from app.services.chunking import chunk_text
 from app.services.gemini import (
@@ -394,6 +395,36 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
         url = item_doc.get("url")
         archived_text = item_doc.get("archived_text")
         extraction_type = item_doc.get("extraction_type", "fast")
+
+        if url:
+            resolution = await resolve_intermediary_url(url)
+            if resolution.was_resolved:
+                logger.info(
+                    f"Resolved intermediary URL for item {item_id}: "
+                    f"{resolution.original_url} -> {resolution.url}"
+                )
+                url_update = {
+                    "url": resolution.url,
+                    "updated_at": datetime.utcnow()
+                }
+
+                existing_source = item_doc.get("source")
+                original_source = extract_source_from_url(resolution.original_url)
+                if not existing_source or existing_source == original_source:
+                    url_update["source"] = extract_source_from_url(resolution.url)
+                    item_doc["source"] = url_update["source"]
+
+                if looks_like_intermediary_title(item_doc.get("title"), resolution.original_url):
+                    url_update["title"] = None
+                    item_doc["title"] = None
+
+                await db.saved_items.update_one(
+                    {"_id": ObjectId(item_id)},
+                    {"$set": url_update}
+                )
+
+                url = resolution.url
+                item_doc["url"] = resolution.url
         
         # Check if it's a YouTube URL
         is_youtube = is_youtube_url(url) if url else False
@@ -460,7 +491,8 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
                     'description': metadata_result.get('description'),
                     'image_url': metadata_result.get('image_url'),
                     'favicon_url': metadata_result.get('favicon_url'),
-                    'source': metadata_result.get('source')
+                    'source': metadata_result.get('source'),
+                    'url': metadata_result.get('url')
                 }
                 # If we got content from metadata extraction, use it
                 if metadata_result.get('text') and not archived_text:
@@ -801,9 +833,24 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
             if not item_doc.get("favicon_url") and metadata.get("favicon_url"):
                 update_doc["favicon_url"] = metadata["favicon_url"]
             
-            if not item_doc.get("source") and metadata.get("source"):
-                logger.info(f"📋 [SOURCE] Setting source from metadata for item {item_id}: '{metadata.get('source')}'")
-                update_doc["source"] = metadata["source"]
+            if metadata.get("source"):
+                current_source = item_doc.get("source")
+                metadata_source = metadata["source"]
+                should_use_metadata_source = (
+                    not current_source or
+                    (
+                        metadata_source.startswith("YouTube |") and
+                        current_source in {"youtube.com", "YouTube"}
+                    )
+                )
+
+                if should_use_metadata_source:
+                    logger.info(f"📋 [SOURCE] Setting source from metadata for item {item_id}: '{metadata_source}'")
+                    update_doc["source"] = metadata_source
+
+            if metadata.get("url") and metadata["url"] != item_doc.get("url"):
+                logger.info(f"📋 [URL] Updating item URL from resolved metadata for item {item_id}: {metadata['url']}")
+                update_doc["url"] = metadata["url"]
         
         # If source is still not set and we have a URL, extract it
         # CRITICAL: Check update_doc first - if we just set source from metadata, don't overwrite it!
