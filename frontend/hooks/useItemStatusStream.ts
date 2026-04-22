@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { API_BASE_URL } from '@/lib/api';
+import { isJwtExpired } from '@/lib/authToken';
 import { useStore } from '@/lib/store';
 
 interface UseItemStatusStreamOptions {
@@ -22,12 +23,30 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
   }, [onItemsUpdated]);
 
   useEffect(() => {
-    const token = useStore.getState().token || localStorage.getItem('token');
+    const getActiveToken = () => useStore.getState().token || localStorage.getItem('token');
+    const token = getActiveToken();
     if (!token) return;
+    if (isJwtExpired(token)) {
+      useStore.getState().clearSession();
+      return;
+    }
 
     let lastPendingCount = -1;
 
     const connect = () => {
+      const activeToken = getActiveToken();
+
+      if (!activeToken) {
+        cleanup();
+        return;
+      }
+
+      if (isJwtExpired(activeToken)) {
+        useStore.getState().clearSession();
+        cleanup();
+        return;
+      }
+
       // Clean up any existing connection and timeouts
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -51,7 +70,7 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
       lastActivityRef.current = Date.now();
 
       const eventSource = new EventSource(
-        `${API_BASE_URL}/items/status-stream?token=${encodeURIComponent(token)}`
+        `${API_BASE_URL}/items/status-stream?token=${encodeURIComponent(activeToken)}`
       );
 
       eventSourceRef.current = eventSource;
@@ -84,8 +103,13 @@ export function useItemStatusStream(options: UseItemStatusStreamOptions = {}) {
       eventSource.onerror = (error) => {
         console.warn('SSE: Connection interrupted or failed. Attempting to reconnect...', error);
         // If auth has been cleared, stop reconnecting.
-        const currentToken = useStore.getState().token || localStorage.getItem('token');
+        const currentToken = getActiveToken();
         if (!currentToken) {
+          cleanup();
+          return;
+        }
+        if (isJwtExpired(currentToken)) {
+          useStore.getState().clearSession();
           cleanup();
           return;
         }

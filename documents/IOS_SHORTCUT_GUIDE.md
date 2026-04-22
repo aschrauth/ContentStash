@@ -246,10 +246,122 @@ The body should effectively mean:
 1. Tap `Add Action`.
 2. Search for `Get Dictionary from Input`.
 3. Add it right after the login request.
+4. Add `Set Variable`.
+5. Name the variable:
+
+`LoginResponse`
 
 This makes it easier for Shortcuts to read values out of the login response.
 
-### Step 6E: Save The Login Response
+### Step 6E: Confirm Login Worked
+
+This step checks whether the login response contains a usable token.
+
+The login endpoint returns a dictionary. On success, that dictionary has a `token` field. On failure, it has a `detail` field with a readable error message.
+
+Success response shape:
+
+```json
+{
+  "token": "eyJ...",
+  "user": {
+    "email": "you@example.com"
+  }
+}
+```
+
+Failure response shape:
+
+```json
+{
+  "ok": false,
+  "code": "INVALID_CREDENTIALS",
+  "detail": "That email or password was not accepted. Please try signing in again."
+}
+```
+
+#### Step 6E-1: Get The Token From The Login Response
+
+1. Add `Get Dictionary Value`.
+2. Set the key to:
+
+`token`
+
+3. Make sure the dictionary source is the `LoginResponse` variable from Step 6D.
+4. Add `Set Variable`.
+5. Name the variable:
+
+`LoginToken`
+
+#### Step 6E-2: Add The If Check
+
+1. Add an `If` action below the `LoginToken` variable.
+2. Set the condition to check whether `LoginToken` has any value.
+
+Depending on your iOS version, this may look like one of these:
+
+- `If LoginToken has any value`
+- `If LoginToken is not empty`
+- `If LoginToken is not [blank]`
+
+The goal is simple:
+
+- if `LoginToken` exists, login worked
+- if `LoginToken` is blank, login failed
+
+#### Step 6E-3: In The Failure Branch, Get The Error Message
+
+Inside the branch where `LoginToken` is blank:
+
+1. Add `Get Dictionary Value`.
+2. Set the key to:
+
+`detail`
+
+3. Make sure the dictionary source is still `LoginResponse`.
+4. Add `Set Variable`.
+5. Name the variable:
+
+`LoginError`
+
+Yes, `detail` comes from the same dictionary as `token`. A successful login response has `token`; a failed login response has `detail`.
+
+#### Step 6E-4: Show The Error To The User
+
+Still inside the failure branch:
+
+1. Add `Show Notification` or `Show Alert`.
+2. Set the title to:
+
+`ContentStash Sign-In Failed`
+
+3. Set the body or message to the `LoginError` variable.
+
+If Shortcuts will not let you use the variable in the notification body, use plain text instead:
+
+`Sign-in failed. Please check your email and password, then try again.`
+
+#### Step 6E-5: Ask For Email And Password Again
+
+Still inside the failure branch, repeat the sign-in actions from Step 6A through Step 6E:
+
+1. Add `Ask for Input` with the prompt `Email`.
+2. Add `Ask for Input` with the prompt `Password`.
+3. Add `Get Contents of URL` for `[BaseURL]/api/shortcut/login`.
+4. Add `Get Dictionary from Input`.
+5. Set that dictionary as `LoginResponse`.
+6. Get `token` from `LoginResponse`.
+7. If `token` is still blank, show the `detail` message again and stop the shortcut.
+
+Stopping after the second failed attempt avoids trapping the user in an endless loop.
+
+#### Step 6E-6: In The Success Branch, Continue
+
+Inside the branch where `LoginToken` has a value, do nothing extra. Let the shortcut continue to Step 6F.
+
+This matters because failed sign-in attempts return readable JSON instead of stopping the shortcut.
+
+### Step 6F: Save The Login Response
 
 1. Tap `Add Action`.
 2. Search for `Save File`.
@@ -375,7 +487,102 @@ Inside the `Local (Browser)` branch:
    - `url` = the `URL` variable
    - `extraction_type` = `local`
 
-## Part 10: Show A Success Message
+## Part 10: Handle Expired Sign-In Before Showing Success
+
+The save endpoint is designed for Shortcuts. If the saved token is expired or no longer valid, it returns a normal JSON response that Shortcuts can read instead of stopping the workflow on a network error.
+
+After each save request:
+
+1. Add `Get Dictionary from Input`.
+2. Add `Set Variable`.
+3. Name the variable:
+
+`SaveResponse`
+
+4. Add `Get Dictionary Value`.
+5. Set the key to:
+
+`auth_required`
+
+6. Make sure the dictionary source is `SaveResponse`.
+7. Add `Set Variable`.
+8. Name the variable:
+
+`AuthRequired`
+
+9. Add an `If` action.
+10. Set the condition to check whether `AuthRequired` is true.
+
+### Step 10A: If `AuthRequired` Is True, Delete The Saved Auth File
+
+Inside the true branch of the `If` action:
+
+1. Add `Get File`.
+2. Set the path to:
+
+`Shortcuts/ContentStashAuth.json`
+
+3. If iOS shows an option like `Error If Not Found`, turn it off.
+4. Add `Delete File`.
+5. Make sure it deletes the file returned by the `Get File` action.
+6. If iOS shows an option like `Delete Immediately` or asks whether to confirm deletion, choose the option that does not interrupt the shortcut every time.
+
+This deletion is important. If the shortcut keeps `ContentStashAuth.json`, the next run will reuse the same expired token and hit the same auth-required response again.
+
+### Step 10B: Show The Expired Sign-In Message
+
+Still inside the true branch:
+
+1. Add `Get Dictionary Value`.
+2. Set the key to:
+
+`detail`
+
+3. Make sure the dictionary source is `SaveResponse`.
+4. Add `Set Variable`.
+5. Name the variable:
+
+`SaveError`
+
+6. Add `Show Notification` or `Show Alert`.
+7. Set the title to:
+
+`ContentStash Sign-In Expired`
+
+8. Set the body or message to the `SaveError` variable.
+
+If Shortcuts will not let you use the variable in the notification body, use plain text instead:
+
+`Your ContentStash sign-in expired. Please sign in again.`
+
+### Step 10C: Sign In Again And Retry Once
+
+Still inside the true branch:
+
+1. Run the sign-in actions from Step 6A through Step 6F again.
+2. Get the new `token` value from the new saved login response.
+3. Set the `Token` variable to that new token.
+4. Retry the same save request once with `Authorization` set to `Bearer [Token]`.
+5. Do not retry more than once. If the second save still returns `auth_required`, show the error and stop the shortcut.
+
+### Step 10D: If `AuthRequired` Is Not True, Continue
+
+Inside the false branch of the `If` action, do nothing extra. Let the shortcut continue to the success message.
+
+The save response may also include `requires_login`. It means the same thing as `auth_required`, so use whichever key is easier to select in your Shortcuts editor.
+
+The JSON looks like this when sign-in is needed:
+
+```json
+{
+  "ok": false,
+  "auth_required": true,
+  "requires_login": true,
+  "detail": "Your ContentStash sign-in expired. Please sign in again to continue saving."
+}
+```
+
+## Part 11: Show A Success Message
 
 After the menu finishes, add a simple confirmation message.
 
@@ -391,7 +598,7 @@ After the menu finishes, add a simple confirmation message.
 
 This gives the user quick feedback that the shortcut ran.
 
-## Part 11: Test The Shortcut
+## Part 12: Test The Shortcut
 
 Now test it from Safari.
 
@@ -416,7 +623,7 @@ After the first successful login:
 
 ## What To Do If Sign-In Stops Working Later
 
-Tokens can expire eventually. If that happens, the shortcut may stop saving and return an authorization error.
+Tokens can expire eventually. If that happens, the shortcut should receive a response where `auth_required` is true.
 
 The easiest fix is:
 
@@ -424,9 +631,9 @@ The easiest fix is:
 2. run the shortcut again
 3. sign in again when prompted
 
-If you want to make the shortcut even smoother, you can add a recovery branch that:
+For the smoothest shortcut, keep the recovery branch from Part 10 in place. It should:
 
-1. detects a `401 Unauthorized` response
+1. detect `auth_required`
 2. clears the saved auth file
 3. asks the user to sign in again
 4. retries the save once

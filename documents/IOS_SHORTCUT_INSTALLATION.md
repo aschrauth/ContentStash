@@ -194,7 +194,9 @@ Check these first:
 
 This usually means the saved token expired or the saved auth file should be refreshed.
 
-The easiest fix:
+The save endpoint returns `auth_required: true` when this happens. A complete shortcut should clear the saved auth file, ask the user to sign in again, and retry the save once.
+
+The manual fix:
 
 1. delete `Shortcuts/ContentStashAuth.json`
 2. run the shortcut again

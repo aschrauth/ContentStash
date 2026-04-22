@@ -4,6 +4,29 @@ import { getServerApiUrl } from '@/lib/server-api';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+function shortcutAuthRequiredResponse(detail: string, backendStatus = 401) {
+  return NextResponse.json(
+    {
+      ok: false,
+      success: false,
+      code: 'AUTH_REQUIRED',
+      auth_required: true,
+      requires_login: true,
+      retryable: true,
+      backend_status: backendStatus,
+      detail,
+    },
+    {
+      // Shortcuts' "Get Contents of URL" can stop the workflow on non-2xx
+      // responses before the shortcut can inspect the JSON body and re-login.
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    }
+  );
+}
+
 export async function POST(request: NextRequest) {
   const authorization = request.headers.get('authorization');
 
@@ -34,6 +57,13 @@ export async function POST(request: NextRequest) {
 
     const responseBody = await response.text();
     const contentType = response.headers.get('content-type') || 'application/json';
+
+    if (response.status === 401 || response.status === 403) {
+      return shortcutAuthRequiredResponse(
+        'Your ContentStash sign-in expired. Please sign in again to continue saving.',
+        response.status
+      );
+    }
 
     return new NextResponse(responseBody, {
       status: response.status,

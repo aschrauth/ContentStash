@@ -103,7 +103,7 @@ export default async function IOSShortcutPage() {
             <li>2. On first run, ask for email and password.</li>
             <li>3. POST those credentials to the login endpoint and save the returned token.</li>
             <li>4. POST shared URLs to the save endpoint with `Authorization: Bearer &lt;token&gt;`.</li>
-            <li>5. If save returns `401`, clear the stored token, re-run login, and retry once.</li>
+            <li>5. If save returns `auth_required`, clear the stored token, re-run login, and retry once.</li>
           </ol>
         </section>
 

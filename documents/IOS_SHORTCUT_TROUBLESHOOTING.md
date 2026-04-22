@@ -4,28 +4,36 @@
 
 Based on the server logs, here are the issues you're encountering and how to fix them:
 
-### Issue 1: 401 Unauthorized Error
+### Issue 1: Expired Sign-In Or 401 Unauthorized Error
 
 **Symptom:** Server logs show:
 ```
 INFO: 10.51.1.29:53468 - "POST /api/v1/items HTTP/1.1" 401 Unauthorized
 ```
 
-**Cause:** Your JWT token is either:
+**Cause:** Your shortcut sign-in token is either:
 - Expired (tokens expire after 7 days by default)
 - Incorrect (missing "Bearer " prefix or wrong token)
 - From a different user/session
 
-**Fix:**
-1. Get a fresh token from the web app:
-   - Open ContentStash in your browser
-   - Press F12 → Application tab → Local Storage
-   - Copy the `token` value (starts with `eyJ...`)
-2. In your iOS Shortcut:
-   - Edit the shortcut
-   - Find ALL THREE "Get Contents of URL" actions
-   - Update the Authorization header to: `Bearer YOUR_NEW_TOKEN`
-   - Make sure there's a space after "Bearer"
+**Fix for the current shortcut flow:**
+1. Delete `Shortcuts/ContentStashAuth.json`.
+2. Run the shortcut again.
+3. Sign in with your ContentStash email and password when prompted.
+
+**Best fix inside the shortcut:**
+After the save request, read the response as a dictionary and check `auth_required`. If it is true, delete `Shortcuts/ContentStashAuth.json`, ask the user to sign in again, and retry the save once.
+
+The shortcut save proxy returns this kind of response when sign-in is needed:
+
+```json
+{
+  "ok": false,
+  "auth_required": true,
+  "requires_login": true,
+  "detail": "Your ContentStash sign-in expired. Please sign in again to continue saving."
+}
+```
 
 ### Issue 2: 422 Validation Error - Smart Quotes
 
@@ -113,6 +121,7 @@ Before running the shortcut, verify:
 
 - [ ] JWT token is fresh (less than 7 days old)
 - [ ] Authorization header has "Bearer " prefix with space
+- [ ] Save response is checked for `auth_required`
 - [ ] Server URL is correct and accessible from your phone
 - [ ] Phone is on same network as server (if using local IP)
 - [ ] JSON has all 3 fields: url, title, extraction_type

@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { API_ENDPOINTS } from '@/lib/api';
+import { isJwtExpired } from '@/lib/authToken';
 
 export function useAuth(requireAuth = true) {
   const router = useRouter();
@@ -37,6 +38,11 @@ export function useAuth(requireAuth = true) {
       // If we have a token, we should validate it / fetch fresh user data
       // This happens even if currentUser is already populated from cache (background update)
       if (storedToken) {
+        if (isJwtExpired(storedToken)) {
+          useStore.getState().clearSession();
+          return;
+        }
+
         try {
           // Always validate the stored token, even if currentUser is restored from cache.
           // Otherwise an expired token can linger and cause 401 spam across the app.

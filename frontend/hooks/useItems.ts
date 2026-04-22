@@ -1,7 +1,7 @@
 'use client';
 
-import { InfiniteData, useInfiniteQuery, useQueryClient, UseInfiniteQueryResult } from '@tanstack/react-query';
-import { getItems, normalizeSavedItem, PaginatedResponse, RawSavedItem } from '@/lib/api';
+import { InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { getItems, normalizeSavedItem, PaginatedResponse, PaginationMetadata, RawSavedItem } from '@/lib/api';
 import { SavedItem } from '@/lib/store';
 import { useStore } from '@/lib/store';
 
@@ -17,7 +17,7 @@ type ItemsInfiniteData = InfiniteData<PaginatedResponse<SavedItem>, string | und
  * Hook to fetch items with React Query's useInfiniteQuery for proper infinite scroll
  * This automatically handles pagination, caching, and state persistence across navigation
  */
-export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<PaginatedResponse<SavedItem>, Error> {
+export function useItems(options: UseItemsOptions = {}) {
   const token = useStore((state) => state.token);
   const userId = useStore((state) => state.currentUser?.id);
   const { search, tags, enabled = true } = options;
@@ -33,7 +33,7 @@ export function useItems(options: UseItemsOptions = {}): UseInfiniteQueryResult<
 
       // Handle both old format (array) and new format (object with pagination)
       let itemsData: RawSavedItem[];
-      let pagination: { next_cursor: string | null; has_more: boolean; limit: number; total: number };
+      let pagination: PaginationMetadata;
 
       if (Array.isArray(response)) {
         // Old format - backward compatibility
