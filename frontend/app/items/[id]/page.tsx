@@ -834,7 +834,7 @@ export default function ItemDetailPage() {
                   </select>
                   <p className="text-xs text-slate-500 mt-2">
                     {item.extractionType === 'local'
-                      ? 'Local extraction requires the Chrome extension to process content'
+                      ? 'Local extraction requires the Chrome extension to be running on a desktop computer to process content'
                       : 'Changing this will automatically reprocess the content'}
                   </p>
                 </div>
