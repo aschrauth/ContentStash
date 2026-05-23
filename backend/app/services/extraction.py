@@ -14,8 +14,13 @@ from .exceptions import ExtractionBlockError
 from .metadata import fetch_metadata
 from .url_resolver import resolve_intermediary_url
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
-import asyncio
 from ..config import settings
+from .playwright_runtime import (
+    LOW_MEMORY_CHROMIUM_ARGS,
+    abort_heavy_resources,
+    get_playwright_semaphore,
+    playwright_is_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,78 +88,94 @@ async def _extract_page_metadata_with_playwright(url: str) -> Dict[str, Optional
     Extract title/description/image/favicon from rendered DOM using Playwright.
     Useful when requests-based metadata fetching is blocked by anti-bot protections.
     """
+    if not playwright_is_enabled():
+        logger.info(f"Skipping Playwright metadata extraction because server Playwright is disabled for {url}")
+        return {
+            "title": None,
+            "description": None,
+            "image_url": None,
+            "favicon_url": None
+        }
+
+    browser = None
+    context = None
+
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=['--no-sandbox', '--disable-dev-shm-usage']
-            )
-
-            try:
-                context = await browser.new_context(
-                    user_agent=PLAYWRIGHT_USER_AGENT,
-                    locale="en-US",
-                    viewport={"width": 1440, "height": 900},
+        async with get_playwright_semaphore():
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=LOW_MEMORY_CHROMIUM_ARGS
                 )
-                page = await context.new_page()
-                await page.set_extra_http_headers({
-                    "Accept-Language": "en-US,en;q=0.9",
-                })
-                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-                await page.wait_for_timeout(2000)
 
-                metadata = _sanitize_metadata(await page.evaluate("""
-                    () => {
-                        const getMeta = (selectors) => {
-                            for (const selector of selectors) {
-                                const el = document.querySelector(selector);
-                                const value = el?.getAttribute('content');
-                                if (value && value.trim()) return value.trim();
+                try:
+                    context = await browser.new_context(
+                        user_agent=PLAYWRIGHT_USER_AGENT,
+                        locale="en-US",
+                        viewport={"width": 1024, "height": 768},
+                        java_script_enabled=True,
+                    )
+                    await context.route("**/*", abort_heavy_resources)
+                    page = await context.new_page()
+                    await page.set_extra_http_headers({
+                        "Accept-Language": "en-US,en;q=0.9",
+                    })
+                    await page.goto(url, wait_until='domcontentloaded', timeout=20000)
+                    await page.wait_for_timeout(750)
+
+                    metadata = _sanitize_metadata(await page.evaluate("""
+                        () => {
+                            const getMeta = (selectors) => {
+                                for (const selector of selectors) {
+                                    const el = document.querySelector(selector);
+                                    const value = el?.getAttribute('content');
+                                    if (value && value.trim()) return value.trim();
+                                }
+                                return null;
+                            };
+
+                            const getFavicon = () => {
+                                const rels = ['icon', 'shortcut icon', 'apple-touch-icon'];
+                                for (const rel of rels) {
+                                    const el = document.querySelector(`link[rel*="${rel}"]`);
+                                    const href = el?.getAttribute('href');
+                                    if (href && href.trim()) return href.trim();
+                                }
+                                return null;
+                            };
+
+                            const title = getMeta(['meta[property="og:title"]', 'meta[name="twitter:title"]']) || document.title || null;
+                            const description = getMeta([
+                                'meta[property="og:description"]',
+                                'meta[name="twitter:description"]',
+                                'meta[name="description"]'
+                            ]);
+                            const imageUrl = getMeta(['meta[property="og:image"]', 'meta[name="twitter:image"]']);
+                            const faviconUrl = getFavicon();
+
+                            return {
+                                title,
+                                description,
+                                image_url: imageUrl,
+                                favicon_url: faviconUrl
                             }
-                            return null;
                         };
+                    """))
 
-                        const getFavicon = () => {
-                            const rels = ['icon', 'shortcut icon', 'apple-touch-icon'];
-                            for (const rel of rels) {
-                                const el = document.querySelector(`link[rel*="${rel}"]`);
-                                const href = el?.getAttribute('href');
-                                if (href && href.trim()) return href.trim();
-                            }
-                            return null;
-                        };
+                    from urllib.parse import urljoin
 
-                        const title = getMeta(['meta[property="og:title"]', 'meta[name="twitter:title"]']) || document.title || null;
-                        const description = getMeta([
-                            'meta[property="og:description"]',
-                            'meta[name="twitter:description"]',
-                            'meta[name="description"]'
-                        ]);
-                        const imageUrl = getMeta(['meta[property="og:image"]', 'meta[name="twitter:image"]']);
-                        const faviconUrl = getFavicon();
+                    base_url = page.url or url
+                    for key in ("image_url", "favicon_url"):
+                        value = metadata.get(key)
+                        if value:
+                            metadata[key] = urljoin(base_url, value)
 
-                        return {
-                            title,
-                            description,
-                            image_url: imageUrl,
-                            favicon_url: faviconUrl
-                        };
-                    }
-                """))
-
-                from urllib.parse import urljoin
-
-                base_url = page.url or url
-                for key in ("image_url", "favicon_url"):
-                    value = metadata.get(key)
-                    if value:
-                        metadata[key] = urljoin(base_url, value)
-
-                return metadata
-            finally:
-                if 'context' in locals():
-                    await context.close()
-                await browser.close()
+                    return metadata
+                finally:
+                    if context:
+                        await context.close()
+                    if browser:
+                        await browser.close()
     except Exception as e:
         logger.warning(f"Playwright metadata extraction failed for {url}: {str(e)}")
         return {
@@ -209,6 +230,46 @@ def extract_source_from_url(url: str) -> str:
     except Exception as e:
         logger.warning(f"Failed to extract source from URL {url}: {str(e)}")
         return "Unknown"
+
+
+async def extract_metadata_only(url: str) -> dict:
+    """
+    Fetch page metadata without doing full content extraction.
+
+    This keeps the common save path light on memory: metadata uses requests first,
+    and rendered-DOM metadata is opt-in because it launches Chromium.
+    """
+    resolution = await resolve_intermediary_url(url)
+    original_url = url
+    if resolution.was_resolved:
+        logger.info(
+            f"Resolved intermediary URL before metadata-only extraction: "
+            f"{resolution.original_url} -> {resolution.url}"
+        )
+        url = resolution.url
+
+    page_metadata = fetch_metadata(url)
+    if (
+        settings.playwright_metadata_fallback_enabled
+        and (
+            not page_metadata.get("title")
+            or not page_metadata.get("description")
+            or not page_metadata.get("image_url")
+        )
+    ):
+        playwright_metadata = await _extract_page_metadata_with_playwright(url)
+        page_metadata = _merge_metadata(playwright_metadata, page_metadata)
+
+    return {
+        "text": None,
+        "title": page_metadata.get("title"),
+        "description": page_metadata.get("description"),
+        "image_url": page_metadata.get("image_url"),
+        "favicon_url": page_metadata.get("favicon_url"),
+        "source": extract_source_from_url(url),
+        "url": url,
+        "original_url": original_url if original_url != url else None,
+    }
 
 
 def _normalize_text_block(text: str) -> str:
@@ -692,258 +753,231 @@ async def _extract_with_playwright(url: str) -> Optional[str]:
     Returns:
         Extracted markdown content or None if extraction fails
     """
+    if not playwright_is_enabled():
+        logger.info(f"Skipping Playwright extraction because server Playwright is disabled for {url}")
+        return None
+
     try:
         logger.info(f"Attempting Playwright extraction for {url}")
-        async with async_playwright() as p:
-            # Launch browser in headless mode with realistic user agent
-            try:
-                browser = await p.chromium.launch(headless=True)
-            except Exception as launch_error:
-                logger.error(
-                    f"Failed to launch Chromium browser. This may indicate missing browser binaries or system dependencies. "
-                    f"Error: {str(launch_error)}",
-                    exc_info=True
-                )
-                logger.error(
-                    "TROUBLESHOOTING: "
-                    "1. Ensure 'playwright install chromium' was run during deployment. "
-                    "2. Verify system dependencies are installed (libnss3, libatk1.0-0, etc.). "
-                    "3. Check Render.com build logs for Playwright installation errors. "
-                    f"See deployment documentation for details."
-                )
-                raise
-            page = await browser.new_page()
-            
-            # Set a realistic user agent to avoid bot detection
-            await page.set_extra_http_headers({
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            })
-            
-            # Detect if this is a Substack URL
-            is_substack = 'substack.com' in url or '.so/p/' in url
-            
-            # Increase timeout for Substack and other slow-loading sites
-            timeout = 90000 if is_substack else 30000
-            
-            # Navigate to the page - use 'domcontentloaded' for faster loading
-            await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-            
-            # For Substack, wait for specific content elements to load
-            if is_substack:
+        async with get_playwright_semaphore():
+            async with async_playwright() as p:
+                browser = None
+                context = None
                 try:
-                    await page.wait_for_selector('article, .post-content, .body', timeout=10000)
-                    logger.info("Substack article content loaded")
-                except:
-                    logger.warning("Substack content selector not found, continuing anyway")
-            
-            # Try to expand any "Read More" or "Expand" buttons and remove non-content elements
-            is_substack_js = 'true' if is_substack else 'false'
-            await page.evaluate(f"""
-                async () => {{
-                    const isSubstack = {is_substack_js};
-                    
-                    // 1. Expand "Read More" buttons
-                    const expandSelectors = [
-                        '.readMoreBtn', 
-                        '.read-more-btn', 
-                        '.expand-btn',
-                        '.show-more',
-                        '.view-more',
-                        'button'
-                    ];
-                    
-                    const expandTexts = [
-                        'expand to continue reading',
-                        'read more',
-                        'continue reading',
-                        'show more',
-                        'view more'
-                    ];
-                    
-                    for (const selector of expandSelectors) {{
-                        try {{
-                            const buttons = Array.from(document.querySelectorAll(selector));
-                            for (const btn of buttons) {{
-                                const text = btn.innerText?.toLowerCase() || '';
-                                const isMatch = expandTexts.some(t => text.includes(t)) || 
-                                               (selector !== 'button' && selector !== '.show-more' && selector !== '.view-more');
-                                
-                                if (isMatch) {{
-                                    const style = window.getComputedStyle(btn);
-                                    if (style.display !== 'none' && style.visibility !== 'hidden' && btn.offsetHeight > 0) {{
-                                        btn.click();
-                                        // Wait a bit for content expansion
-                                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    try:
+                        browser = await p.chromium.launch(
+                            headless=True,
+                            args=LOW_MEMORY_CHROMIUM_ARGS
+                        )
+                    except Exception as launch_error:
+                        logger.error(
+                            f"Failed to launch Chromium browser. This may indicate missing browser binaries or system dependencies. "
+                            f"Error: {str(launch_error)}",
+                            exc_info=True
+                        )
+                        logger.error(
+                            "TROUBLESHOOTING: "
+                            "1. Ensure 'playwright install chromium' was run during deployment. "
+                            "2. Verify system dependencies are installed (libnss3, libatk1.0-0, etc.). "
+                            "3. Check Render.com build logs for Playwright installation errors. "
+                            f"See deployment documentation for details."
+                        )
+                        raise
+
+                    context = await browser.new_context(
+                        user_agent=PLAYWRIGHT_USER_AGENT,
+                        locale="en-US",
+                        viewport={"width": 1024, "height": 768},
+                        java_script_enabled=True,
+                    )
+                    await context.route("**/*", abort_heavy_resources)
+                    page = await context.new_page()
+                    await page.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
+
+                    is_substack = 'substack.com' in url or '.so/p/' in url
+                    timeout = 45000 if is_substack else 20000
+
+                    await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+
+                    if is_substack:
+                        try:
+                            await page.wait_for_selector('article, .post-content, .body', timeout=7000)
+                            logger.info("Substack article content loaded")
+                        except Exception:
+                            logger.warning("Substack content selector not found, continuing anyway")
+
+                    is_substack_js = 'true' if is_substack else 'false'
+                    await page.evaluate(f"""
+                        async () => {{
+                            const isSubstack = {is_substack_js};
+                            const expandSelectors = [
+                                '.readMoreBtn',
+                                '.read-more-btn',
+                                '.expand-btn',
+                                '.show-more',
+                                '.view-more',
+                                'button'
+                            ];
+                            const expandTexts = [
+                                'expand to continue reading',
+                                'read more',
+                                'continue reading',
+                                'show more',
+                                'view more'
+                            ];
+
+                            for (const selector of expandSelectors) {{
+                                try {{
+                                    const buttons = Array.from(document.querySelectorAll(selector));
+                                    for (const btn of buttons) {{
+                                        const text = btn.innerText?.toLowerCase() || '';
+                                        const isMatch = expandTexts.some(t => text.includes(t)) ||
+                                                       (selector !== 'button' && selector !== '.show-more' && selector !== '.view-more');
+
+                                        if (isMatch) {{
+                                            const style = window.getComputedStyle(btn);
+                                            if (style.display !== 'none' && style.visibility !== 'hidden' && btn.offsetHeight > 0) {{
+                                                btn.click();
+                                                await new Promise(resolve => setTimeout(resolve, 500));
+                                            }}
+                                        }}
                                     }}
+                                }} catch (e) {{
+                                    console.error('Error expanding content:', e);
                                 }}
                             }}
-                        }} catch (e) {{
-                            console.error('Error expanding content:', e);
+
+                            document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+
+                            if (isSubstack) {{
+                                const unwantedSelectors = [
+                                    'nav:not(.post-header)',
+                                    'header:not(.post-header)',
+                                    'footer',
+                                    '.comments-container',
+                                    '.subscription-widget-wrap'
+                                ];
+                                unwantedSelectors.forEach(selector => {{
+                                    document.querySelectorAll(selector).forEach(el => el.remove());
+                                }});
+                            }}
                         }}
-                    }}
-
-                    // 2. Remove script and style tags
-                    document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
-                    
-                    if (isSubstack) {{
-                        // Conservative cleanup for Substack
-                        const unwantedSelectors = [
-                            'nav:not(.post-header)',
-                            'header:not(.post-header)',
-                            'footer',
-                            '.comments-container',
-                            '.subscription-widget-wrap'
-                        ];
-                        unwantedSelectors.forEach(selector => {{
-                            document.querySelectorAll(selector).forEach(el => el.remove());
-                        }});
-                    }}
-                }}
-            """)
-            
-            # Wait for any lazy-loaded content after expansion
-            await asyncio.sleep(3 if is_substack else 2)
-
-            # TownNews/BLOX article pages hydrate the full article body in the DOM, but the
-            # outer <article> also contains share controls, tag chips, author cards, and
-            # recommendation widgets. Rebuild those pages from the article-body only.
-            rendered_html = await page.content()
-            extracted_html = _extract_townnews_article_html(rendered_html)
-            used_townnews_extraction = bool(extracted_html)
-            if extracted_html:
-                logger.info(f"Found TownNews article body using DOM-specific extraction ({len(extracted_html)} chars)")
-            
-            # Try to find main content using semantic HTML5 and CMS patterns
-            if not extracted_html:
-                if is_substack:
-                    content_selectors = [
-                        '.body.markup',
-                        'article .body',
-                        '.post-content',
-                        'article',
-                        '.available-content',
-                        'main',
-                    ]
-                else:
-                    # Prioritize semantic HTML5 elements and common CMS patterns
-                    content_selectors = [
-                        # Semantic HTML5
-                        'article[role="article"]',
-                        'article',
-                        'main[role="main"]',
-                        'main',
-                        '[role="main"]',
-                        
-                        # Common CMS patterns (WordPress, Medium, Ghost, etc.)
-                        '.post-content', '.entry-content', '.article-content',
-                        '.content-body', '.article-body', '.post-body',
-                        
-                        # IndieWire and similar news sites
-                        '.article__body', '.story-body', '.news-article',
-                        
-                        # Squarespace
-                        '.blog-item-content', '.sqs-block-content',
-                        
-                        # Generic fallbacks
-                        '#content', '.content', '#main-content', '.main-content',
-                        '#page', '.page-content'
-                    ]
-                
-                extracted_html = None
-                for selector in content_selectors:
-                    try:
-                        element = await page.query_selector(selector)
-                        if element:
-                            extracted_html = await element.inner_html()
-                            if len(extracted_html) > MIN_CONTENT_LENGTH:
-                                logger.info(f"Found content using selector '{selector}' ({len(extracted_html)} chars)")
-                                break
-                    except:
-                        continue
-            
-            # If no selector worked, try to find the largest content container
-            if (not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH) and not used_townnews_extraction:
-                logger.info("Semantic selectors failed, searching for largest content container")
-                try:
-                    # Use JavaScript to find the element with the most text content
-                    # This works for sites with custom/obfuscated class names
-                    extracted_html = await page.evaluate("""
-                        () => {
-                            // Find all divs and sections
-                            const elements = Array.from(document.querySelectorAll('div, section'));
-                            
-                            // Filter out elements that are likely navigation/ads/footer
-                            const filtered = elements.filter(el => {
-                                const classes = el.className.toLowerCase();
-                                const id = el.id.toLowerCase();
-                                const combined = classes + ' ' + id;
-                                
-                                // Skip obvious non-content elements
-                                if (combined.includes('nav') ||
-                                    combined.includes('header') ||
-                                    combined.includes('footer') ||
-                                    combined.includes('sidebar') ||
-                                    combined.includes('menu') ||
-                                    combined.includes('ad-') ||
-                                    combined.includes('cookie') ||
-                                    combined.includes('consent')) {
-                                    return false;
-                                }
-                                return true;
-                            });
-                            
-                            // Find element with most paragraph content (better indicator of article text)
-                            let maxScore = 0;
-                            let bestElement = null;
-                            
-                            for (const el of filtered) {
-                                const textLength = el.innerText?.length || 0;
-                                const paragraphs = el.querySelectorAll('p').length;
-                                
-                                // Score based on text length and paragraph count
-                                // Paragraphs are a strong indicator of article content
-                                const score = textLength + (paragraphs * 200);
-                                
-                                if (score > maxScore && textLength > 500) {
-                                    maxScore = score;
-                                    bestElement = el;
-                                }
-                            }
-                            
-                            return bestElement ? bestElement.innerHTML : null;
-                        }
                     """)
-                    
-                    if extracted_html and len(extracted_html) > MIN_CONTENT_LENGTH:
-                        logger.info(f"Found content using largest container heuristic ({len(extracted_html)} chars)")
-                except Exception as e:
-                    logger.warning(f"Largest container heuristic failed: {str(e)}")
-            
-            # Last resort: get the full body
-            if (not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH) and not used_townnews_extraction:
-                logger.info("Using full body content as final fallback")
-                body = await page.query_selector('body')
-                if body:
-                    extracted_html = await body.inner_html()
-            
-            await browser.close()
-            
-            if not extracted_html:
-                logger.warning(f"No content extracted from {url}")
-                return None
-            
-            # Convert the extracted HTML to markdown
-            markdown_content = md(
-                extracted_html,
-                heading_style="ATX",
-                strip=['script', 'style', 'nav', 'header', 'footer']
-            )
-            
-            # Post-process to remove any remaining clutter
-            markdown_content = _clean_extracted_content(markdown_content)
-            
-            logger.info(f"Playwright successfully extracted {len(markdown_content)} characters from {url}")
-            return markdown_content
+
+                    await page.wait_for_timeout(1500 if is_substack else 750)
+
+                    rendered_html = await page.content()
+                    extracted_html = _extract_townnews_article_html(rendered_html)
+                    used_townnews_extraction = bool(extracted_html)
+                    if extracted_html:
+                        logger.info(f"Found TownNews article body using DOM-specific extraction ({len(extracted_html)} chars)")
+
+                    if not extracted_html:
+                        if is_substack:
+                            content_selectors = [
+                                '.body.markup',
+                                'article .body',
+                                '.post-content',
+                                'article',
+                                '.available-content',
+                                'main',
+                            ]
+                        else:
+                            content_selectors = [
+                                'article[role="article"]',
+                                'article',
+                                'main[role="main"]',
+                                'main',
+                                '[role="main"]',
+                                '.post-content', '.entry-content', '.article-content',
+                                '.content-body', '.article-body', '.post-body',
+                                '.article__body', '.story-body', '.news-article',
+                                '.blog-item-content', '.sqs-block-content',
+                                '#content', '.content', '#main-content', '.main-content',
+                                '#page', '.page-content'
+                            ]
+
+                        extracted_html = None
+                        for selector in content_selectors:
+                            try:
+                                element = await page.query_selector(selector)
+                                if element:
+                                    extracted_html = await element.inner_html()
+                                    if len(extracted_html) > MIN_CONTENT_LENGTH:
+                                        logger.info(f"Found content using selector '{selector}' ({len(extracted_html)} chars)")
+                                        break
+                            except Exception:
+                                continue
+
+                    if (not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH) and not used_townnews_extraction:
+                        logger.info("Semantic selectors failed, searching for largest content container")
+                        try:
+                            extracted_html = await page.evaluate("""
+                                () => {
+                                    const elements = Array.from(document.querySelectorAll('div, section'));
+                                    const filtered = elements.filter(el => {
+                                        const classes = String(el.className || '').toLowerCase();
+                                        const id = String(el.id || '').toLowerCase();
+                                        const combined = classes + ' ' + id;
+                                        return !(
+                                            combined.includes('nav') ||
+                                            combined.includes('header') ||
+                                            combined.includes('footer') ||
+                                            combined.includes('sidebar') ||
+                                            combined.includes('menu') ||
+                                            combined.includes('ad-') ||
+                                            combined.includes('cookie') ||
+                                            combined.includes('consent')
+                                        );
+                                    });
+
+                                    let maxScore = 0;
+                                    let bestElement = null;
+
+                                    for (const el of filtered) {
+                                        const textLength = el.innerText?.length || 0;
+                                        const paragraphs = el.querySelectorAll('p').length;
+                                        const score = textLength + (paragraphs * 200);
+
+                                        if (score > maxScore && textLength > 500) {
+                                            maxScore = score;
+                                            bestElement = el;
+                                        }
+                                    }
+
+                                    return bestElement ? bestElement.innerHTML : null;
+                                }
+                            """)
+
+                            if extracted_html and len(extracted_html) > MIN_CONTENT_LENGTH:
+                                logger.info(f"Found content using largest container heuristic ({len(extracted_html)} chars)")
+                        except Exception as e:
+                            logger.warning(f"Largest container heuristic failed: {str(e)}")
+
+                    if (not extracted_html or len(extracted_html) < MIN_CONTENT_LENGTH) and not used_townnews_extraction:
+                        logger.info("Using full body content as final fallback")
+                        body = await page.query_selector('body')
+                        if body:
+                            extracted_html = await body.inner_html()
+
+                    if not extracted_html:
+                        logger.warning(f"No content extracted from {url}")
+                        return None
+
+                    markdown_content = md(
+                        extracted_html,
+                        heading_style="ATX",
+                        strip=['script', 'style', 'nav', 'header', 'footer']
+                    )
+                    markdown_content = _clean_extracted_content(markdown_content)
+
+                    logger.info(f"Playwright successfully extracted {len(markdown_content)} characters from {url}")
+                    return markdown_content
+                finally:
+                    if context:
+                        await context.close()
+                    if browser:
+                        await browser.close()
             
     except PlaywrightTimeoutError as e:
         logger.error(
@@ -1310,7 +1344,14 @@ async def extract_content_with_metadata(url: str, extraction_type: str = "fast")
     # For non-YouTube URLs, fetch metadata once up front.
     # If requests-based scraping is blocked, try rendered-DOM metadata via Playwright.
     page_metadata = fetch_metadata(url)
-    if not page_metadata.get("title") or not page_metadata.get("description") or not page_metadata.get("image_url"):
+    if (
+        settings.playwright_metadata_fallback_enabled
+        and (
+            not page_metadata.get("title")
+            or not page_metadata.get("description")
+            or not page_metadata.get("image_url")
+        )
+    ):
         playwright_metadata = await _extract_page_metadata_with_playwright(url)
         page_metadata = _merge_metadata(playwright_metadata, page_metadata)
 

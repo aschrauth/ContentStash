@@ -20,6 +20,16 @@ services:
         value: production
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/backend/ms-playwright-browsers
+      - key: SERVER_PLAYWRIGHT_ENABLED
+        value: "true"
+      - key: PLAYWRIGHT_MAX_CONCURRENCY
+        value: "1"
+      - key: PLAYWRIGHT_METADATA_FALLBACK_ENABLED
+        value: "false"
+      - key: PLAYWRIGHT_BLOCK_HEAVY_RESOURCES
+        value: "true"
+      - key: PLAYWRIGHT_BLOCK_IMAGES
+        value: "false"
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET

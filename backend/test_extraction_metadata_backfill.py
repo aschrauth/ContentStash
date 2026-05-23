@@ -79,6 +79,7 @@ def test_extract_content_with_metadata_uses_playwright_metadata_when_requests_me
     monkeypatch.setattr(extraction, "_extract_with_playwright", lambda _url: asyncio.sleep(0, result="Rendered content"))
     monkeypatch.setattr(extraction.requests, "get", lambda *_args, **_kwargs: StubResponse("<html></html>"))
     monkeypatch.setattr(extraction, "Document", StubDocument)
+    monkeypatch.setattr(extraction.settings, "playwright_metadata_fallback_enabled", True)
 
     result = asyncio.run(extraction.extract_content_with_metadata(test_url, extraction_type="complete"))
 

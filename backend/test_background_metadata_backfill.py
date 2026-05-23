@@ -39,9 +39,9 @@ class FakeDatabase:
         self.saved_items = FakeSavedItemsCollection(item_doc)
 
 
-async def _fake_extract_content_with_metadata(_url: str, _extraction_type: str = "fast") -> dict:
+async def _fake_extract_metadata_only(_url: str) -> dict:
     return {
-        "text": "Rendered article body " * 80,
+        "text": None,
         "title": "Rendered Article Title",
         "description": "Rendered Article Description",
         "image_url": "https://example.com/rendered.jpg",
@@ -80,7 +80,7 @@ def test_process_item_background_replaces_placeholder_url_title(monkeypatch):
     fake_db = FakeDatabase(item_doc)
 
     monkeypatch.setattr(background, "get_database", lambda: fake_db)
-    monkeypatch.setattr(background, "extract_content_with_metadata", _fake_extract_content_with_metadata)
+    monkeypatch.setattr(background, "extract_metadata_only", _fake_extract_metadata_only)
     monkeypatch.setattr(background, "extract_content", _fake_extract_content)
     monkeypatch.setattr(background, "generate_tags_and_topic", lambda *_args, **_kwargs: {"tags": [], "topic": None})
     monkeypatch.setattr(background, "generate_auto_categorization", lambda *_args, **_kwargs: None)

@@ -9,8 +9,12 @@ from bson import ObjectId
 from typing import Optional, Dict, Any
 
 from app.database import get_database, get_item_chunks_collection
-from app.services.metadata import fetch_metadata
-from app.services.extraction import extract_content, extract_content_with_metadata, extract_source_from_url
+from app.services.extraction import (
+    extract_content,
+    extract_content_with_metadata,
+    extract_metadata_only,
+    extract_source_from_url,
+)
 from app.services.exceptions import ExtractionBlockError
 from app.services.url_resolver import looks_like_intermediary_title, resolve_intermediary_url
 from app.services.ai import generate_tags_and_topic
@@ -395,6 +399,7 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
         url = item_doc.get("url")
         archived_text = item_doc.get("archived_text")
         extraction_type = item_doc.get("extraction_type", "fast")
+        content_loaded_from_metadata = False
 
         if url:
             resolution = await resolve_intermediary_url(url)
@@ -482,8 +487,12 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
         
         if should_fetch_metadata:
             logger.info(f"📋 [METADATA] Fetching metadata for {url} (is_youtube={is_youtube})")
-            # Use extract_content_with_metadata to get source along with other metadata
-            metadata_result = await extract_content_with_metadata(url, extraction_type)
+            # YouTube extraction naturally returns transcript + metadata together.
+            # For normal pages, fetch metadata only so we do not run full extraction twice.
+            if is_youtube:
+                metadata_result = await extract_content_with_metadata(url, extraction_type)
+            else:
+                metadata_result = await extract_metadata_only(url)
             if metadata_result:
                 logger.info(f"📋 [METADATA] Received metadata with source: '{metadata_result.get('source')}'")
                 metadata = {
@@ -497,6 +506,7 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
                 # If we got content from metadata extraction, use it
                 if metadata_result.get('text') and not archived_text:
                     archived_text = metadata_result['text']
+                    content_loaded_from_metadata = True
                     logger.info(f"📋 [METADATA] Using content from metadata extraction for {url}")
         
         # Step 2: Extract content
@@ -518,6 +528,8 @@ async def process_item_background(item_id: str, user_id: str, skip_extraction: b
             if not archived_text:
                 logger.error(f"skip_extraction=True but no archived_text for item {item_id}")
                 raise Exception("Content extraction skipped but no archived_text available")
+        elif content_loaded_from_metadata:
+            logger.info(f"Skipping duplicate extraction for item {item_id} - content was returned with metadata")
         elif url:
             logger.info(f"Extracting content from {url} using extraction_type={extraction_type}")
             try:

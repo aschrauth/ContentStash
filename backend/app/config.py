@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     
     # YouTube Data API v3
     youtube_api_key: Optional[str] = None
+
+    # Extraction / Playwright
+    server_playwright_enabled: bool = True
+    playwright_max_concurrency: int = 1
+    playwright_metadata_fallback_enabled: bool = False
+    playwright_block_heavy_resources: bool = True
+    playwright_block_images: bool = False
     
     class Config:
         env_file = ".env"

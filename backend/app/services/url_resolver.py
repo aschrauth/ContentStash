@@ -18,6 +18,13 @@ import requests
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
+from app.services.playwright_runtime import (
+    LOW_MEMORY_CHROMIUM_ARGS,
+    abort_heavy_resources,
+    get_playwright_semaphore,
+    playwright_is_enabled,
+)
+
 logger = logging.getLogger(__name__)
 
 HEADERS = {
@@ -273,31 +280,44 @@ def _extract_from_html(page_html: str, page_url: str, original_url: str) -> Opti
 
 
 async def _resolve_with_playwright(url: str, timeout_ms: int = 30000) -> Optional[str]:
+    if not playwright_is_enabled():
+        logger.info(f"Skipping Playwright intermediary URL resolution because server Playwright is disabled for {url}")
+        return None
+
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-            try:
-                context = await browser.new_context(user_agent=HEADERS["User-Agent"], locale="en-US")
-                page = await context.new_page()
-                await page.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
-                await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-                await page.wait_for_timeout(1500)
+        async with get_playwright_semaphore():
+            async with async_playwright() as p:
+                browser = None
+                context = None
+                try:
+                    browser = await p.chromium.launch(headless=True, args=LOW_MEMORY_CHROMIUM_ARGS)
+                    context = await browser.new_context(
+                        user_agent=HEADERS["User-Agent"],
+                        locale="en-US",
+                        viewport={"width": 1024, "height": 768},
+                    )
+                    await context.route("**/*", abort_heavy_resources)
+                    page = await context.new_page()
+                    await page.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
+                    await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                    await page.wait_for_timeout(750)
 
-                if page.url and not is_intermediary_url(page.url):
-                    return page.url
+                    if page.url and not is_intermediary_url(page.url):
+                        return page.url
 
-                page_html = await page.content()
-                candidate = _extract_from_html(page_html, page.url or url, url)
-                if candidate:
-                    await page.goto(candidate, wait_until="domcontentloaded", timeout=timeout_ms)
-                    await page.wait_for_timeout(500)
-                    return page.url or candidate
+                    page_html = await page.content()
+                    candidate = _extract_from_html(page_html, page.url or url, url)
+                    if candidate:
+                        await page.goto(candidate, wait_until="domcontentloaded", timeout=20000)
+                        await page.wait_for_timeout(250)
+                        return page.url or candidate
 
-                return None
-            finally:
-                if "context" in locals():
-                    await context.close()
-                await browser.close()
+                    return None
+                finally:
+                    if context:
+                        await context.close()
+                    if browser:
+                        await browser.close()
     except Exception as e:
         logger.warning(f"Playwright intermediary URL resolution failed for {url}: {str(e)}")
         return None
