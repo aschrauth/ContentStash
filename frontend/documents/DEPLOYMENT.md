@@ -188,6 +188,7 @@ Add each of these one by one.
 ```bash
 MONGODB_URI=<paste your full Atlas connection string here>
 JWT_SECRET=<paste a long random secret here>
+JWT_EXPIRES_IN=34560000
 CORS_ORIGINS=http://localhost:3000
 GEMINI_API_KEY=<paste your Gemini API key here>
 APP_ENV=production
@@ -199,6 +200,8 @@ PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/backend/ms-playwright-browsers
 ```bash
 YOUTUBE_API_KEY=<your YouTube API key, if you have one>
 ```
+
+`JWT_EXPIRES_IN=34560000` keeps web, Chrome extension, and iOS shortcut sessions valid for 400 days. Lower this only if you want ContentStash to ask for sign-in more often.
 
 ### 5. How to make a JWT secret
 

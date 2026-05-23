@@ -24,6 +24,8 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: JWT_EXPIRES_IN
+        value: 34560000
       - key: CORS_ORIGINS
         sync: false
       - key: GEMINI_API_KEY

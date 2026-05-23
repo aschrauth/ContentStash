@@ -623,7 +623,7 @@ After the first successful login:
 
 ## What To Do If Sign-In Stops Working Later
 
-Tokens can expire eventually. If that happens, the shortcut should receive a response where `auth_required` is true.
+Tokens are configured to last 400 days by default, but they can still expire eventually. If that happens, the shortcut should receive a response where `auth_required` is true.
 
 The easiest fix is:
 

@@ -192,7 +192,7 @@ Check these first:
 
 ### The Shortcut Asks For Sign-In Again
 
-This usually means the saved token expired or the saved auth file should be refreshed.
+This usually means the saved token expired or the saved auth file should be refreshed. ContentStash tokens are configured to last 400 days by default.
 
 The save endpoint returns `auth_required: true` when this happens. A complete shortcut should clear the saved auth file, ask the user to sign in again, and retry the save once.
 

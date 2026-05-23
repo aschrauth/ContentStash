@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # JWT
     jwt_secret: str
-    jwt_expires_in: int = 3600  # 1 hour in seconds
+    jwt_expires_in: int = 34560000  # 400 days in seconds
     
     # CORS
     cors_origins: str = "http://localhost:3000"

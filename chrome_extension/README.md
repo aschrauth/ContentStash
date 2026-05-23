@@ -89,7 +89,7 @@ For full technical details on these improvements, see [Local Extraction Improvem
 Settings are stored in Chrome's local storage:
 
 - `serverUrl`: ContentStash server URL
-- `token`: JWT authentication token
+- `token`: JWT authentication token; backend default lifetime is 400 days
 - `pollingEnabled`: Enable/disable background polling
 - `pollingIntervalMinutes`: Polling frequency (default: 15)
 
