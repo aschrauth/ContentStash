@@ -32,6 +32,11 @@ PLAYWRIGHT_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0.0.0 Safari/537.36"
 )
+REQUEST_HEADERS = {
+    "User-Agent": PLAYWRIGHT_USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 BLOCK_PAGE_TEXT_SNIPPETS = (
     "just a moment",
     "attention required",
@@ -332,6 +337,61 @@ def _extract_townnews_article_html(page_html: str) -> Optional[str]:
 
     extracted_html = "\n".join(fragments).strip()
     return extracted_html or None
+
+
+def _html_to_clean_markdown(html_content: str) -> str:
+    markdown_content = md(
+        html_content,
+        heading_style="ATX",
+        strip=['script', 'style', 'nav', 'header', 'footer']
+    )
+    return _clean_extracted_content(markdown_content)
+
+
+def _extract_static_article_content(url: str, townnews_only: bool = False) -> Optional[str]:
+    """
+    Extract article content from static HTML without launching Playwright.
+
+    TownNews/BLOX pages often include the full article body in the initial HTML,
+    so complete-mode extraction should not depend on Chromium for those pages.
+    """
+    try:
+        response = requests.get(url, headers=REQUEST_HEADERS, timeout=15)
+        response.raise_for_status()
+
+        townnews_html = _extract_townnews_article_html(response.text)
+        if townnews_html:
+            markdown_content = _html_to_clean_markdown(townnews_html)
+            if len(markdown_content) >= 500:
+                logger.info(
+                    f"Successfully extracted {len(markdown_content)} characters "
+                    f"from {url} using static TownNews extraction"
+                )
+                return markdown_content
+
+        if townnews_only:
+            return None
+
+        doc = Document(response.text)
+        html_content = doc.summary()
+        if not html_content or len(html_content) < MIN_CONTENT_LENGTH:
+            return None
+
+        markdown_content = _html_to_clean_markdown(html_content)
+        if len(markdown_content) >= 500:
+            logger.info(
+                f"Successfully extracted {len(markdown_content)} characters "
+                f"from {url} using static readability extraction"
+            )
+            return markdown_content
+
+        return None
+    except requests.RequestException as e:
+        logger.warning(f"Static article extraction request failed for {url}: {str(e)}")
+        return None
+    except Exception as e:
+        logger.warning(f"Static article extraction failed for {url}: {str(e)}")
+        return None
 
 def _clean_extracted_content(content: str) -> str:
     """
@@ -1117,18 +1177,26 @@ async def extract_content(url: str, extraction_type: str = "fast") -> tuple[Opti
         # For "complete" extraction type, skip Readability and go directly to Playwright
         if extraction_type == "complete":
             logger.info(f"Using complete extraction (Playwright) for {url}")
+            static_content = _extract_static_article_content(url, townnews_only=True)
+            if static_content:
+                logger.info(f"Using static TownNews extraction before Playwright for complete mode: {url}")
+                return static_content, "complete"
+
             markdown_content = await _extract_with_playwright(url)
             
             if markdown_content:
                 logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using Playwright (complete mode)")
                 return markdown_content, "complete"
             else:
-                logger.warning(f"Playwright failed to extract content from {url}")
+                logger.warning(f"Playwright failed to extract content from {url}, trying static extraction fallback")
+                static_content = _extract_static_article_content(url)
+                if static_content:
+                    return static_content, "complete"
                 return None, extraction_type
         
         # For "fast" extraction type, use the cascade logic (Readability → Playwright fallback)
         # First attempt: Try with requests + readability
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=REQUEST_HEADERS, timeout=10)
         response.raise_for_status()
         
         # Parse with readability
@@ -1138,11 +1206,7 @@ async def extract_content(url: str, extraction_type: str = "fast") -> tuple[Opti
         # Check if we got enough content AND it's not just ad/redirect text
         if html_content and len(html_content) >= MIN_CONTENT_LENGTH:
             # Convert to markdown first to check content quality
-            markdown_content = md(
-                html_content,
-                heading_style="ATX",
-                strip=['script', 'style']
-            )
+            markdown_content = _html_to_clean_markdown(html_content)
             
             # Check for ad/redirect patterns that indicate bad extraction
             lower_content = markdown_content.lower()
@@ -1154,9 +1218,6 @@ async def extract_content(url: str, extraction_type: str = "fast") -> tuple[Opti
             )
             
             if markdown_content and not is_ad_content:
-                # Clean the content
-                markdown_content = _clean_extracted_content(markdown_content)
-                
                 # Verify we still have substantial content after cleaning
                 if len(markdown_content) >= 500:
                     logger.info(f"Successfully extracted {len(markdown_content)} characters from {url} using readability (fast mode)")

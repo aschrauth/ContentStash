@@ -11,7 +11,11 @@ from markdownify import markdownify as md
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost/test")
 os.environ.setdefault("JWT_SECRET", "test")
 
-from app.services.extraction import _clean_extracted_content, _extract_townnews_article_html
+from app.services.extraction import (
+    _clean_extracted_content,
+    _extract_static_article_content,
+    _extract_townnews_article_html,
+)
 
 
 SAMPLE_HTML = """
@@ -65,6 +69,32 @@ def test_townnews_article_cleanup():
     assert "You can reach Barry Eberling" not in cleaned
 
 
+def test_static_townnews_article_extraction():
+    class StubResponse:
+        text = SAMPLE_HTML.replace(
+            "Visions of a possible fix are becoming clearer.",
+            " ".join(["Visions of a possible fix are becoming clearer."] * 20),
+        )
+
+        def raise_for_status(self) -> None:
+            return None
+
+    from app.services import extraction
+
+    original_get = extraction.requests.get
+    extraction.requests.get = lambda *_args, **_kwargs: StubResponse()
+    try:
+        cleaned = _extract_static_article_content("https://example.com/article", townnews_only=True)
+    finally:
+        extraction.requests.get = original_get
+
+    assert cleaned is not None
+    assert "Fixes explored for Napa's Highway 29 traffic chokepoint" in cleaned
+    assert "Visions of a possible fix are becoming clearer." in cleaned
+    assert "Most Popular" not in cleaned
+
+
 if __name__ == "__main__":
     test_townnews_article_cleanup()
+    test_static_townnews_article_extraction()
     print("TownNews cleanup test passed")
