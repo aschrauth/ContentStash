@@ -5,10 +5,19 @@ import type { SavedItem } from '../types';
 
 const api = new ContentStashAPI();
 const POLL_ALARM = 'pollPendingItems';
+const HEARTBEAT_ALARM = 'pollHeartbeat';
+const POLL_STATE_KEY = 'localQueuePollState';
 const IDLE_POLL_SECONDS = 900;
 const ACTIVE_POLL_SECONDS = 10;
 const WARM_POLL_SECONDS = 60;
+const HEARTBEAT_PERIOD_MINUTES = 1;
 const MAX_BACKOFF_SECONDS = 300;
+
+interface PollState {
+  nextPollDueAt?: number;
+  lastPollStartedAt?: number;
+  lastPollCompletedAt?: number;
+}
 
 let isPollingInFlight = false;
 let failureBackoffSeconds = 0;
@@ -26,6 +35,21 @@ function isTransientFetchFailure(error: unknown): boolean {
 function withJitter(seconds: number): number {
   const jitter = 0.9 + Math.random() * 0.2;
   return Math.max(5, Math.round(seconds * jitter));
+}
+
+async function getPollState(): Promise<PollState> {
+  const result = await chrome.storage.local.get(POLL_STATE_KEY);
+  return result[POLL_STATE_KEY] || {};
+}
+
+async function updatePollState(state: Partial<PollState>): Promise<void> {
+  const current = await getPollState();
+  await chrome.storage.local.set({
+    [POLL_STATE_KEY]: {
+      ...current,
+      ...state,
+    },
+  });
 }
 
 function normalizeHost(value: string): string {
@@ -251,52 +275,100 @@ function findIntermediaryTargetInPage(originalUrl: string): string | null {
   return null;
 }
 
-async function scheduleNextPoll(seconds: number) {
-  const nextSeconds = withJitter(seconds);
+async function ensureHeartbeatAlarmScheduled() {
+  const existingAlarm = await chrome.alarms.get(HEARTBEAT_ALARM);
+  if (existingAlarm?.periodInMinutes === HEARTBEAT_PERIOD_MINUTES) {
+    return;
+  }
+
+  await chrome.alarms.clear(HEARTBEAT_ALARM);
+  await chrome.alarms.create(HEARTBEAT_ALARM, {
+    delayInMinutes: HEARTBEAT_PERIOD_MINUTES,
+    periodInMinutes: HEARTBEAT_PERIOD_MINUTES,
+  });
+}
+
+async function armPollAlarm(nextPollDueAt: number) {
   await chrome.alarms.clear(POLL_ALARM);
   await chrome.alarms.create(POLL_ALARM, {
-    when: Date.now() + nextSeconds * 1000,
+    when: nextPollDueAt,
   });
+}
+
+async function scheduleNextPoll(seconds: number) {
+  await ensureHeartbeatAlarmScheduled();
+  const nextSeconds = withJitter(seconds);
+  const nextPollDueAt = Date.now() + nextSeconds * 1000;
+  await updatePollState({ nextPollDueAt });
+  await armPollAlarm(nextPollDueAt);
   console.log(`Next local queue check in ${nextSeconds}s`);
 }
 
-async function ensurePollAlarmScheduled() {
-  const existingAlarm = await chrome.alarms.get(POLL_ALARM);
-  if (!existingAlarm) {
-    await scheduleNextPoll(WARM_POLL_SECONDS);
+async function ensurePollAlarmScheduled(reason = 'ensure') {
+  await ensureHeartbeatAlarmScheduled();
+
+  const [existingAlarm, pollState] = await Promise.all([
+    chrome.alarms.get(POLL_ALARM),
+    getPollState(),
+  ]);
+  const now = Date.now();
+  const nextPollDueAt = pollState.nextPollDueAt;
+
+  if (nextPollDueAt && nextPollDueAt > now) {
+    if (!existingAlarm || Math.abs(existingAlarm.scheduledTime - nextPollDueAt) > 1000) {
+      await armPollAlarm(nextPollDueAt);
+      console.log(`Re-armed local queue check after ${reason}`);
+    }
+    return;
   }
+
+  if (nextPollDueAt && nextPollDueAt <= now) {
+    console.log(`Local queue check was overdue after ${reason}; polling now`);
+    await processPendingItems(reason);
+    return;
+  }
+
+  await scheduleNextPoll(WARM_POLL_SECONDS);
 }
 
 // Initialize on install/startup
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('ContentStash extension installed');
+  await ensureHeartbeatAlarmScheduled();
   await scheduleNextPoll(WARM_POLL_SECONDS);
 });
 
 chrome.runtime.onStartup.addListener(async () => {
-  await scheduleNextPoll(WARM_POLL_SECONDS);
+  await ensurePollAlarmScheduled('browser startup');
 });
 
 // Ensure polling is armed even if lifecycle events did not recreate the alarm.
-void ensurePollAlarmScheduled();
+void ensurePollAlarmScheduled('service worker start');
 
 // Handle alarm for polling
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === POLL_ALARM) {
-    await processPendingItems();
+    await processPendingItems('scheduled alarm');
+    return;
+  }
+
+  if (alarm.name === HEARTBEAT_ALARM) {
+    await ensurePollAlarmScheduled('heartbeat');
   }
 });
 
 // Process pending local extraction items
-async function processPendingItems() {
+async function processPendingItems(reason = 'poll') {
   if (isPollingInFlight) {
     console.log('Local queue poll already in flight, skipping duplicate trigger');
     return;
   }
 
   isPollingInFlight = true;
+  await updatePollState({ lastPollStartedAt: Date.now() });
 
   try {
+    console.log(`Checking ContentStash local queue (${reason})`);
     const authState = await Storage.getAuthState();
 
     if (!authState.isAuthenticated || !authState.token) {
@@ -338,6 +410,7 @@ async function processPendingItems() {
       : Math.min(failureBackoffSeconds * 2, MAX_BACKOFF_SECONDS);
     await scheduleNextPoll(failureBackoffSeconds);
   } finally {
+    await updatePollState({ lastPollCompletedAt: Date.now() });
     isPollingInFlight = false;
   }
 }
@@ -595,7 +668,7 @@ async function processGenericItem(item: SavedItem) {
 // Handle messages from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'PROCESS_PENDING_NOW') {
-    processPendingItems().then(() => {
+    processPendingItems('manual request').then(() => {
       sendResponse({ success: true });
     }).catch((error) => {
       sendResponse({ success: false, error: error.message });
