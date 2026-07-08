@@ -1,0 +1,13 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title id="title">ContentStash icon option 1: Stacked Pages</title>
+  
+  <rect x="14" y="14" width="100" height="100" rx="24" fill="#faf7ef"/>
+  <rect x="14.5" y="14.5" width="99" height="99" rx="23.5" stroke="#d8cebe"/>
+  <rect x="34" y="28" width="55" height="70" rx="10" fill="#fffdf7" stroke="#d8cebe" stroke-width="4"/>
+  <rect x="42" y="36" width="55" height="70" rx="10" fill="#dff3ec" stroke="#12846f" stroke-width="4"/>
+  <rect x="50" y="44" width="55" height="70" rx="10" fill="#12846f" stroke="#0a5d50" stroke-width="4"/>
+  <path d="M63 63H91" stroke="#fffdf7" stroke-width="6" stroke-linecap="round"/>
+  <path d="M63 78H84" stroke="#fffdf7" stroke-width="6" stroke-linecap="round" opacity=".88"/>
+  <path d="M63 93H78" stroke="#fffdf7" stroke-width="6" stroke-linecap="round" opacity=".72"/>
+
+</svg>

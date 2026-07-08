@@ -1,0 +1,11 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title id="title">ContentStash icon option 4: Inbox Drop</title>
+  
+  <rect x="14" y="14" width="100" height="100" rx="24" fill="#faf7ef"/>
+  <path d="M35 66H49L56 78H72L79 66H93L100 96C101.45 102.213 96.734 108 90.354 108H37.646C31.266 108 26.55 102.213 28 96L35 66Z" fill="#12846f" stroke="#0a5d50" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M47 27H80L94 42V67H34V40C34 32.82 39.82 27 47 27Z" fill="#fffdf7" stroke="#d8cebe" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M79 28V43H94" stroke="#d8cebe" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M48 52H75" stroke="#342d24" stroke-width="5" stroke-linecap="round"/>
+  <path d="M55 83H73" stroke="#fffdf7" stroke-width="6" stroke-linecap="round"/>
+
+</svg>

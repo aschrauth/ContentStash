@@ -1,0 +1,9 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title id="title">ContentStash icon option 10: Compass Save</title>
+  
+  <rect x="14" y="14" width="100" height="100" rx="25" fill="#12846f"/>
+  <circle cx="64" cy="64" r="34" fill="#fffdf7" opacity=".96"/>
+  <path d="M75 32L68 59L95 53L73 72L80 99L61 77L34 84L56 65L49 38L68 59L75 32Z" fill="#0a5d50"/>
+  <circle cx="64" cy="64" r="8" fill="#c8943d" stroke="#fffdf7" stroke-width="4"/>
+
+</svg>

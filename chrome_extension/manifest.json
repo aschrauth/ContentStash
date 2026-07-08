@@ -21,12 +21,14 @@
     "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "stash16.png",
+      "32": "stash32.png",
       "48": "stash48.png",
       "128": "stash128.png"
     }
   },
   "icons": {
     "16": "stash16.png",
+    "32": "stash32.png",
     "48": "stash48.png",
     "128": "stash128.png"
   },

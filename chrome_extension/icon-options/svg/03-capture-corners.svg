@@ -1,0 +1,14 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title id="title">ContentStash icon option 3: Capture Corners</title>
+  
+  <rect x="14" y="14" width="100" height="100" rx="24" fill="#faf7ef"/>
+  <path d="M42 31H29V53" stroke="#12846f" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M86 31H99V53" stroke="#12846f" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M42 97H29V75" stroke="#12846f" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M86 97H99V75" stroke="#12846f" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="44" y="36" width="40" height="56" rx="9" fill="#fffdf7" stroke="#d8cebe" stroke-width="5"/>
+  <path d="M55 55H74" stroke="#342d24" stroke-width="6" stroke-linecap="round"/>
+  <path d="M55 70H70" stroke="#776d5f" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="86" cy="90" r="10" fill="#c8943d"/>
+
+</svg>

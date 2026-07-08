@@ -1,0 +1,10 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title id="title">ContentStash icon option 9: Refined CS</title>
+  
+  <rect x="14" y="14" width="100" height="100" rx="26" fill="#12846f"/>
+  <path d="M79 39C74.9 34.6 69.2 32 62.7 32C48.1 32 36 44.1 36 64C36 83.9 48.1 96 62.7 96C69.5 96 75.4 93.2 79.5 88.6" stroke="#fffdf7" stroke-width="10" stroke-linecap="round"/>
+  <path d="M57 64H76C83.18 64 89 69.82 89 77C89 84.18 83.18 90 76 90H55" stroke="#faf7ef" stroke-width="10" stroke-linecap="round"/>
+  <path d="M72 38H91" stroke="#faf7ef" stroke-width="10" stroke-linecap="round"/>
+  <path d="M75 51H91" stroke="#faf7ef" stroke-width="10" stroke-linecap="round"/>
+
+</svg>

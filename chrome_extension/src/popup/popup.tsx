@@ -617,7 +617,7 @@ function App() {
       <main className="app-shell auth-shell">
         <div className="auth-header">
           <div className="brand-lockup brand-lockup--compact">
-            <img src="/stash48.png" alt="" className="brand-mark brand-mark--small" />
+            <img src="/stash128.png" alt="" className="brand-mark brand-mark--small" />
             <div>
               <p className="eyebrow">ContentStash</p>
               <h1>{showSettings ? 'Server settings' : 'Sign in'}</h1>
@@ -709,7 +709,7 @@ function App() {
         <>
           <div className="header">
             <div className="brand-lockup brand-lockup--compact">
-              <img src="/stash48.png" alt="" className="brand-mark brand-mark--small" />
+              <img src="/stash128.png" alt="" className="brand-mark brand-mark--small" />
               <div>
                 <p className="eyebrow">ContentStash</p>
                 <h1>{showSettings ? 'Settings' : 'Save page'}</h1>
