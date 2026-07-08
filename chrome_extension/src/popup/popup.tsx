@@ -7,6 +7,49 @@ import './popup.css';
 
 const api = new ContentStashAPI();
 
+type CurrentPage = {
+  title: string;
+  url: string;
+  host: string;
+};
+
+const extractionOptions: Array<{
+  value: ExtractionType;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'fast',
+    label: 'Fast',
+    description: 'Best for articles and standard pages.',
+  },
+  {
+    value: 'complete',
+    label: 'Complete',
+    description: 'Uses the server for heavier pages.',
+  },
+  {
+    value: 'local',
+    label: 'Local',
+    description: 'Uses this browser for blocked pages.',
+  },
+];
+
+function getHost(value?: string): string {
+  if (!value) return '';
+  try {
+    return new URL(value).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function getMessageTone(message: string): 'success' | 'error' | 'info' {
+  if (message.startsWith('✓')) return 'success';
+  if (message.startsWith('✗')) return 'error';
+  return 'info';
+}
+
 function isIntermediaryUrl(value?: string): boolean {
   if (!value) return false;
   try {
@@ -131,11 +174,13 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [popupCloseDelay, setPopupCloseDelay] = useState(1000);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [currentPage, setCurrentPage] = useState<CurrentPage | null>(null);
 
   useEffect(() => {
     checkAuth();
     loadPendingCount();
     loadSettings();
+    loadCurrentPage();
   }, []);
 
   function isUnauthorizedError(error: unknown): boolean {
@@ -207,6 +252,34 @@ function App() {
     }
   }
 
+  async function loadCurrentPage() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.url) return;
+
+      setCurrentPage({
+        title: tab.title || 'Untitled page',
+        url: tab.url,
+        host: getHost(tab.url),
+      });
+    } catch (error) {
+      console.error('Failed to load current tab:', error);
+    }
+  }
+
+  async function handleSaveServerSettings() {
+    setMessage('');
+
+    try {
+      await Storage.updateSettings({ serverUrl });
+      api.baseUrl = serverUrl;
+      setShowSettings(false);
+      setMessage('✓ Server URL saved');
+    } catch (error) {
+      setMessage('✗ Failed to save server URL: ' + (error as Error).message);
+    }
+  }
+
   async function handleSaveSettings() {
     setMessage('');
     setIsProcessing(true);
@@ -248,6 +321,7 @@ function App() {
     await Storage.clearAuth();
     api.setToken(null);
     setIsAuthenticated(false);
+    setShowSettings(false);
     setEmail('');
     setPassword('');
     setMessage('Logged out');
@@ -528,67 +602,137 @@ function App() {
   }
 
   if (isLoading) {
-    return <div className="container"><p>Loading...</p></div>;
+    return (
+      <main className="app-shell app-shell--center">
+        <div className="loading-state">
+          <div className="loader" aria-hidden="true" />
+          <p>Opening ContentStash</p>
+        </div>
+      </main>
+    );
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="container">
-        <h1>ContentStash</h1>
-        <form onSubmit={handleLogin} className="login-form">
-          <input
-            type="url"
-            placeholder="Server URL"
-            value={serverUrl}
-            onChange={(e) => setServerUrl(e.target.value)}
-            required
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <button type="submit">Login</button>
-        </form>
-        {message && <p className="message">{message}</p>}
-      </div>
+      <main className="app-shell auth-shell">
+        <div className="auth-header">
+          <div className="brand-lockup brand-lockup--compact">
+            <img src="/stash48.png" alt="" className="brand-mark brand-mark--small" />
+            <div>
+              <p className="eyebrow">ContentStash</p>
+              <h1>{showSettings ? 'Server settings' : 'Sign in'}</h1>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowSettings(!showSettings);
+              setMessage('');
+            }}
+            className="icon-btn"
+            aria-label={showSettings ? 'Back to sign in' : 'Open server settings'}
+            title={showSettings ? 'Back' : 'Server settings'}
+          >
+            {showSettings ? '←' : '⚙'}
+          </button>
+        </div>
+
+        {showSettings ? (
+          <form
+            className="settings-section auth-settings"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSaveServerSettings();
+            }}
+          >
+            <label className="field">
+              <span>Server URL</span>
+              <input
+                type="url"
+                placeholder="http://localhost:8000"
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+                required
+              />
+            </label>
+            <p className="setting-hint">
+              Change this only when connecting to a different ContentStash backend.
+            </p>
+            <button type="submit" className="primary-btn">
+              Save server
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleLogin} className="login-form login-form--compact">
+            <input
+              type="email"
+              placeholder="Email"
+              aria-label="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              aria-label="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            <button type="submit" className="primary-btn">Sign in</button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSettings(true);
+                setMessage('');
+              }}
+              className="quiet-btn"
+            >
+              Server: {getHost(serverUrl) || serverUrl}
+            </button>
+          </form>
+        )}
+        {message && <p className={`message message--${getMessageTone(message)}`}>{message}</p>}
+      </main>
     );
   }
 
   return (
-    <div className="container">
+    <main className="app-shell">
       {isProcessing ? (
         <div className="processing-view">
-          {message && <p className="message">{message}</p>}
+          <div className="loader" aria-hidden="true" />
+          {message && <p className={`message message--${getMessageTone(message)}`}>{message}</p>}
         </div>
       ) : (
         <>
           <div className="header">
-            <h1>ContentStash</h1>
-            <div className="header-buttons">
-              <button onClick={() => setShowSettings(!showSettings)} className="settings-btn">
-                {showSettings ? 'Hide Settings' : 'Settings'}
+            <div className="brand-lockup brand-lockup--compact">
+              <img src="/stash48.png" alt="" className="brand-mark brand-mark--small" />
+              <div>
+                <p className="eyebrow">ContentStash</p>
+                <h1>{showSettings ? 'Settings' : 'Save page'}</h1>
+              </div>
+            </div>
+            <div className="header-actions">
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="icon-btn"
+                aria-label={showSettings ? 'Back to save page' : 'Open settings'}
+                title={showSettings ? 'Back' : 'Settings'}
+              >
+                {showSettings ? '←' : '⚙'}
               </button>
-              <button onClick={handleLogout} className="logout-btn">Logout</button>
+              <button onClick={handleLogout} className="text-btn">Logout</button>
             </div>
           </div>
 
           {showSettings ? (
             <div className="settings-section">
-              <h2>Settings</h2>
-
               <div className="setting-group">
-                <label className="setting-label">
-                  Popup auto-close delay (milliseconds):
+                <label className="field">
+                  <span>Auto-close delay</span>
                   <input
                     type="number"
                     min="0"
@@ -600,66 +744,73 @@ function App() {
                   />
                 </label>
                 <p className="setting-hint">
-                  How long to wait before closing the popup after a successful save (0-5000ms)
+                  Time in milliseconds before this popup closes after a successful action.
                 </p>
               </div>
 
-              <button onClick={handleSaveSettings} className="save-settings-btn">
-                Save Settings
+              <button onClick={handleSaveSettings} className="primary-btn">
+                Save settings
               </button>
             </div>
           ) : (
             <>
+              {currentPage && (
+                <section className="page-preview" aria-label="Current page">
+                  <div className="page-favicon" aria-hidden="true">
+                    {currentPage.host.slice(0, 1).toUpperCase() || 'C'}
+                  </div>
+                  <div className="page-copy">
+                    <p className="page-title">{currentPage.title}</p>
+                    <p className="page-url">{currentPage.host || currentPage.url}</p>
+                  </div>
+                </section>
+              )}
+
               <div className="save-section">
-                <h2>Save Current Page</h2>
-                <div className="extraction-type">
-                  <label>
-                    <input
-                      type="radio"
-                      value="fast"
-                      checked={extractionType === 'fast'}
-                      onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
-                    />
-                    Fast (Server)
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      value="complete"
-                      checked={extractionType === 'complete'}
-                      onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
-                    />
-                    Complete (Server)
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      value="local"
-                      checked={extractionType === 'local'}
-                      onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
-                    />
-                    Local (Browser)
-                  </label>
+                <div className="section-heading">
+                  <h2>Extraction</h2>
+                  <span>{extractionType === 'local' ? 'Browser' : 'Server'}</span>
                 </div>
-                <button onClick={handleSaveCurrentTab} className="save-btn">
-                  Save Page
+                <div className="extraction-type">
+                  {extractionOptions.map((option) => (
+                    <label
+                      key={option.value}
+                      className={`choice ${extractionType === option.value ? 'choice--selected' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        value={option.value}
+                        checked={extractionType === option.value}
+                        onChange={(e) => setExtractionType(e.target.value as ExtractionType)}
+                      />
+                      <span className="choice-copy">
+                        <span className="choice-title">{option.label}</span>
+                        <span className="choice-description">{option.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <button onClick={handleSaveCurrentTab} className="primary-btn save-btn">
+                  Save page
                 </button>
               </div>
 
               <div className="pending-section">
-                <h2>Local Extraction Queue</h2>
-                <p>{pendingCount} item(s) pending</p>
-                <button onClick={handleProcessPending} className="process-btn">
-                  Process Now
+                <div>
+                  <h2>Local queue</h2>
+                  <p>{pendingCount === 1 ? '1 item waiting' : `${pendingCount} items waiting`}</p>
+                </div>
+                <button onClick={handleProcessPending} className="secondary-btn process-btn">
+                  Process now
                 </button>
               </div>
             </>
           )}
 
-          {message && <p className="message">{message}</p>}
+          {message && <p className={`message message--${getMessageTone(message)}`}>{message}</p>}
         </>
       )}
-    </div>
+    </main>
   );
 }
 
