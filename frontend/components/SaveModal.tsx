@@ -288,31 +288,31 @@ export default function SaveModal({ onClose }: SaveModalProps) {
   return (
     <div
       data-stash-overlay-backdrop="save"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[oklch(23%_0.018_75_/_0.36)] backdrop-blur-sm"
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         data-stash-overlay-panel="save"
-        className="w-full max-w-2xl bg-[#1e293b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/5">
-          <h2 className="text-xl font-bold text-white">Save to Stash</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+        <div className="flex items-center justify-between p-6 border-b border-border bg-muted">
+          <h2 className="text-xl font-bold text-foreground">Save to Stash</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-6 h-6" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/10">
+        <div className="flex border-b border-border">
           <button
             onClick={() => setActiveTab('url')}
             className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
               activeTab === 'url' 
-                ? 'bg-violet-600/10 text-violet-400 border-b-2 border-violet-500' 
-                : 'text-slate-400 hover:bg-white/5'
+                ? 'bg-[oklch(92.5%_0.055_166)] text-[oklch(36%_0.085_166)] border-b-2 border-primary'
+                : 'text-muted-foreground hover:bg-muted'
             }`}
           >
             <LinkIcon className="w-4 h-4" />
@@ -322,8 +322,8 @@ export default function SaveModal({ onClose }: SaveModalProps) {
             onClick={() => setActiveTab('paste')}
             className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
               activeTab === 'paste' 
-                ? 'bg-violet-600/10 text-violet-400 border-b-2 border-violet-500' 
-                : 'text-slate-400 hover:bg-white/5'
+                ? 'bg-[oklch(92.5%_0.055_166)] text-[oklch(36%_0.085_166)] border-b-2 border-primary'
+                : 'text-muted-foreground hover:bg-muted'
             }`}
           >
             <FileText className="w-4 h-4" />
@@ -347,7 +347,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                   />
                   {isFetchingMeta && (
                     <div className="absolute right-3 top-2.5">
-                      <Loader2 className="w-5 h-5 text-violet-400 animate-spin" />
+                      <Loader2 className="w-5 h-5 text-primary animate-spin" />
                     </div>
                   )}
                 </div>
@@ -362,8 +362,8 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                       onClick={() => setExtractionType('fast')}
                       className={`p-3 rounded-lg border transition-all ${
                         extractionType === 'fast'
-                          ? 'border-violet-500 bg-violet-500/10 text-violet-300'
-                          : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
+                          ? 'border-primary bg-[oklch(92.5%_0.055_166)] text-[oklch(36%_0.085_166)]'
+                          : 'border-border bg-card text-muted-foreground hover:border-[oklch(77%_0.024_83)]'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
@@ -378,8 +378,8 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                       onClick={() => setExtractionType('complete')}
                       className={`p-3 rounded-lg border transition-all ${
                         extractionType === 'complete'
-                          ? 'border-violet-500 bg-violet-500/10 text-violet-300'
-                          : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
+                          ? 'border-primary bg-[oklch(92.5%_0.055_166)] text-[oklch(36%_0.085_166)]'
+                          : 'border-border bg-card text-muted-foreground hover:border-[oklch(77%_0.024_83)]'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
@@ -414,7 +414,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                     placeholder="e.g., New York Times, Personal Notes"
                     {...register('source')}
                   />
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Defaults to &quot;Pasted Content&quot; if left empty.
                   </p>
                 </div>
@@ -444,7 +444,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
               >
                 {/* Preview Card (Only for URL) */}
                 {activeTab === 'url' && previewImage && (
-                  <div className="relative h-40 w-full rounded-lg overflow-hidden border border-white/10">
+                  <div className="relative h-40 w-full rounded-lg overflow-hidden border border-border">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={previewImage} alt={watch('title') || 'Preview'} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
@@ -455,10 +455,10 @@ export default function SaveModal({ onClose }: SaveModalProps) {
 
                 {/* AI Suggestions Panel */}
                 {activeTab === 'url' && suggestedTags.length > 0 && (
-                  <div className="glass-panel p-4 rounded-xl border border-white/10 bg-gradient-to-br from-violet-900/20 to-transparent">
+                  <div className="glass-panel p-4 rounded-xl border border-border bg-[oklch(94.8%_0.036_168)]">
                     <div className="flex items-center gap-2 mb-3">
                       <Sparkles className="w-4 h-4 text-amber-400" />
-                      <h3 className="font-semibold text-white text-sm">AI Suggestions</h3>
+                      <h3 className="font-semibold text-foreground text-sm">AI Suggestions</h3>
                     </div>
                     
                     <div className="flex flex-wrap gap-2">
@@ -467,16 +467,16 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                           key={tag}
                           type="button"
                           onClick={() => addTag(tag)}
-                          className="px-2 py-1 rounded-md bg-white/5 hover:bg-violet-600/20 text-slate-300 hover:text-violet-300 text-xs border border-white/10 hover:border-violet-500/30 transition-all flex items-center gap-1"
+                          className="px-2 py-1 rounded-md bg-card hover:bg-[oklch(92.5%_0.055_166)] text-muted-foreground hover:text-[oklch(36%_0.085_166)] text-xs border border-border hover:border-primary/40 transition-all flex items-center gap-1"
                         >
                           + #{tag}
                         </button>
                       ))}
                     </div>
                     {suggestedTopic && (
-                      <div className="mt-3 pt-3 border-t border-white/5 flex items-center gap-2">
-                        <span className="text-xs text-slate-400">Topic:</span>
-                        <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs border border-cyan-500/30">
+                      <div className="mt-3 pt-3 border-t border-border flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Topic:</span>
+                        <span className="px-2 py-0.5 rounded-full bg-[oklch(92.5%_0.055_166)] text-[oklch(36%_0.085_166)] text-xs border border-primary/30">
                           {suggestedTopic}
                         </span>
                       </div>
@@ -492,21 +492,21 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                     {...register('tags')}
                   />
                   {showAutocomplete && autocompleteSuggestions.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-[#1e293b] border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-48 overflow-y-auto">
                       {autocompleteSuggestions.map((suggestion) => (
                         <button
                           key={suggestion}
                           type="button"
                           onClick={() => selectAutocompleteTag(suggestion)}
-                          className="w-full px-3 py-2 text-left text-sm text-slate-300 hover:bg-violet-600/20 hover:text-violet-300 transition-colors flex items-center gap-2"
+                          className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-[oklch(92.5%_0.055_166)] hover:text-[oklch(36%_0.085_166)] transition-colors flex items-center gap-2"
                         >
-                          <span className="text-violet-400">#</span>
+                          <span className="text-primary">#</span>
                           {suggestion}
                         </button>
                       ))}
                     </div>
                   )}
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Tip: Start typing to see tag suggestions from your library.
                   </p>
                 </div>
@@ -525,7 +525,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
                   <Label htmlFor="description">Description (Optional)</Label>
                   <textarea
                     id="description"
-                    className="flex min-h-[80px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex min-h-[80px] w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="Add a brief description..."
                     {...register('description')}
                   />
@@ -536,7 +536,7 @@ export default function SaveModal({ onClose }: SaveModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-white/10 bg-white/5 flex justify-end gap-3">
+        <div className="p-6 border-t border-border bg-muted flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose} type="button">
             Cancel
           </Button>

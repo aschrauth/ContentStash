@@ -19,10 +19,10 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
   const unreadCardClasses =
     unreadVariant === 'accent'
       ? isUnread
-        ? "ring-1 ring-inset ring-sky-500/30"
+        ? "ring-1 ring-inset ring-[oklch(70%_0.105_235)]"
         : ""
       : isUnread
-      ? "bg-sky-500/10 hover:bg-sky-500/15 border-sky-500/30 hover:border-sky-400/40"
+      ? "bg-[oklch(96%_0.026_235)] hover:bg-[oklch(94.5%_0.034_235)] border-[oklch(70%_0.105_235)] hover:border-[oklch(64%_0.12_235)]"
       : "";
 
   const getIcon = () => {
@@ -55,24 +55,18 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
             transition: { duration: 0.2, ease: "easeOut" }
           }}
           className={cn(
-            "group relative bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md md:h-32",
+            "group relative bg-card hover:bg-[oklch(99.2%_0.006_83)] border border-border hover:border-[oklch(77%_0.024_83)] rounded-xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md md:h-32",
             unreadCardClasses
           )}
           style={{ willChange: 'transform' }}
         >
-          {isUnread && unreadVariant === 'accent' && (
-            <span
-              className="absolute left-0 top-0 bottom-0 w-1 bg-sky-400/90 z-30 pointer-events-none"
-              aria-hidden="true"
-            />
-          )}
           {/* Unified Container: Flex Wrap on Mobile, Flex Row No Wrap on Desktop */}
           <div className="flex flex-wrap md:flex-nowrap items-start md:items-stretch h-full">
 
             {/* Image Section */}
             {/* Mobile: Small left thumbnail (116px width). Desktop: Fixed left sidebar (230px width) */}
             <div className={`
-              relative shrink-0 overflow-hidden bg-slate-900 
+              relative shrink-0 overflow-hidden bg-muted
               
               /* Mobile Styles */
               w-[116px] h-16 m-3 rounded-lg 
@@ -80,6 +74,12 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
               /* Desktop Styles */
               md:w-[230px] md:h-full md:m-0 md:rounded-none
             `}>
+              {isUnread && unreadVariant === 'accent' && (
+                <span
+                  className="absolute inset-y-0 left-0 z-20 w-1 bg-[oklch(58%_0.16_235)] pointer-events-none"
+                  aria-hidden="true"
+                />
+              )}
               {item.imageUrl ? (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -90,10 +90,10 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                   {/* Desktop Overlay */}
-                  <div className="hidden md:block absolute inset-0 bg-gradient-to-r from-transparent to-black/20" />
+                  <div className="hidden md:block absolute inset-0 bg-gradient-to-r from-transparent to-[oklch(23%_0.018_75_/_0.16)]" />
                 </>
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-white/5 border border-white/5 md:border-r md:border-y-0 md:border-l-0">
+                <div className="w-full h-full flex items-center justify-center bg-muted border border-border md:border-r md:border-y-0 md:border-l-0 text-muted-foreground">
                   {getIcon()}
                 </div>
               )}
@@ -107,7 +107,7 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
               {/* Title & Metadata Block (Right of thumbnail on mobile) */}
               <div className="flex flex-col justify-center gap-1 w-[calc(100%-116px-24px)] pt-3 pr-3 md:w-full md:h-auto md:p-0 md:mb-1">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-semibold text-sm md:text-base leading-tight text-slate-100 line-clamp-2 truncate group-hover:text-violet-300 transition-colors md:flex-1">
+                  <h3 className="font-semibold text-sm md:text-base leading-tight text-foreground line-clamp-2 truncate group-hover:text-[oklch(48%_0.12_166)] transition-colors md:flex-1">
                     {item.title}
                   </h3>
 
@@ -123,29 +123,29 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
                 </div>
 
                 {/* Metadata: Read Time, Date and Source - Integrated into right column on Mobile */}
-                <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 text-[11px] md:text-xs text-slate-500 mt-1 md:mt-0">
+                <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 text-[11px] md:text-xs text-muted-foreground mt-1 md:mt-0">
                   <div className="flex items-center gap-2">
                     {/* Read Time */}
                     {calculateReadTime(item.wordCount) && (
-                      <span className="text-slate-400 font-medium flex items-center gap-1 shrink-0">
+                      <span className="text-muted-foreground font-medium flex items-center gap-1 shrink-0">
                         <Clock className="w-3 h-3" />
                         {calculateReadTime(item.wordCount)}
                       </span>
                     )}
 
-                    {calculateReadTime(item.wordCount) && <span className="text-slate-600">•</span>}
+                    {calculateReadTime(item.wordCount) && <span className="text-[oklch(77%_0.024_83)]">•</span>}
 
                     {/* Date */}
-                    <span className="text-slate-400 shrink-0">
+                    <span className="text-muted-foreground shrink-0">
                       {formatDate(item.createdAt)}
                     </span>
 
-                    {item.source && <span className="hidden md:inline text-slate-600 md:ml-1">•</span>}
+                    {item.source && <span className="hidden md:inline text-[oklch(77%_0.024_83)] md:ml-1">•</span>}
                   </div>
 
                   {/* Source (Stacked on Mobile, Row on Desktop) */}
                   {item.source && (
-                    <span className="truncate text-slate-500 max-w-[200px] md:max-w-none">
+                    <span className="truncate text-muted-foreground max-w-[200px] md:max-w-none">
                       {item.source}
                     </span>
                   )}
@@ -154,7 +154,7 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
 
               {/* Description Section (Mobile: Stacks below image/title row) */}
               <div className="w-full px-3 pb-2 md:p-0 md:mb-2 order-3 md:order-none">
-                <p className="text-xs md:text-sm text-slate-400 line-clamp-2 opacity-100">
+                <p className="text-xs md:text-sm text-muted-foreground line-clamp-2 opacity-100">
                   {item.description || "No description available."}
                 </p>
               </div>
@@ -167,13 +167,13 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
                       {item.tags.slice(0, 3).map(tag => (
                         <span
                           key={tag}
-                          className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-300 text-[10px] border border-white/5 group-hover:border-white/10 transition-colors whitespace-nowrap"
+                          className="px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground text-[10px] border border-border group-hover:border-[oklch(77%_0.024_83)] transition-colors whitespace-nowrap"
                         >
                           #{tag}
                         </span>
                       ))}
                       {item.tags.length > 3 && (
-                        <span className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px]">
+                        <span className="px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground text-[10px]">
                           +{item.tags.length - 3}
                         </span>
                       )}
@@ -211,20 +211,20 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
           transition: { type: "tween", duration: 0.2, ease: "easeOut" }
         }}
         className={cn(
-          "group relative h-full flex flex-col bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-violet-500/10",
+          "group relative h-full flex flex-col bg-card hover:bg-[oklch(99.2%_0.006_83)] border border-border hover:border-[oklch(77%_0.024_83)] rounded-xl overflow-hidden transition-all duration-300 shadow-lg hover:shadow-xl",
           unreadCardClasses
         )}
         style={{ willChange: 'transform' }}
       >
-        {isUnread && unreadVariant === 'accent' && (
-          <span
-            className="absolute left-0 top-0 bottom-0 w-1 bg-sky-400/90 z-30 pointer-events-none"
-            aria-hidden="true"
-          />
-        )}
         {/* Image Preview */}
         {item.imageUrl && (
-          <div className="relative h-40 w-full overflow-hidden bg-slate-900">
+          <div className="relative h-40 w-full overflow-hidden bg-muted">
+            {isUnread && unreadVariant === 'accent' && (
+              <span
+                className="absolute inset-y-0 left-0 z-20 w-1 bg-[oklch(58%_0.16_235)] pointer-events-none"
+                aria-hidden="true"
+              />
+            )}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={item.imageUrl}
@@ -232,7 +232,7 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
               loading="lazy"
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent opacity-60" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[oklch(23%_0.018_75_/_0.55)] to-transparent opacity-60" />
 
             {/* Status Badge */}
             <div className="absolute top-3 right-3">
@@ -256,11 +256,11 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
           <div className="flex flex-col gap-2 mb-3">
             {/* Metadata Part 1: Icon, Read Time, Date */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {getIcon()}
                 {calculateReadTime(item.wordCount) && (
                   <>
-                    <span className="text-slate-400 font-medium flex items-center gap-1">
+                    <span className="text-muted-foreground font-medium flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {calculateReadTime(item.wordCount)}
                     </span>
@@ -285,20 +285,20 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
 
             {/* Metadata Part 2: Source (New Line) */}
             {item.source && (
-              <div className="text-xs text-slate-500 truncate mt-0.5">
+              <div className="text-xs text-muted-foreground truncate mt-0.5">
                 {item.source}
               </div>
             )}
           </div>
 
           {/* Title */}
-          <h3 className="font-semibold text-lg leading-tight text-slate-100 mb-2 line-clamp-2 group-hover:text-violet-300 transition-colors opacity-100">
+          <h3 className="font-semibold text-lg leading-tight text-foreground mb-2 line-clamp-2 group-hover:text-[oklch(48%_0.12_166)] transition-colors opacity-100">
             {item.title}
           </h3>
 
           {/* Description */}
           {item.description && (
-            <p className="text-sm text-slate-400 line-clamp-3 mb-4 flex-1 opacity-100">
+            <p className="text-sm text-muted-foreground line-clamp-3 mb-4 flex-1 opacity-100">
               {item.description}
             </p>
           )}
@@ -308,13 +308,13 @@ export default function ItemCard({ item, viewMode = 'grid', unreadVariant = 'acc
             {item.tags.slice(0, 3).map(tag => (
               <span
                 key={tag}
-                className="px-2 py-0.5 rounded-md bg-white/5 text-slate-300 text-xs border border-white/5 group-hover:border-white/10 transition-colors opacity-100"
+                className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-xs border border-border group-hover:border-[oklch(77%_0.024_83)] transition-colors opacity-100"
               >
                 #{tag}
               </span>
             ))}
             {item.tags.length > 3 && (
-              <span className="px-2 py-0.5 rounded-md bg-white/5 text-slate-400 text-xs">
+              <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-xs">
                 +{item.tags.length - 3}
               </span>
             )}

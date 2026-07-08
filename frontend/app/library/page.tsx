@@ -232,8 +232,8 @@ function LibraryContent() {
         {/* Header & Controls */}
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-1">Library</h1>
-            <p className="text-slate-400">
+            <h1 className="text-3xl font-bold text-foreground mb-1">Library</h1>
+            <p className="text-muted-foreground">
               {totalCount !== null
                 ? `${totalCount} ${totalCount === 1 ? 'item' : 'items'} total (${unreadCount} unread)`
                 : isLoading
@@ -246,7 +246,7 @@ function LibraryContent() {
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             {/* Mobile Search (visible if needed, but we have global search) */}
             <div className="relative flex-1 md:w-64 md:flex-none">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input 
                 placeholder="Filter library..." 
                 value={searchQuery}
@@ -255,7 +255,7 @@ function LibraryContent() {
               />
             </div>
 
-            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10">
+            <div className="flex items-center gap-1 bg-muted p-1 rounded-lg border border-border">
               <Button 
                 variant={viewMode === 'grid' ? 'secondary' : 'ghost'} 
                 size="icon" 
@@ -279,7 +279,7 @@ function LibraryContent() {
         {/* Tag Filters */}
         {allTags.length > 0 && (
           <div className="flex flex-wrap gap-2 items-center">
-            <Filter className="w-4 h-4 text-slate-500 mr-2" />
+            <Filter className="w-4 h-4 text-muted-foreground mr-2" />
             {allTags.map(tag => (
               <button
                 key={tag}
@@ -287,8 +287,8 @@ function LibraryContent() {
                 className={cn(
                   "px-3 py-1 rounded-full text-xs font-medium transition-all border",
                   selectedTags.includes(tag)
-                    ? "bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-500/25"
-                    : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200"
+                    ? "bg-primary border-primary text-primary-foreground shadow-[0_8px_20px_oklch(50%_0.12_166_/_0.18)]"
+                    : "bg-card border-border text-muted-foreground hover:border-[oklch(77%_0.024_83)] hover:bg-[oklch(97.8%_0.008_83)] hover:text-foreground"
                 )}
               >
                 #{tag}
@@ -297,7 +297,7 @@ function LibraryContent() {
             {selectedTags.length > 0 && (
               <button 
                 onClick={() => setSelectedTags([])}
-                className="text-xs text-slate-500 hover:text-slate-300 ml-2 underline"
+                className="text-xs text-muted-foreground hover:text-foreground ml-2 underline"
               >
                 Clear filters
               </button>
@@ -324,22 +324,22 @@ function LibraryContent() {
             {/* Loading indicator for infinite scroll */}
             {isFetchingNextPage && (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 text-violet-500 animate-spin mr-2" />
-                <span className="text-slate-400">Loading more items...</span>
+                <Loader2 className="w-6 h-6 text-primary animate-spin mr-2" />
+                <span className="text-muted-foreground">Loading more items...</span>
               </div>
             )}
             
             {/* Sentinel for infinite scroll */}
             {hasNextPage && !isFetchingNextPage && (
               <div ref={sentinelRef} className="h-20 flex items-center justify-center">
-                <div className="text-slate-500 text-sm">Scroll for more...</div>
+                <div className="text-muted-foreground text-sm">Scroll for more...</div>
               </div>
             )}
             
             {/* End of list indicator */}
             {!hasNextPage && displayItems.length > 0 && (
               <div className="flex items-center justify-center py-8">
-                <div className="text-slate-500 text-sm">
+                <div className="text-muted-foreground text-sm">
                   {totalCount !== null 
                     ? `All ${totalCount} items loaded`
                     : 'No more items to load'
@@ -350,11 +350,11 @@ function LibraryContent() {
           </>
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6">
-              <Search className="w-8 h-8 text-slate-600" />
+            <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-6">
+              <Search className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-xl font-semibold text-slate-300 mb-2">No items found</h3>
-            <p className="text-slate-500 max-w-md">
+            <h3 className="text-xl font-semibold text-foreground mb-2">No items found</h3>
+            <p className="text-muted-foreground max-w-md">
               {searchQuery || selectedTags.length > 0 
                 ? "Try adjusting your search or filters to find what you're looking for."
                 : "Your library is empty. Start by saving some content!"}
@@ -374,12 +374,12 @@ export default function LibraryPage() {
         <div className="space-y-8">
           <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-white mb-1">Library</h1>
-              <p className="text-slate-400">Loading...</p>
+              <h1 className="text-3xl font-bold text-foreground mb-1">Library</h1>
+              <p className="text-muted-foreground">Loading...</p>
             </div>
           </div>
           <div className="flex items-center justify-center py-20">
-            <div className="animate-pulse text-slate-400">Loading your library...</div>
+            <div className="animate-pulse text-muted-foreground">Loading your library...</div>
           </div>
         </div>
       </AppLayout>

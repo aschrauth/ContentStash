@@ -43,14 +43,14 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
-          class: 'text-violet-400 underline cursor-pointer',
+          class: 'text-[oklch(48%_0.12_166)] underline cursor-pointer',
         },
       }),
     ],
     editorProps: {
       attributes: {
         // Auto-growing editor: starts compact, expands with content
-        class: 'focus:outline-none min-h-[60px] p-4 text-slate-200',
+        class: 'focus:outline-none min-h-[60px] p-4 text-foreground',
       },
     },
     onUpdate: ({ editor }) => {
@@ -74,7 +74,7 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
   }, [editor, value, isMounted]);
 
   if (!editor) {
-    return <div className="h-[60px] bg-white/5 rounded-lg animate-pulse border border-white/10" />;
+    return <div className="h-[60px] bg-muted rounded-lg animate-pulse border border-border" />;
   }
 
   const ToolbarButton = ({ onClick, isActive = false, icon: Icon, title }: { onClick: () => void; isActive?: boolean; icon: React.ComponentType<{ className?: string }>; title: string }) => (
@@ -84,8 +84,8 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
       className={cn(
         "p-2 rounded-md transition-colors",
         isActive 
-          ? "bg-violet-600 text-white" 
-          : "text-slate-400 hover:text-white hover:bg-white/10"
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted"
       )}
       title={title}
     >
@@ -94,9 +94,9 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
   );
 
   return (
-    <div className={cn("flex flex-col border border-white/10 rounded-lg overflow-hidden bg-white/5", className)}>
+    <div className={cn("flex flex-col border border-border rounded-lg overflow-hidden bg-card", className)}>
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-1 p-2 border-b border-white/10 bg-white/5">
+      <div className="flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted">
         <ToolbarButton 
           onClick={() => editor.chain().focus().toggleBold().run()} 
           isActive={editor.isActive('bold')} 
@@ -109,7 +109,7 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
           icon={Italic} 
           title="Italic" 
         />
-        <div className="w-px h-4 bg-white/10 mx-1" />
+        <div className="w-px h-4 bg-border mx-1" />
         <ToolbarButton 
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} 
           isActive={editor.isActive('heading', { level: 1 })} 
@@ -122,7 +122,7 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
           icon={Heading2} 
           title="Heading 2" 
         />
-        <div className="w-px h-4 bg-white/10 mx-1" />
+        <div className="w-px h-4 bg-border mx-1" />
         <ToolbarButton 
           onClick={() => editor.chain().focus().toggleBulletList().run()} 
           isActive={editor.isActive('bulletList')} 
@@ -135,7 +135,7 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
           icon={ListOrdered} 
           title="Numbered List" 
         />
-        <div className="w-px h-4 bg-white/10 mx-1" />
+        <div className="w-px h-4 bg-border mx-1" />
         <ToolbarButton 
           onClick={() => editor.chain().focus().toggleBlockquote().run()} 
           isActive={editor.isActive('blockquote')} 
@@ -148,7 +148,7 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
           icon={Code} 
           title="Code Block" 
         />
-        <div className="w-px h-4 bg-white/10 mx-1" />
+        <div className="w-px h-4 bg-border mx-1" />
         <ToolbarButton 
           onClick={() => editor.chain().focus().undo().run()} 
           icon={Undo} 
@@ -166,4 +166,3 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
     </div>
   );
 }
-

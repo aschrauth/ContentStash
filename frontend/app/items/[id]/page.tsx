@@ -302,7 +302,7 @@ export default function ItemDetailPage() {
     return (
       <AppLayout>
         <div className="flex items-center justify-center min-h-[50vh]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-500"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       </AppLayout>
     );
@@ -472,7 +472,7 @@ export default function ItemDetailPage() {
         {/* Back Button */}
         <button
           onClick={() => router.back()}
-          className="flex items-center text-slate-400 hover:text-white mb-6 transition-colors"
+          className="flex items-center text-muted-foreground hover:text-foreground mb-6 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Library
@@ -483,7 +483,7 @@ export default function ItemDetailPage() {
           <div className="lg:col-span-2 space-y-4 md:space-y-8">
 
             {/* Summary Panel - Header Section */}
-            <div className="glass-panel p-4 md:p-8 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="glass-panel p-4 md:p-8 rounded-2xl border border-border relative overflow-hidden">
               {/* Background Image Blur */}
               {item.imageUrl && (
                 <div className="absolute inset-0 z-0 opacity-10">
@@ -496,22 +496,22 @@ export default function ItemDetailPage() {
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-2">
                     {(item.processingStatus === 'pending' || item.processingStatus === 'processing') && (
-                      <span className="px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-medium border border-amber-500/30 flex items-center gap-1">
+                      <span className="px-2 py-1 rounded-full bg-[oklch(98%_0.026_83)] text-[oklch(42%_0.09_73)] text-xs font-medium border border-[oklch(78%_0.09_73)] flex items-center gap-1">
                         <RefreshCw className="w-3 h-3 animate-spin" /> Processing
                       </span>
                     )}
                     {item.processingStatus === 'pending_local_extraction' && (
-                      <span className="px-2 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-500/30 flex items-center gap-1">
+                      <span className="px-2 py-1 rounded-full bg-[oklch(97%_0.018_235)] text-[oklch(38%_0.09_235)] text-xs font-medium border border-[oklch(76%_0.07_235)] flex items-center gap-1">
                         <Clock className="w-3 h-3" /> Pending Local Extraction
                       </span>
                     )}
                     {item.processingStatus === 'failed' && (
-                      <span className="px-2 py-1 rounded-full bg-red-500/20 text-red-300 text-xs font-medium border border-red-500/30 flex items-center gap-1">
+                      <span className="px-2 py-1 rounded-full bg-[oklch(97%_0.024_28)] text-[oklch(39%_0.13_28)] text-xs font-medium border border-[oklch(78%_0.095_28)] flex items-center gap-1">
                         <X className="w-3 h-3" /> Failed
                       </span>
                     )}
                     {item.processingStatus === 'processed' && (
-                      <span className="px-2 py-1 rounded-full bg-green-500/20 text-green-300 text-xs font-medium border border-green-500/30 flex items-center gap-1">
+                      <span className="px-2 py-1 rounded-full bg-[oklch(98%_0.016_154)] text-[oklch(32%_0.105_154)] text-xs font-medium border border-[oklch(68%_0.095_154)] flex items-center gap-1">
                         <Check className="w-3 h-3" /> Processed
                       </span>
                     )}
@@ -521,18 +521,18 @@ export default function ItemDetailPage() {
                       className={cn(
                         "px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 transition-colors",
                         item.isRead === true
-                          ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/40 hover:bg-emerald-500/30"
-                          : "bg-slate-500/10 text-slate-300 border-slate-500/40 hover:bg-slate-500/20"
+                          ? "bg-[oklch(98%_0.016_154)] text-[oklch(32%_0.105_154)] border-[oklch(68%_0.095_154)] hover:bg-[oklch(96.5%_0.022_154)]"
+                          : "bg-muted text-muted-foreground border-border hover:bg-[oklch(97.8%_0.008_83)]"
                       )}
                       title={item.isRead === true ? "Mark as unread" : "Mark as read"}
                       aria-pressed={item.isRead !== true}
                     >
                       {item.isRead === true ? (
-                        <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border border-emerald-300/70 bg-emerald-500/20">
+                        <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border border-[oklch(68%_0.095_154)] bg-[oklch(98%_0.016_154)]">
                           <Check className="w-2.5 h-2.5" />
                         </span>
                       ) : (
-                        <span className="inline-block h-3.5 w-3.5 rounded-[3px] border border-slate-300/70" />
+                        <span className="inline-block h-3.5 w-3.5 rounded-[3px] border border-border" />
                       )}
                       {item.isRead === true ? "Read" : "Unread"}
                     </button>
@@ -569,24 +569,24 @@ export default function ItemDetailPage() {
                     <textarea
                       value={editDescription}
                       onChange={(e) => setEditDescription(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-md p-3 text-slate-200 focus:ring-2 focus:ring-violet-500 outline-none"
+                      className="w-full bg-card border border-border rounded-[10px] p-3 text-foreground focus:ring-4 focus:ring-ring/25 outline-none"
                       rows={3}
                     />
                   </div>
                 ) : (
                   <div className="clearfix">
-                    <h1 className="text-3xl font-bold text-white mb-4 leading-tight">{item.title}</h1>
+                    <h1 className="text-3xl font-bold text-foreground mb-4 leading-tight">{item.title}</h1>
 
                     {/* Date and Read Time - Detail View */}
-                    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 mb-4 text-sm text-slate-400">
+                    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 mb-4 text-sm text-muted-foreground">
                       <div className="flex items-center gap-2">
                         {calculateReadTime(item.wordCount) && (
                           <>
-                            <span className="text-slate-400 font-medium flex items-center gap-1">
+                            <span className="text-muted-foreground font-medium flex items-center gap-1">
                               <Clock className="w-3 h-3" />
                               {calculateReadTime(item.wordCount)}
                             </span>
-                            <span className="text-slate-600">•</span>
+                            <span className="text-[oklch(77%_0.024_83)]">•</span>
                           </>
                         )}
 
@@ -595,7 +595,7 @@ export default function ItemDetailPage() {
 
                       {item.source && (
                         <div className="flex items-center gap-2">
-                          <span className="hidden md:inline text-slate-600">•</span>
+                          <span className="hidden md:inline text-[oklch(77%_0.024_83)]">•</span>
                           <span className="truncate">{item.source}</span>
                         </div>
                       )}
@@ -603,7 +603,7 @@ export default function ItemDetailPage() {
 
                     {/* Preview Image - Floated Left on wider screens, stacked on mobile */}
                     {item.imageUrl && (
-                      <div className="mb-4 w-full overflow-hidden rounded-xl border border-white/10 shadow-lg md:float-left md:mr-6 md:w-[250px]">
+                      <div className="mb-4 w-full overflow-hidden rounded-xl border border-border shadow-lg md:float-left md:mr-6 md:w-[250px]">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={item.imageUrl}
@@ -613,20 +613,20 @@ export default function ItemDetailPage() {
                       </div>
                     )}
 
-                    <p className="text-slate-300 text-lg leading-relaxed mb-6">{item.description}</p>
+                    <p className="text-foreground text-lg leading-relaxed mb-6">{item.description}</p>
                   </div>
                 )}
 
                 {item.aiSummary && item.processingStatus === 'processed' && (
                   <div className="clear-both pt-4">
-                    <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4">
-                      <h3 className="text-sm font-semibold text-violet-300 flex items-center gap-1.5 mb-3">
+                    <div className="bg-[oklch(97.4%_0.014_166)] border border-primary/25 rounded-xl p-4">
+                      <h3 className="text-sm font-semibold text-[oklch(36%_0.085_166)] flex items-center gap-1.5 mb-3">
                         <Sparkles className="w-3.5 h-3.5" /> Key Points
                       </h3>
                       <ul className="space-y-1.5">
                         {item.aiSummary.split('\n').filter(line => line.trim()).map((line, i) => (
-                          <li key={i} className="text-slate-300 text-sm leading-relaxed flex gap-2">
-                            <span className="text-violet-400 mt-0.5 shrink-0">&bull;</span>
+                          <li key={i} className="text-foreground text-sm leading-relaxed flex gap-2">
+                            <span className="text-primary mt-0.5 shrink-0">&bull;</span>
                             <span>{line.replace(/^[-*]\s*/, '')}</span>
                           </li>
                         ))}
@@ -641,7 +641,7 @@ export default function ItemDetailPage() {
                       href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center text-violet-400 hover:text-violet-300 transition-colors font-medium"
+                      className="inline-flex items-center text-[oklch(48%_0.12_166)] hover:text-[oklch(40%_0.11_166)] transition-colors font-medium"
                     >
                       Visit Original Link <ExternalLink className="w-4 h-4 ml-2" />
                     </a>
@@ -651,10 +651,10 @@ export default function ItemDetailPage() {
             </div>
 
             {/* Personal Notes Panel */}
-            <div className="glass-panel p-4 md:p-8 rounded-2xl border border-white/10">
+            <div className="glass-panel p-4 md:p-8 rounded-2xl border border-border">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Edit3 className="w-5 h-5 text-violet-400" /> Personal Notes
+                <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+                  <Edit3 className="w-5 h-5 text-primary" /> Personal Notes
                 </h2>
                 <Button size="sm" variant="secondary" onClick={handleSaveNotes}>
                   <Save className="w-4 h-4 mr-2" /> Save Notes
@@ -670,9 +670,9 @@ export default function ItemDetailPage() {
 
             {/* Archived Content Panel */}
             {item.archivedText && (
-              <div className="glass-panel p-4 md:p-8 rounded-2xl border border-white/10">
-                <h2 className="text-xl font-bold text-white mb-4">Archived Content</h2>
-                <div className="prose-archived max-w-none text-slate-300">
+              <div className="glass-panel p-4 md:p-8 rounded-2xl border border-border">
+                <h2 className="text-xl font-bold text-foreground mb-4">Archived Content</h2>
+                <div className="prose-archived max-w-none text-foreground">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
@@ -717,21 +717,21 @@ export default function ItemDetailPage() {
           <div className="space-y-4 md:space-y-6">
 
             {/* Tags Panel */}
-            <div className="glass-panel p-3 md:p-6 rounded-2xl border border-white/10">
-              <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-                <Tag className="w-4 h-4 text-violet-400" /> Tags
+            <div className="glass-panel p-3 md:p-6 rounded-2xl border border-border">
+              <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                <Tag className="w-4 h-4 text-primary" /> Tags
               </h3>
 
               <div className="flex flex-wrap gap-2 mb-4">
                 {item.tags.map(tag => (
                   <span
                     key={tag}
-                    className="px-2 py-1 rounded-md bg-violet-600/20 text-violet-300 text-sm border border-violet-500/30 flex items-center gap-1 group"
+                    className="px-2 py-1 rounded-md bg-[oklch(92.5%_0.055_166)] text-[oklch(36%_0.085_166)] text-sm border border-primary/30 flex items-center gap-1 group"
                   >
                     #{tag}
                     <button
                       onClick={() => removeTag(tag)}
-                      className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
+                      className="opacity-0 group-hover:opacity-100 hover:text-foreground transition-opacity"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -747,15 +747,15 @@ export default function ItemDetailPage() {
                   className="pr-8"
                 />
                 {showAutocomplete && autocompleteSuggestions.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-[#1e293b] border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                  <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-48 overflow-y-auto">
                     {autocompleteSuggestions.map((suggestion) => (
                       <button
                         key={suggestion}
                         type="button"
                         onClick={() => selectAutocompleteTag(suggestion)}
-                        className="w-full px-3 py-2 text-left text-sm text-slate-300 hover:bg-violet-600/20 hover:text-violet-300 transition-colors flex items-center gap-2"
+                        className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-[oklch(92.5%_0.055_166)] hover:text-[oklch(36%_0.085_166)] transition-colors flex items-center gap-2"
                       >
-                        <span className="text-violet-400">#</span>
+                        <span className="text-primary">#</span>
                         {suggestion}
                       </button>
                     ))}
@@ -763,7 +763,7 @@ export default function ItemDetailPage() {
                 )}
                 <button
                   type="submit"
-                  className="absolute right-2 top-2.5 text-slate-400 hover:text-white"
+                  className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
                 >
                   <Check className="w-4 h-4" />
                 </button>
@@ -771,16 +771,16 @@ export default function ItemDetailPage() {
 
               {/* AI Suggestions - moved inline with Tags */}
               {item.suggestedTags && item.suggestedTags.length > 0 && (
-                <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-violet-900/20 to-transparent border border-violet-500/20">
-                  <h4 className="font-semibold text-white mb-2 text-sm">AI Suggestions</h4>
-                  <p className="text-xs text-slate-400 mb-3">Based on content analysis</p>
+                <div className="mt-6 p-4 rounded-lg bg-[oklch(97.4%_0.014_166)] border border-primary/25">
+                  <h4 className="font-semibold text-foreground mb-2 text-sm">AI Suggestions</h4>
+                  <p className="text-xs text-muted-foreground mb-3">Based on content analysis</p>
 
                   <div className="flex flex-wrap gap-2">
                     {item.suggestedTags.map(tag => (
                       <button
                         key={tag}
                         onClick={() => acceptSuggestion(tag)}
-                        className="px-2 py-1 rounded-md bg-white/5 hover:bg-violet-600/20 text-slate-300 hover:text-violet-300 text-xs border border-white/10 hover:border-violet-500/30 transition-all flex items-center gap-1"
+                        className="px-2 py-1 rounded-md bg-card hover:bg-[oklch(92.5%_0.055_166)] text-muted-foreground hover:text-[oklch(36%_0.085_166)] text-xs border border-border hover:border-primary/40 transition-all flex items-center gap-1"
                       >
                         + #{tag}
                       </button>
@@ -792,13 +792,13 @@ export default function ItemDetailPage() {
 
             {/* Extraction Type Panel */}
             {item.url && (
-              <div className="glass-panel p-3 md:p-6 rounded-2xl border border-white/10">
-                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-violet-400" /> Extraction Type
+              <div className="glass-panel p-3 md:p-6 rounded-2xl border border-border">
+                <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-primary" /> Extraction Type
                 </h3>
                 <div className="space-y-2">
-                  <p className="text-xs text-slate-400 mb-3">
-                    Current: <span className="text-violet-300 font-medium">
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Current: <span className="text-[oklch(36%_0.085_166)] font-medium">
                       {item.extractionType === 'complete' ? 'Complete' : item.extractionType === 'local' ? 'Local' : 'Fast'}
                     </span>
                   </p>
@@ -826,13 +826,13 @@ export default function ItemDetailPage() {
                         toast.error('Failed to update extraction type');
                       }
                     }}
-                    className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-sm text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                    className="w-full bg-card border border-border rounded-[10px] p-2 text-sm text-foreground focus:ring-4 focus:ring-ring/25 outline-none"
                   >
                     <option value="fast">Fast - Quick extraction</option>
                     <option value="complete">Complete - Full extraction with images</option>
                     <option value="local">Local - Browser extension extraction</option>
                   </select>
-                  <p className="text-xs text-slate-500 mt-2">
+                  <p className="text-xs text-muted-foreground mt-2">
                     {item.extractionType === 'local'
                       ? 'Local extraction requires the Chrome extension to be running on a desktop computer to process content'
                       : 'Changing this will automatically reprocess the content'}
@@ -842,8 +842,8 @@ export default function ItemDetailPage() {
             )}
 
             {/* Actions Panel */}
-            <div className="glass-panel p-3 md:p-6 rounded-2xl border border-white/10 space-y-3">
-              <h3 className="font-semibold text-white mb-2">Actions</h3>
+            <div className="glass-panel p-3 md:p-6 rounded-2xl border border-border space-y-3">
+              <h3 className="font-semibold text-foreground mb-2">Actions</h3>
               {(item.processingStatus === 'failed' || item.processingStatus === 'processed') && item.url && (
                 <Button
                   variant="secondary"
@@ -867,9 +867,9 @@ export default function ItemDetailPage() {
 
             {/* Topic Panel */}
             {item.suggestedTopic && (
-              <div className="glass-panel p-3 md:p-6 rounded-2xl border border-white/10">
-                <h3 className="font-semibold text-white mb-2">Topic</h3>
-                <span className="px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-sm border border-cyan-500/30 inline-block">
+              <div className="glass-panel p-3 md:p-6 rounded-2xl border border-border">
+                <h3 className="font-semibold text-foreground mb-2">Topic</h3>
+                <span className="px-3 py-1 rounded-full bg-[oklch(92.5%_0.055_166)] text-[oklch(36%_0.085_166)] text-sm border border-primary/30 inline-block">
                   {item.suggestedTopic}
                 </span>
               </div>

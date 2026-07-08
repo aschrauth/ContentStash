@@ -157,7 +157,7 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
             exit={{ opacity: 0 }}
             onClick={onClose}
             data-stash-overlay-backdrop="chat"
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+            className="fixed inset-0 bg-[oklch(23%_0.018_75_/_0.32)] backdrop-blur-sm z-40"
           />
 
           {/* Chat Panel */}
@@ -167,17 +167,17 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             data-stash-overlay-panel="chat"
-            className="fixed right-0 top-0 bottom-0 w-full md:w-[500px] bg-[#0f172a] border-l border-white/10 shadow-2xl z-50 flex flex-col"
+            className="fixed right-0 top-0 bottom-0 w-full md:w-[500px] bg-background border-l border-border shadow-2xl z-50 flex flex-col"
           >
             {/* Header */}
-            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-slate-900/50 backdrop-blur-md">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-card/90 backdrop-blur-md">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-violet-600 to-cyan-500 rounded-lg flex items-center justify-center">
-                  <Sparkles className="w-4 h-4 text-white" />
+                <div className="w-8 h-8 bg-[oklch(92.5%_0.055_166)] rounded-lg flex items-center justify-center border border-primary/20">
+                  <Sparkles className="w-4 h-4 text-[oklch(36%_0.085_166)]" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-white">Ask Stash</h2>
-                  <p className="text-xs text-slate-400">AI-powered search</p>
+                  <h2 className="font-bold text-foreground">Ask Stash</h2>
+                  <p className="text-xs text-muted-foreground">AI-powered search</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -194,9 +194,9 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
             <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-50">
-                  <MessageSquare className="w-12 h-12 mb-4 text-violet-400" />
-                  <h3 className="text-lg font-medium text-white mb-2">Ask anything</h3>
-                  <p className="text-sm text-slate-400">
+                  <MessageSquare className="w-12 h-12 mb-4 text-primary" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Ask anything</h3>
+                  <p className="text-sm text-muted-foreground">
                     &quot;What did I save about UX design?&quot;<br/>
                     &quot;Summarize my notes on React&quot;<br/>
                     &quot;Find articles about AI&quot;
@@ -215,8 +215,8 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
                       className={cn(
                         "p-4 rounded-2xl text-sm leading-relaxed",
                         msg.role === 'user'
-                          ? "bg-violet-600 text-white rounded-tr-none"
-                          : "bg-white/10 text-slate-200 rounded-tl-none border border-white/5"
+                          ? "bg-primary text-primary-foreground rounded-tr-none"
+                          : "bg-card text-foreground rounded-tl-none border border-border"
                       )}
                     >
                       {msg.role === 'user' ? (
@@ -224,27 +224,27 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
                       ) : (
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
-                          className="prose prose-invert prose-sm max-w-none"
+                          className="prose prose-sm max-w-none"
                           components={{
                             // Customize markdown rendering
                             p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                             ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
                             ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
                             li: ({ children }) => <li className="ml-2">{children}</li>,
-                            strong: ({ children }) => <strong className="font-bold text-white">{children}</strong>,
+                            strong: ({ children }) => <strong className="font-bold text-foreground">{children}</strong>,
                             em: ({ children }) => <em className="italic">{children}</em>,
-                            code: ({ children }) => <code className="bg-black/30 px-1.5 py-0.5 rounded text-violet-300">{children}</code>,
-                            pre: ({ children }) => <pre className="bg-black/30 p-3 rounded-lg overflow-x-auto mb-2">{children}</pre>,
+                            code: ({ children }) => <code className="bg-muted px-1.5 py-0.5 rounded text-[oklch(36%_0.085_166)]">{children}</code>,
+                            pre: ({ children }) => <pre className="bg-muted p-3 rounded-lg overflow-x-auto mb-2">{children}</pre>,
                             a: ({ href, children }) => (
-                              <a href={href} className="text-violet-300 hover:text-violet-200 underline" target="_blank" rel="noopener noreferrer">
+                              <a href={href} className="text-[oklch(48%_0.12_166)] hover:text-[oklch(40%_0.11_166)] underline" target="_blank" rel="noopener noreferrer">
                                 {children}
                               </a>
                             ),
-                            h1: ({ children }) => <h1 className="text-xl font-bold mb-2 text-white">{children}</h1>,
-                            h2: ({ children }) => <h2 className="text-lg font-bold mb-2 text-white">{children}</h2>,
-                            h3: ({ children }) => <h3 className="text-base font-bold mb-2 text-white">{children}</h3>,
+                            h1: ({ children }) => <h1 className="text-xl font-bold mb-2 text-foreground">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-lg font-bold mb-2 text-foreground">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-base font-bold mb-2 text-foreground">{children}</h3>,
                             blockquote: ({ children }) => (
-                              <blockquote className="border-l-4 border-violet-500 pl-4 italic my-2 text-slate-300">
+                              <blockquote className="border border-primary/25 rounded-lg bg-accent/40 px-4 py-2 italic my-2 text-muted-foreground">
                                 {children}
                               </blockquote>
                             ),
@@ -258,21 +258,21 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
                     {/* Citations */}
                     {msg.citations && msg.citations.length > 0 && (
                       <div className="mt-3 space-y-2 w-full">
-                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider ml-1">Sources</p>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider ml-1">Sources</p>
                         {msg.citations.map((citation, idx) => (
                           <Link
                             key={idx}
                             href={`/items/${citation.id}`}
                             onClick={onClose}
-                            className="block p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-violet-500/30 transition-all group"
+                            className="block p-3 rounded-xl bg-card border border-border hover:bg-[oklch(99.2%_0.006_83)] hover:border-primary/40 transition-all group"
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <h4 className="text-xs font-semibold text-violet-300 line-clamp-1 group-hover:text-violet-200">
+                              <h4 className="text-xs font-semibold text-[oklch(48%_0.12_166)] line-clamp-1 group-hover:text-[oklch(40%_0.11_166)]">
                                 {citation.title}
                               </h4>
-                              <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-violet-400" />
+                              <ExternalLink className="w-3 h-3 text-muted-foreground group-hover:text-primary" />
                             </div>
-                            <p className="text-xs text-slate-400 mt-1 line-clamp-2 italic">
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2 italic">
                               &quot;{citation.excerpt}&quot;
                             </p>
                           </Link>
@@ -284,29 +284,29 @@ export default function ChatOverlay({ isOpen, onClose }: ChatOverlayProps) {
               )}
               
               {isTyping && (
-                <div className="flex items-center gap-2 text-slate-500 text-sm ml-2">
-                  <div className="w-2 h-2 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-                  <div className="w-2 h-2 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                  <div className="w-2 h-2 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                <div className="flex items-center gap-2 text-muted-foreground text-sm ml-2">
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
                 </div>
               )}
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area */}
-            <div className="p-4 border-t border-white/10 bg-slate-900/50 backdrop-blur-md">
+            <div className="p-4 border-t border-border bg-card/90 backdrop-blur-md">
               <form onSubmit={handleSend} className="relative">
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Ask a question about your library..."
-                  className="pr-12 py-6 bg-white/5 border-white/10 focus:bg-white/10"
+                  className="pr-12 py-6"
                   disabled={isTyping}
                 />
                 <Button
                   type="submit"
                   size="icon"
-                  className="absolute right-2 top-2 h-8 w-8 bg-violet-600 hover:bg-violet-500"
+                  className="absolute right-2 top-2 h-8 w-8"
                   disabled={!input.trim() || isTyping}
                 >
                   <Send className="w-4 h-4" />

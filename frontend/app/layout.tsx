@@ -20,9 +20,7 @@ export const metadata: Metadata = {
   description: "Organize, rediscover, and chat with your content.",
   icons: {
     icon: [
-      { url: '/icon.png', sizes: '128x128', type: 'image/png' },
-      { url: '/favicon-48x48.png', sizes: '48x48', type: 'image/png' },
-      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/stash-mark.svg', sizes: 'any', type: 'image/svg+xml' },
     ],
     apple: [
       { url: '/apple-touch-icon.png', sizes: '128x128', type: 'image/png' },
@@ -42,14 +40,13 @@ export default function RootLayout({
       </head>
       <body
         suppressHydrationWarning
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-950 text-slate-200`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
         <QueryProvider>
-          <NextTopLoader color="#8b5cf6" />
+          <NextTopLoader color="#12846f" />
           {children}
         </QueryProvider>
       </body>
     </html>
   );
 }
-
